@@ -1,0 +1,32 @@
+# Run the whole app with one command:
+#
+#   docker compose up
+#
+# Then open http://localhost:5173
+#
+# Both processes (Mastra server + web UI) run in a single container, so the
+# UI's API proxy stays on localhost — no inter-container networking to set up.
+#
+# The LLM is configured via .env (see .env.example):
+#   • Ollama Cloud — works as-is; the container reaches https://ollama.com.
+#   • A local Ollama server — set LLM_BASE_URL=http://host.docker.internal:11434/v1
+#     in .env so the container can reach Ollama on the host.
+
+name: aso-audit-agent
+
+services:
+  app:
+    build: .
+    image: aso-audit-agent:local
+    # Loads LLM_* and FIRECRAWL_API_KEY when a .env is present.
+    # `required: false` keeps `docker compose up` working without one.
+    env_file:
+      - path: .env
+        required: false
+    extra_hosts:
+      # Lets LLM_BASE_URL=http://host.docker.internal:... reach a host-local
+      # Ollama (automatic on Docker Desktop; explicit here for Linux too).
+      - 'host.docker.internal:host-gateway'
+    ports:
+      - '5173:5173' # web UI — open this
+      - '4111:4111' # Mastra server + Studio

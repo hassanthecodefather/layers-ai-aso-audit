@@ -1,0 +1,24 @@
+{
+  "name": "aso-audit-agent",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Conversational App Store Optimization audit agent, built on Mastra.",
+  "workspaces": [
+    "apps/server",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,web -c blue,magenta -k \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:server": "npm run dev --workspace apps/server",
+    "dev:web": "npm run dev --workspace apps/web",
+    "build": "npm run build --workspace apps/server && npm run build --workspace apps/web",
+    "test": "npm run test --workspace apps/server",
+    "typecheck": "npm run typecheck --workspace apps/server && npm run typecheck --workspace apps/web"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=20.9.0"
+  }
+}

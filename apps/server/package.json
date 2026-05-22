@@ -1,0 +1,30 @@
+{
+  "name": "@aso/server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Mastra server: ASO audit agent, tools and workflow.",
+  "scripts": {
+    "dev": "dotenv -e ../../.env -- mastra dev --dir src/mastra",
+    "build": "mastra build --dir src/mastra",
+    "start": "dotenv -e ../../.env -- node .mastra/output/index.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/openai-compatible": "^2.0.47",
+    "@mastra/core": "^1.36.0",
+    "@mastra/libsql": "^1.11.1",
+    "@mastra/loggers": "^1.1.1",
+    "dotenv-cli": "^11.0.0",
+    "hono": "^4.12.22",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "mastra": "^1.10.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.7"
+  }
+}

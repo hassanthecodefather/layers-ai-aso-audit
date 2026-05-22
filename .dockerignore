@@ -1,0 +1,27 @@
+# Installed fresh inside the image for the Linux platform — never copy the
+# host's (macOS) node_modules in.
+node_modules
+**/node_modules
+
+# Build output and caches.
+.mastra
+**/.mastra
+dist
+**/dist
+apps/web/dist
+
+# Local databases (workflow snapshots) — recreated at runtime.
+*.db
+*.db-*
+
+# Secrets — injected by docker-compose via env_file, never baked into the image.
+.env
+.env.*
+
+# VCS, reference material and noise.
+.git
+aso-skills
+task.md
+llms.txt
+*.log
+.DS_Store
