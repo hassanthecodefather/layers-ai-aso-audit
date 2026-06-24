@@ -10,3 +10,4 @@ dist/
 .DS_Store
 *.log
 apps/web/dist/
+spec_the_future_ASO.txt

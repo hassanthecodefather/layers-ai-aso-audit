@@ -1,0 +1,829 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ASO Agent — Phased Plan</title>
+<style>
+  :root{
+    --bg:#0b0d11; --bg2:#10131a; --ink:#f2f4f7; --dim:#aab2bf; --faint:#6b7380;
+    --line:#252b35; --accent:#6ea8fe; --green:#7ee2b8; --warn:#f0b86e; --bad:#f08a8a;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  a{color:var(--accent)}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.6;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:860px;margin:0 auto;padding:64px 24px 96px}
+  header{border-bottom:1px solid var(--line);padding-bottom:32px;margin-bottom:8px}
+  .kicker{font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin-bottom:16px}
+  h1{font-size:38px;line-height:1.1;letter-spacing:-.02em;margin-bottom:16px}
+  .lede{font-size:18px;color:var(--dim);max-width:64ch}
+  .meta{font-family:var(--mono);font-size:12px;color:var(--faint);margin-top:20px}
+
+  section{padding:40px 0;border-bottom:1px solid var(--line)}
+  h2{font-size:24px;letter-spacing:-.01em;margin-bottom:8px}
+  h2 .num{font-family:var(--mono);color:var(--accent);font-size:16px;margin-right:10px}
+  .goal{color:var(--dim);font-size:16px;margin-bottom:22px;max-width:64ch}
+  p{margin-bottom:14px;color:var(--dim);max-width:68ch}
+  strong{color:#fff;font-weight:650}
+  .accent{color:var(--accent)} .green{color:var(--green)} .warn{color:var(--warn)} .bad{color:var(--bad)}
+
+  .block{margin:18px 0}
+  .label{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin-bottom:10px}
+  ul{list-style:none;display:flex;flex-direction:column;gap:9px}
+  li{position:relative;padding-left:22px;color:var(--dim);max-width:66ch}
+  li::before{content:"–";position:absolute;left:0;color:var(--accent)}
+  li strong{color:#fff}
+
+  .hard{border-left:3px solid var(--warn);background:var(--bg2);border-radius:0 10px 10px 0;padding:14px 18px;margin:18px 0}
+  .hard .label{color:var(--warn);margin-bottom:6px}
+  .hard p{margin:0;color:var(--dim)}
+
+  .ship{border-left:3px solid var(--green);background:var(--bg2);border-radius:0 10px 10px 0;padding:14px 18px;margin:18px 0}
+  .ship .label{color:var(--green);margin-bottom:6px}
+  .ship p{margin:0;color:var(--dim)}
+
+  .uplift{border-left:3px solid var(--accent);background:var(--bg2);border-radius:0 10px 10px 0;padding:14px 18px;margin:18px 0}
+  .uplift .label{color:var(--accent);margin-bottom:10px}
+  .faint{color:var(--faint)}
+
+  table{width:100%;border-collapse:collapse;font-size:15px;margin:16px 0}
+  th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--faint);font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:600}
+  td{color:var(--dim)} td strong{color:#fff}
+
+  .roadmap{display:flex;flex-direction:column;gap:10px;margin-top:8px}
+  .row{display:flex;gap:16px;align-items:baseline;background:var(--bg2);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:10px;padding:13px 16px}
+  .row .ph{font-family:var(--mono);color:var(--accent);font-size:13px;min-width:78px}
+  .row .nm{font-weight:650;min-width:210px}
+  .row .ds{color:var(--dim);font-size:14px}
+  .row.future{border-left-color:var(--faint)}
+  .row.future .ph{color:var(--faint)}
+
+  footer{padding-top:36px;color:var(--faint);font-family:var(--mono);font-size:12px}
+  @media (max-width:640px){
+    h1{font-size:30px}
+    .row{flex-direction:column;gap:4px}
+    .row .nm{min-width:0}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">ASO Agent · Planning · v1.3.1</div>
+  <h1>The ASO Agent — Phased Build Plan</h1>
+  <p class="lede">The audit we have today is stateless — it runs, emits suggestions, and forgets. This plan turns it into a system that <strong>remembers</strong> what it told you, sees the listing more deeply, grounds advice in real data, and scales — deliberately, one wall at a time. We ground what the app actually is, then five phases prove the loop for a single user; the phases beyond scale it — 1K, 5K, 10K — and teach it to act on the store, all the way to the north star.</p>
+  <div class="meta">v1.3.1 · the phased ASO build plan · paired editions — specification.html (for a human to read) + specification.md (for an LLM/agent to execute)</div>
+</header>
+
+<!-- What's new -->
+<section>
+  <div class="uplift">
+    <div class="label">What's new in v1.3.1 — review-hardening</div>
+    <p class="faint" style="margin:0 0 8px">Successive review passes against the v1.2.0 Build Appendix, each fix kept in sync across both editions:</p>
+    <ul>
+      <li><strong>rec_key collision fixed</strong> — a value_key discriminator stops two distinct same-intent recs collapsing; normalization pinned (casefold + NFC + plural-collapse).</li>
+      <li><strong>Tombstones app-scoped</strong> (survive identity-version bumps); <strong>aso_rec_occurrences</strong> added as the belief-accumulation write path.</li>
+      <li><strong>Complaint-theme taxonomy enumerated</strong> (15 buckets + other) with an embedding fallback (cosine ≥ 0.85); <strong>feature requests declared disjoint</strong> (human hand-off, never ledgered).</li>
+      <li><strong>taxonomy_version</strong> added and defined (hand-bumped theme-taxonomy@N), with a bucket-split→superseded migration rule.</li>
+      <li><strong>Governor recomputed</strong> (~2,000 metered-calls/hr over an honest ~600–800 busy-hour estimate); vision cost sized per-image-tile.</li>
+      <li><strong>Beta calibration stated</strong> — defaults validated against the §F fixtures; the 6b golden set is the formal retune (no silent drift, no reclassification of historical rows).</li>
+      <li><strong>Tables namespaced aso_</strong>; ASA "Search Match" conflation corrected; §D evidence reworded to "reconstructable" (matches the schema).</li>
+    </ul>
+    <div class="label" style="margin-top:14px">What's new in v1.2.0 — build-ready</div>
+    <p class="faint" style="margin:0 0 8px">Closing the gaps a reviewer (and the codebase) surfaced, so an engineer can execute without coming back to ask:</p>
+    <ul>
+      <li><strong>Identity Resolution split</strong> into <strong>ID-lite</strong> (deterministic, day-one, runs in the beta) and <strong>ID-full</strong> (vision + audience, folds into P2) — removing the forward dependency on storage and vision that didn't exist yet.</li>
+      <li><strong>P5 spend cap reconciled</strong> — the enforced control is the count-based loop kill; the dollar cap is an honest <strong>post-hoc estimate/alert</strong> until token accounting is wired (P7).</li>
+      <li><strong>P6 decomposed</strong> into <strong>6a (correctness gates at user #2)</strong> and <strong>6b (scale-out at ~1K)</strong> — honouring "one wall at a time."</li>
+      <li><strong>P8 stop-loss</strong> given a concrete metric + threshold + noise band.</li>
+      <li><strong>ASC auth corrected</strong> — JWT (ES256, .p8 key), not OAuth; Apple Search Ads (P3) is the OAuth2 one.</li>
+      <li><strong>AppKittie</strong> competitive <strong>data-egress</strong> risk named (not just replaceability).</li>
+      <li><strong>New <a href="#build-appendix">Build Appendix</a></strong> — data-model schemas, seam interface contracts, recommendation-dedup + intent taxonomy, the evidence-trail type, per-phase acceptance criteria, and a spec→code map.</li>
+    </ul>
+    <div class="label" style="margin-top:14px">What's new in v1.1.1 — fact-check corrections</div>
+    <p class="faint" style="margin:0 0 8px">Claims tightened to match sources after a review pass:</p>
+    <ul>
+      <li><strong>Screenshot OCR</strong> reframed as <strong>contested</strong>, not "Apple doesn't OCR" (June-2025 industry shift vs. counter-evidence, sourced).</li>
+      <li><strong>iTunes ~20/min</strong> now cited to Apple's own <a href="https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/Searching.html">iTunes Search API docs</a>, plus an Akamai cache-staleness note.</li>
+      <li><strong>Icon sizes</strong> corrected — 1024px master (not 512), 87px is the Settings icon, search-thumbnail px is undocumented; pHash split into observed vs. inferred.</li>
+      <li><strong>Measurement</strong> signals matched to change type (rank for metadata, ratings/reviews for experience, diff/PPO for visuals).</li>
+      <li><strong>"Can't measure two changes at once"</strong> reframed — ship freely; the rule limits claims, not shipping (PPO = visual-only causal proof).</li>
+      <li><strong>Screenshot reorder</strong> narrowed to non-panoramic <strong>slot-promotion</strong>, not free shuffling.</li>
+      <li><strong>Added:</strong> rollback mechanics, the pending-version / baseline / go-live model, human-override boundaries, and an explicit <strong>iOS-only scope</strong> deferral.</li>
+    </ul>
+    <div class="label" style="margin-top:14px">Shipped in v1.1.0 — jump straight in</div>
+    <ul>
+      <li><strong><a href="#cost-courtesy">Paid Gemini + cost model</a>.</strong> The base LLM moved from Ollama to paid Gemini; the enforced cost control is the count-based loop kill (the dollar figure is a post-hoc estimate until token accounting lands at P7 — see v1.2.0).</li>
+      <li><strong><a href="#external-services">External services &amp; tooling</a>.</strong> Every dependency mapped by phase — data/APIs and infrastructure — with the MCP discipline.</li>
+      <li><strong><a href="#keyword-research">The paid-provider bake-off</a>.</strong> AppTweak vs AppFigures vs AppKittie compared, with the Phase-3 pick — and keyword mechanics are now per-script (i18n).</li>
+      <li><strong><a href="#identity-resolution">Identity Resolution, deepened</a>.</strong> It now also resolves the target audience.</li>
+      <li><strong><a href="#north-star">Edge cases</a>.</strong> Honest handling of underpowered apps (PPO significance) and low/zero-data degradation.</li>
+      <li><strong><a href="#multi-tenant-alpha">Offline recommendation-quality eval</a>.</strong> Named as part of the alpha hardening.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- Thesis -->
+<section>
+  <h2>Where we are, and where this goes</h2>
+  <p>The current agent audits an App Store listing across 10 dimensions and returns a score plus recommendations. It works, but it has no memory: run it twice and it can contradict itself, because it doesn't know what it said last time or whether anyone acted on it.</p>
+  <p>Each phase below is a self-contained step that ships something usable on its own. We start by <strong>grounding what the app actually is</strong> (so we never optimise the wrong product), then give it <strong>memory</strong> — the foundation everything else builds on — then deepen what the agent can <strong>observe</strong> (images, keywords, reviews), then make it <strong>safe to run</strong> without getting throttled by the APIs it calls or running up a bill. The destination is an always-on advisor that sends a daily digest. The north star — <strong>proving a change actually worked</strong> — is sequenced last by necessity, not neglect: real measurement needs a connected App Store Connect account, so the beta first proves the loop <strong>closes honestly</strong> on public signals, and true measurement is wired the moment that data is available.</p>
+
+  <div class="block">
+    <div class="label">How we phase — earn each tier before you build for it</div>
+    <p>This discipline runs through the whole plan: <strong>we don't build for a scale we haven't reached.</strong> The beta proves the loop closes and remembers — honestly — for a single operator, on the simplest infrastructure that works. Only then do we scale, and each tier crosses <strong>one specific wall</strong>, never all of them at once.</p>
+    <ul>
+      <li><strong>1 user · the beta</strong> (ID-lite grounding + Phases 1–5, with ID-full folding into P2 + net-new). Prove the loop — ground what the app is → observe → diagnose → recommend → remember → re-observe. LibSQL, in-process, paid Gemini (pennies at one-user volume). The <strong>seams</strong> get built here; nothing premature gets built behind them.</li>
+      <li><strong>→ 1K · become a service</strong> (Phase 6). The first wall: the in-process shortcuts that are right at one user — one pacer, one tally, one process — break the instant a second instance exists. Auth, isolation, shared limiters, a durable queue.</li>
+      <li><strong>→ 5K · turn the loop on</strong> (Phase 7, API integration v1 — read &amp; connect). App Store Connect connects, tracking runs continuously, and <span class="accent">"did it actually work?"</span> finally has a real answer. Cost economics become first-class.</li>
+      <li><strong>→ act · teach it to write</strong> (Phase 8, API integration v2 — track-record-gated). Once the ledger has earned trust, the agent applies changes — through App Review's slow submit-and-rejection loop for gated fields, and directly on the surfaces that need no review.</li>
+      <li><strong>→ 10K+ · the north star.</strong> The always-on advisor: a daily digest that puts human decisions first, with visual wins <strong>proven</strong> by Apple's own A/B test, not asserted.</li>
+    </ul>
+    <p class="faint">We never re-platform what we can put behind a seam. The beta builds those seams — a swappable storage client, one provider interface per source, an entity-keyed cache — and scaling fills them in rather than rewriting them.</p>
+  </div>
+</section>
+
+<!-- Roadmap -->
+<section>
+  <h2>The plan at a glance</h2>
+  <div class="roadmap">
+    <div class="row"><span class="ph">ID</span><span class="nm">Identity Resolution</span><span class="ds">What is this app, really? Ground the true identity before diagnosing — so Rivian maps to the Tesla app, not Booking.com. <strong>ID-lite</strong> (deterministic) runs in the beta; <strong>ID-full</strong> (vision + audience) folds into P2.</span></div>
+    <div class="row"><span class="ph">Phase 1</span><span class="nm">Persistent Memory</span><span class="ds">The agent remembers every audit and every suggestion.</span></div>
+    <div class="row"><span class="ph">Phase 2</span><span class="nm">Image Analysis</span><span class="ds">Do the screenshots and icon actually fit the product?</span></div>
+    <div class="row"><span class="ph">Phase 3</span><span class="nm">Keyword Research</span><span class="ds">High-volume, relevant keywords from real search-volume data.</span></div>
+    <div class="row"><span class="ph">Phase 4</span><span class="nm">Deep Review Analysis</span><span class="ds">Mine reviews for themes and turn them into moves.</span></div>
+    <div class="row"><span class="ph">Phase 5</span><span class="nm">Cost &amp; Courtesy Control</span><span class="ds">At one user there's nothing to rate-limit: cache, a spend/loop governor, and not getting banned.</span></div>
+    <div class="row"><span class="ph">+</span><span class="nm">Net-new uplifts</span><span class="ds">Standalone wins the single-user shape unlocks — storefront sweep, honesty manifest, export.</span></div>
+    <div class="row future"><span class="ph">P6 · →1K</span><span class="nm">Multi-Tenant Alpha</span><span class="ds">Become a service, in two stages: <strong>6a</strong> correctness gates the 2nd user forces (auth, isolation, shared limiter, Postgres swap); <strong>6b</strong> scale-out ~1K justifies (durable queue, horizontal workers, observability, eval).</span></div>
+    <div class="row future"><span class="ph">P7 · →5K</span><span class="nm">Connected &amp; Always-On</span><span class="ds">App Store Connect (API integration v1: connect + read) + continuous tracking — the loop goes live and "did it work?" gets a real answer.</span></div>
+    <div class="row future"><span class="ph">P8 · v2</span><span class="nm">Acting on the Listing</span><span class="ds">API integration v2: apply changes through App Review, handle the rejection loop, act on the no-review surfaces.</span></div>
+    <div class="row future"><span class="ph">★ · →10K+</span><span class="nm">The Always-On Advisor</span><span class="ds">The north star: a daily digest, visual wins proven by Apple's A/B test, measured outcomes.</span></div>
+  </div>
+</section>
+
+<!-- Identity Resolution -->
+<section id="identity-resolution">
+  <h2><span class="num">ID</span>Identity Resolution — what is this app, really?</h2>
+  <p class="goal">Before the agent diagnoses anything, it has to know what the app actually <strong>is</strong> — or it optimises the wrong product. Rivian's app manages electric vehicles, but it presents as Travel (maps, range, trip metrics), so an audit that trusts the listing picks <span class="bad">Booking.com</span> as a competitor when the real peer is the <span class="green">Tesla app</span>. This step grounds a true identity from many signals, surfaces the gap between what the listing <strong>says</strong> it is and what it <strong>does</strong>, and only then lets the audit run. It is the first thing every audit does at runtime; its output is saved into the memory of Phase 1.</p>
+
+  <div class="block">
+    <div class="label">Built in two stages — it depends on things later phases bring</div>
+    <p>Identity is described here in full, but it ships in two parts so the build order is honest:</p>
+    <ul>
+      <li><strong>ID-lite — the beta default.</strong> The deterministic, day-one signals that need nothing but the iTunes Lookup response and one crawler fetch: developer + their other apps, bundle-id reverse-DNS, permission/privacy labels, IAP names, marketing-domain match, and review-vocabulary. Pure-code matching, no vision. ID-lite <strong>stands up the identity store</strong> (it is the first writer into the P1 memory tables) and produces a category/niche with a confidence tally. This is what runs first in the single-user beta. <strong>ID-lite and P1's storage scaffolding ship as one build unit</strong> — ID-lite has no standalone existence before the StorageClient lands, so the phase table's "ID before P1" is a <em>runtime</em> order, not a "build ID against a store that doesn't exist yet" instruction.</li>
+      <li><strong>ID-full — folds into P2.</strong> The <strong>vision-grounded</strong> identity (does the creative match the function?) and the <strong>audience</strong> resolution depend on the P2 vision pass, so they attach when P2 lands. Until then, ID-lite's identity is stamped "no-vision" and the vision-dependent escalations are simply not raised.</li>
+    </ul>
+    <p class="faint">The confidence ladder, the two-axis model, and the human-escalation logic below apply to both stages; ID-full only <em>adds</em> signals, never reinterprets ID-lite's deterministic ones.</p>
+  </div>
+
+  <div class="block">
+    <div class="label">What we build — resolve identity from many signals</div>
+    <ul>
+      <li><strong>The signal stack, strongest first.</strong> The developer's identity and their other apps; the <span class="faint">bundle id</span> reverse-DNS (com.rivian.*); the permission &amp; privacy labels and device capabilities (Bluetooth, location, CarPlay → a companion-to-a-device, not a travel agency); in-app-purchase names; the marketing/support URL's own page (fetched and <strong>cited</strong>); the review vocabulary (what users say they actually <strong>do</strong> — "precondition my truck", "check charge"); and the off-store footprint, cited.</li>
+      <li><strong>World-knowledge is a prior, never a verdict.</strong> That an LLM or Google "knows" Rivian makes EVs is a useful hint — but it must be corroborated by a fetched, citable signal, can be stale, and may describe the <strong>company</strong>, not the <strong>app</strong>. We never trust it blind.</li>
+      <li><strong>Fed to the model as an authoritative identity fact sheet.</strong> The resolved identity is injected into the scoring prompt the same way the deterministic signals are — so the model <strong>interprets</strong> a grounded identity instead of <strong>inventing</strong> one from misleading screenshots.</li>
+      <li><strong>Competitors anchored on function, not the listed category.</strong> Peer discovery runs on what the app actually does (Rivian → the Tesla app), with a <strong>disagreement guard</strong>: when the category-derived set (Booking.com) and the function-derived set (Tesla) diverge sharply, that disagreement is itself the signal — we trust the function-grounded set and flag it.</li>
+      <li><strong>The gap is a finding.</strong> "You present as Travel; your developer, permissions, and reviews say EV-companion — that likely costs you the users searching for your real function." Surfaced as a positioning recommendation — <strong>without over-correcting</strong>, because the brand's business is not the app's function and the app may legitimately serve its category.</li>
+      <li><strong>Resolve the target audience too.</strong> The same pass reads <strong>who the app is for</strong> — audience segments, their pain points, and the exact vocabulary they use (mined from reviews) — because keyword, metadata, and creative all consume it downstream. It rides signals we already fetch, so it is nearly free.</li>
+      <li><strong>Ships on signals we already have.</strong> The iTunes Lookup response already returns the bundle id and the developer's URL — we just don't keep them yet; the rest is pure-code matching and the existing crawler pointed at one extra page (<strong>ID-lite</strong>), with the Phase-2 vision pass joining as <strong>ID-full</strong>.</li>
+    </ul>
+  </div>
+
+  <div class="block">
+    <div class="label">No footprint? A confidence ladder, not a cliff</div>
+    <p>Resolution walks an ordered ladder and stops at the highest tier whose signals are present — and the tier reached <strong>is</strong> the confidence story, because each tier caps the ceiling: external corroboration (search, Wikipedia) → cross-store listing + reviews → the fetched first-party landing page → on-store-only. A no-footprint startup simply <strong>starts lower on the ladder</strong> — normal, not an error — and on-store-only resolution is structurally barred from "high," because agreement among an app's own first-party signals is not independent corroboration. The day-one signals still fire: the <span class="faint">bundle id</span> raises confidence when its org segment matches the registrable domain of the fetched landing page (com.acmebank.* + acmebank.com → "Acme Bank companion"), while a vanity id (com.app.myapp) yields nothing and says so.</p>
+    <p><strong>Absence is information, not "we failed to look."</strong> Every external probe records one of three states — <span class="green">corroborated</span>, <span class="warn">searched-and-empty</span> (the lookup ran and genuinely found nothing — consistent with a brand-new app, a small honest confidence penalty), or <span class="bad">errored</span> (timed out / blocked / 429 — a defect to retry). "No footprint exists" is never allowed to masquerade as "the lookup broke," and the ambiguous case fails safe to "couldn't check."</p>
+  </div>
+
+  <div class="block">
+    <div class="label">Save the findings — versioned, reused, human-overridable</div>
+    <p>Identity and the competitor analysis are a <strong>stored, append-only, versioned artifact</strong> in the Phase-1 memory, keyed by app + country — so identity <em>can</em> be resolved per storefront when needed (a localised listing can legitimately read differently market to market). The cheap storefront sweep, though, is <strong>observe-only and inherits the primary storefront's identity</strong> — full per-country re-resolution (which needs the crawler + web-search, not just free iTunes calls) is opt-in, never the default sweep. Each identity field carries its <span class="green">provenance</span>, source tier, and confidence band; each competitor carries the <strong>basis</strong> that justified it, so a category-only peer is weak by construction and a wrong one is auditable — and a peer a human has rejected is tombstoned, never silently re-surfaced. The tombstone is <strong>app-scoped</strong> (app_id + country + competitor_app_id), not tied to the identity version — so a rebrand that writes a new identity version still inherits every prior rejection, which is what makes "never re-surfaced" actually hold across versions.</p>
+    <p><strong>Reuse, don't recompute.</strong> Identity is read first every run; if the identity-bearing signals are byte-identical, the stored identity is reused verbatim at its stored confidence with <span class="green">zero LLM</span>. The byte-identity check reads through to each signal's <strong>fetched-at/freshness</strong>, not the cache layer — so a stale-but-cached listing (P5) can never look "identical" and silently suppress re-resolution of a changed identity. Only signals that moved get re-resolved, and only the level they feed — so a new anime banner re-resolves <strong>only the niche</strong>, starting from the stored "major RPG, anime is style not category" prior, and can't re-trigger the mis-niche. A rebrand or pivot writes a new version, visible as an identity change over time. A <strong>human override is the highest-priority signal</strong> — sticky, recorded as a categorical "human-confirmed" tier (not a fake 100%), respected by every future audit, and re-asked only when the signals it rested on materially change and the answer actually flips. An override steers <strong>interpretation</strong> — it can legitimately make future audits point a different way, and that's the feature — but it <strong>cannot rewrite the historical record, change a measured outcome, or be laundered into "observed evidence."</strong> The interpretation layer is the operator's to steer; the observation and measurement layers stay <strong>append-only and read-only to everyone.</strong></p>
+  </div>
+
+  <div class="block">
+    <div class="label">Confidence, and when we ask a human</div>
+    <p>Confidence is a <strong>counted, citable tally</strong>, never a fabricated percentage: "<strong>N of M independent signal families agree</strong>" (developer, bundle-id, permissions, IAPs, marketing-domain, cross-store, reviews, footprint), each resolvable to its source, weighted observed-on-store ≥ fetched-and-cited &gt; review-inferred &gt; world-knowledge prior (which never counts alone) — the exact tier weights are in the <a href="#build-appendix">Build Appendix</a> §E. It is <strong>two axes, never averaged</strong>: broad category and specific niche. Genshin Impact's category is certain (genre + gacha purchases + reviews all agree) while its niche is not (anime art pulls toward "anime app") — so we say "<span class="green">category: high</span> / <span class="warn">niche: low</span>" verbatim, never a misleading middle.</p>
+    <p><strong>Conflict yields low, not averaged.</strong> When two individually strong, independently-corroborated signals point at different identities, that is the clearest sign we don't know — confidence drops to the escalate band. The declared store category alone is a single signal, not "strong" by default. Divergence is an <strong>ordinal band</strong> on two citable category strings: <span class="faint">none</span> (Genshin: Games == Games), <span class="faint">within-domain</span> (Productivity → note-taking: a note, never an escalation — the app legitimately serves its category, so we do not over-correct), or <span class="bad">cross-domain</span> (Travel vs vehicle-control — the only band that escalates).</p>
+    <p>Bands: <span class="green">high</span> → proceed; <span class="warn">medium</span> → proceed but flag; <span class="bad">low / conflict</span> → ask a human. The concrete <strong>weighted-tally thresholds</strong> that map signal families → band (so "given these signals, the band is X" is a writable acceptance test) live in the <a href="#build-appendix">Build Appendix</a> — the tally is <em>weighted</em> (tiers count for different amounts), not a raw headcount. Escalation is <strong>asymmetric</strong> to keep the gate rare: a low niche under a high category only adds a flag — it never blocks. The hard gate fires only when the category itself is low, the two axes truly conflict, or a high observed function sits over an inferred-only niche. The ask reuses the audit's existing confirm step (today "is this the app you meant?", widened to "here's what we think your app is and who it competes with — confirm, correct, or pick a candidate"), batched into the digest's "decisions that need a human" block — TikTok and Spotify generate zero asks. If the human never engages, we proceed at best guess but <strong>code-suppress the identity-rewriting recommendations</strong> (the confident "rewrite your subtitle around vehicle control" is withheld; quick-wins like "add a preview video" still ship) and stamp the audit "identity unconfirmed" — silence is never read as a yes, and low confidence is never read as a human decline.</p>
+  </div>
+
+  <div class="hard">
+    <div class="label">The hard part</div>
+    <p>Telling <strong>"the listing mis-frames the app"</strong> apart from <strong>"the app genuinely serves this category"</strong> — and scoring that confidence without inventing precision. Over-correct and you rewrite a legitimate trip-planner into a car app; under-correct and you keep advising Booking.com. The resolution is to count evidence rather than assert, treat conflict as low confidence, and route the genuinely ambiguous middle to a human rather than guess.</p>
+  </div>
+
+  <div class="ship">
+    <div class="label">What we show</div>
+    <p>Audit Rivian: the system reports "presents as Travel, but developer + permissions + reviews say EV-companion — real peer is the Tesla app, not Booking.com," with an identity-confidence and, because the signals conflict, a one-click human confirm. Audit a no-footprint startup: a "provisional identity, low corroboration" label instead of a confident wrong guess. Re-audit either one: the confirmed identity is reused, not re-litigated.</p>
+  </div>
+</section>
+
+<!-- Phase 1 -->
+<section>
+  <h2><span class="num">P1</span>Persistent Memory</h2>
+  <p class="goal">Give the agent a memory so it can recall all past audit information and every suggestion it has made — and stop contradicting itself.</p>
+
+  <div class="block">
+    <div class="label">What we build</div>
+    <ul>
+      <li>A <strong>per-app history</strong>: each audit run stored as a snapshot (listing data + 10-dimension scores + the report), keyed by app ID + country.</li>
+      <li>A <strong>suggestion ledger</strong>: every recommendation recorded with its status — <span class="accent">proposed</span>, <span class="green">applied</span>, or <span class="faint">dismissed</span> — plus the evidence behind it.</li>
+      <li>On a new audit, the agent <strong>reads its own past output first</strong>: it can say "you applied this, here's the new state" instead of starting from zero.</li>
+      <li>Every recommendation carries an <strong>evidence trail</strong> — a link back to the exact observed signal that produced it, so the advice is auditable, not asserted.</li>
+    </ul>
+  </div>
+
+  <div class="block">
+    <div class="label">How</div>
+    <p>Memory must live in <strong>persistent storage</strong> — it has to survive restarts and deploys, or it isn't memory. In beta we use <strong>LibSQL</strong>, in-process: it gives real persistence with no external service to run, secure, or pay for at one-user volume. Add a small <strong>memory</strong> module with the tables defined in the <a href="#build-appendix">Build Appendix</a> and inject the relevant history into the agent prompt before it scores. Mastra's storage primitives support both LibSQL and Postgres <em>(assumption to verify against the pinned Mastra version before P6 — the whole "config change, not migration" claim rests on it)</em>.</p>
+    <p>The store sits behind one swappable client, so the agent code never depends on the specific database. When P6 brings concurrent workers and shared state, the client swaps from LibSQL to <span class="green">Postgres</span> — a config change, <strong>not a migration</strong>, precisely because the seam was there from day one <em>(this rests on the storage-client contract in the Build Appendix holding; a schema or transaction-semantics gap between the two engines is the risk to retire early)</em>. We don't run a multi-node database before there's concurrency for it to serve.</p>
+  </div>
+
+  <div class="uplift">
+    <div class="label">Uplift — now, not future</div>
+    <ul>
+      <li><strong>Applied-detection without App Store Connect.</strong> We already re-observe the public listing on every audit. When a past suggestion shows up in the new listing, mark it <span class="green">applied</span> automatically ("applied" means the listing now <strong>matches</strong> the suggestion — <em>not</em> that we <strong>caused</strong> the change; causation is the P7 measurement window's job) — then watch the signal that actually <em>matches</em> the change, not whatever is easiest to see. <strong>Metadata</strong> edits (subtitle, keywords, title) move discovery, so the only public proxy today is <strong>keyword-rank drift</strong> — true impressions/conversion needs App Store Connect at P7. <strong>Experience or review-response</strong> changes are what move <strong>ratings, review volume and sentiment</strong>. <strong>Visual</strong> changes show up as <strong>screenshot/icon diffs</strong> (provable only by a PPO A/B test). Matched to the change, it's a real, directional <strong>measurement loop available today</strong> — not Apple's provable A/B test, but the first honest answer to "did it actually work?", with metadata explicitly marked <em>not fully measurable until P7</em>.</li>
+      <li><strong>Change diff — what moved since last audit.</strong> A plain changelog: listing edits, score deltas, rating drift. This is what makes memory feel like memory rather than a log file.</li>
+      <li><strong>Contradiction guard.</strong> Before emitting, the agent checks new recommendations against the ledger and refuses to reverse past advice without flagging the change — directly killing "run it twice, it disagrees with itself."</li>
+      <li><strong>Snapshot store + rubric replay.</strong> Every audit writes an immutable snapshot — listing, the deterministic signals, the report, the prompt hash and model id. Retune a rubric <strong>weight</strong> and re-run the assembler over every stored draft for an exact, instant, <span class="green">zero-LLM</span> "how would the score have moved." Re-<strong>judging</strong> an old listing with today's model is a separate action, stamped "re-judged, not the historical verdict."</li>
+      <li><strong>Clickable evidence trail.</strong> Make each claim's evidence a typed reference — a signal, a listing field, a specific review, or an explicit <span class="warn">unavailable</span> — frozen into the snapshot. A chip resolves deterministically into that date's source data, so a claim can never be mis-pointed or back-dated.</li>
+    </ul>
+    <p class="faint" style="margin:12px 0 0;font-size:14px"><strong style="color:var(--dim)">Secondary uplifts:</strong> per-dimension sparklines (deterministic signals solid, LLM scores muted); belief accumulation per recommendation against a fixed intent taxonomy ("raised in 3 of your last 4 audits, never dismissed" — reconstructed from the <span class="faint">aso_rec_occurrences</span> table, which records per-audit presence/dismissal, since first_seen_at/last_seen_at alone can't capture an intermittent raised→dismissed→raised pattern); a next-best-<strong>one</strong>-move discipline; and a correlational public-signal delta panel — the honest, account-free precursor to self-measurement.</p>
+  </div>
+
+  <div class="hard">
+    <div class="label">The hard part</div>
+    <p><strong>Identity and dedup.</strong> Matching "the same recommendation" across runs (so we don't re-suggest what's already applied), and handling a listing that changed between audits. Get this wrong and memory makes the contradiction problem worse, not better.</p>
+  </div>
+
+  <div class="ship">
+    <div class="label">What we show</div>
+    <p>Audit the same app twice — the second run references the first, shows what changed, marks which past suggestions were applied, and never repeats one.</p>
+  </div>
+</section>
+
+<!-- Phase 2 -->
+<section>
+  <h2><span class="num">P2</span>Image Analysis</h2>
+  <p class="goal">Look at the actual screenshots and icon and judge whether they make sense for the product — the first impression a user reacts to before reading a word.</p>
+
+  <div class="block">
+    <div class="label">What we build</div>
+    <ul>
+      <li>Pull <strong>full-resolution screenshots and the icon</strong> (already available free from the iTunes artwork URLs) and run them through a <strong>vision model</strong>.</li>
+      <li>Assess: value-prop clarity in the <strong>first one or two frames</strong>, icon legibility at thumbnail size, readability of on-image text, and visual cohesion with the product's category.</li>
+      <li><strong>Competitor visual benchmarking</strong>: run the same vision pass on the top competitors' first frames, so the critique is positioned — "your lead screenshot is text-heavy; the top three lead with product UI" — not judged in a vacuum.</li>
+      <li>Output <strong>ranked variant hypotheses to test</strong> — "this caption is hard to read at search-result size" — never flat verdicts.</li>
+    </ul>
+  </div>
+
+  <div class="block">
+    <div class="label">How</div>
+    <p>A vision-capable model (Gemini or Claude vision). Each image is scored on the criteria above with a confidence label, then folded into the existing screenshots/icon dimensions.</p>
+  </div>
+
+  <div class="uplift">
+    <div class="label">Uplift — now, not future</div>
+    <ul>
+      <li><strong>The icon as a searcher actually sees it.</strong> Downscale the <strong>1024px master</strong> to the small sizes a user actually encounters — home-screen 120/180px, and the App Store search thumbnail (Apple doesn't publish its exact render px, so we test a small range ~80–120px) — rather than judging the pristine upload. Compute a deterministic fact sheet first — perceptual-hash distance to each competitor's icon, dominant-colour palette, busy-ness at thumbnail size — then let vision critique legibility on those true small pixels. The pHash distance is an <span class="green">observed</span> number; "under 8, <em>likely</em> confusable in a search row" is the <strong>inferred</strong> hypothesis it supports — flagged as such, not asserted as fact. <em>(Icon sizes per <a href="https://developer.apple.com/design/human-interface-guidelines/app-icons">Apple HIG — App icons</a>; 1024px master + per-context render sizes corroborated by <a href="https://splitmetrics.com/blog/guide-to-mobile-icons/">SplitMetrics</a> and <a href="https://www.iconikai.com/blog/ios-app-icon-size-guidelines-guide">IconikAI</a>. Apple does not publish the App Store search-row render px.)</em></li>
+    </ul>
+    <p class="faint" style="margin:12px 0 0;font-size:14px"><strong style="color:var(--dim)">Secondary uplifts:</strong> screenshot-set intelligence (role-tag each panel, flag duplicate messages, and — for <strong>non-panoramic sets only</strong>, since reordering breaks a continuous panorama — propose <strong>promoting the strongest panel into the search-visible slots</strong>, no new art; Apple documents only that <em>up to three</em> screenshots may show in search, so slot order is treated as an industry-backed lever, not an Apple-stated rank rule); a cross-device / cross-locale consistency matrix (slot counts are pure code, vision rides on top); and a variant brief that enforces PPO's <strong>≤3 non-overlapping treatments</strong> up front, so the creative is independently measurable later.</p>
+  </div>
+
+  <div class="hard">
+    <div class="label">The hard part &amp; a contested claim</div>
+    <p>Whether Apple OCR-indexes screenshot text for search is <strong>contested, not settled</strong> — so we don't assert either way. Apple's <a href="https://developer.apple.com/app-store/search/">search docs</a> list only title, subtitle, keywords, and category as indexed text, and Apple has never confirmed or denied reading on-image text; a June 2025 algorithm shift led much of the ASO industry to conclude Apple began OCR-indexing caption text as a <strong>low-weight</strong> signal (<a href="https://appfigures.com/resources/guides/app-store-algorithm-update-2025">Appfigures</a>, <a href="https://splitmetrics.com/blog/apple-app-store-ranking-factors/">SplitMetrics</a>), while an empirical 8-app test found <strong>no strong evidence</strong> of broad indexing (<a href="https://www.consultmyapp.com/blog/-is-apple-now-indexing-screenshot-titles-on-the-app-store">ConsultMyApp</a>). So we treat on-image text as primarily a <span class="green">conversion</span> lever and any keyword value from it as a <strong>hypothesis, not a fact</strong>. Visual quality is subjective regardless: we frame every creative change as a testable hypothesis, because only an A/B test proves one worked.</p>
+  </div>
+
+  <div class="ship">
+    <div class="label">What we show</div>
+    <p>An audit where each screenshot gets a specific, confidence-labelled critique and a concrete suggested variant.</p>
+  </div>
+</section>
+
+<!-- Phase 3 -->
+<section id="keyword-research">
+  <h2><span class="num">P3</span>Keyword Research</h2>
+  <p class="goal">Find the keywords that are both high-volume and genuinely relevant to the product — backed by real search-volume data, not a model's guess.</p>
+
+  <div class="block">
+    <div class="label">What we build</div>
+    <ul>
+      <li><strong>Candidate generation</strong> from the listing text, the language users use in reviews, and competitor metadata.</li>
+      <li><strong>Volume + difficulty scoring</strong> for each candidate from a real data source, then a ranked opportunity list.</li>
+      <li><strong>Gap analysis</strong>: relevant, winnable terms the listing isn't targeting, with before/after metadata suggestions.</li>
+    </ul>
+  </div>
+
+  <div class="block">
+    <div class="label">Search-volume tools — recommendation</div>
+    <table>
+      <tr><th>Tool</th><th>Signal</th><th>Cost / note</th></tr>
+      <tr><td><strong>Apple Search Ads</strong> popularity</td><td>Apple's own 5–100 search-popularity score</td><td class="green">Free with an ASA account — most authoritative. <strong>Start here.</strong></td></tr>
+      <tr><td><strong>AppTweak</strong></td><td>Volume, difficulty, rank, suggestions</td><td>Paid; richest coverage, ships an MCP</td></tr>
+      <tr><td><strong>AppFigures</strong></td><td>Volume, rank, revenue</td><td>Paid; cheapest, documented API</td></tr>
+      <tr><td><strong>AppKittie</strong></td><td>Volume, difficulty, rank leaderboards, revenue/ad intel</td><td>Paid (~$49/mo); indie, ships an MCP</td></tr>
+      <tr><td><strong>Sensor Tower</strong></td><td>Volume + competitive intel</td><td>Paid; enterprise-grade</td></tr>
+    </table>
+    <p>Recommendation: <strong>build against Apple Search Ads popularity first</strong> (free, authoritative), then run a <strong>bake-off</strong> among the paid providers only where Apple's signal runs dry. Several now ship an MCP — convenient on our Mastra stack, but that is <strong>not</strong> a reason to pick one. Any provider — <strong>AppKittie included — is one option behind a single swappable client, never a required dependency</strong>.</p>
+    <p><strong>Access mechanism, named (it's not just "free with an account").</strong> The 5–100 popularity score comes from the <strong>Apple Search Ads API</strong>, which authenticates via <strong>OAuth2 client-credentials</strong> (an ASA account; the <span class="faint">client_secret</span> is itself a signed JWT; scope <strong>searchadsorg</strong>) — distinct from the App Store Connect API's JWT auth at P7. It is a relative <strong>search-popularity</strong> score (the 5–100 keyword-popularity indicator) — <em>not</em> Search Match, which is ASA's auto-targeting feature, a different thing; it requires an active ASA account (no spend required to read popularity, but the account and API enrolment are a real setup step). <strong>Bake-off trigger, made concrete:</strong> pull a paid provider only when (a) a target term returns no ASA popularity, or (b) we need rank-position or competitor-keyword data ASA structurally cannot give.</p>
+    <p><strong>The CJK / RTL script-aware fallback, defined.</strong> "Falls back to a script-aware path" means: detect the storefront's script; for CJK, <strong>skip the space-delimited tokeniser</strong> and use character-n-gram candidate generation with no plural/word-length rules; for RTL, normalise direction before length counts. Until that path is implemented, non-Latin storefronts run <strong>observation-only</strong> (utilisation, parity, counts) with keyword-mechanics findings suppressed and labelled "script not yet supported" — never emitted as low-confidence guesses.</p>
+  </div>
+
+  <div class="block">
+    <div class="label">The three paid candidates, compared</div>
+    <p>If Apple's free signals run dry, three providers lead the bake-off. In one line each: <strong>AppTweak</strong> — a deep, mature ASO intelligence platform (built for ASO pros/agencies); <strong>AppFigures</strong> — an app-analytics/reporting tool at heart (connects your own store accounts) with ASO layered on; <strong>AppKittie</strong> — a newer market + ad-creative intelligence tool (AI-era).</p>
+    <table>
+      <tr><th>Dimension</th><th>AppTweak</th><th>AppFigures</th><th>AppKittie</th></tr>
+      <tr><td><strong>DNA / origin</strong></td><td>Pure-play ASO platform</td><td>Developer analytics aggregator → added ASO</td><td>Market-intel DB + ad-creative + AI</td></tr>
+      <tr><td><strong>Core strength</strong></td><td>Deepest keyword volume/difficulty + rank tracking + competitor data</td><td>First-party actuals — connect your App Store Connect / Play accounts for real downloads/revenue, cross-store, well-documented API</td><td>Broad app DB with revenue/download estimates + ad-creative &amp; UGC/influencer intelligence + AI screenshot generation</td></tr>
+      <tr><td><strong>Only it gives you</strong></td><td>Semantic competitor discovery ("Atlas") + the most-validated keyword models</td><td>Your own multi-store numbers as ground truth (not estimates)</td><td>What ads/creatives competitors run, and the creators behind their growth</td></tr>
+      <tr><td><strong>Data method</strong></td><td>Large panel + Apple data + mature modeling</td><td>Your connected accounts (actuals) + estimates for others</td><td>Its own panel / estimation</td></tr>
+      <tr><td><strong>Maturity</strong></td><td><span class="green">Highest</span> (years, trusted)</td><td>High (long-standing dev tool)</td><td><span class="warn">Newest / least-proven</span></td></tr>
+      <tr><td><strong>Store coverage</strong></td><td>iOS + Google Play, global</td><td>iOS + Play (+ Amazon)</td><td>iOS-primary (some Play)</td></tr>
+    </table>
+    <p><strong>Likely Phase-3 pick: AppKittie</strong> — not because it's the best data (AppTweak is), but because the trade-offs point there for us. <strong>AppTweak</strong> has the deepest data but a <span class="warn">premium API</span> (~$166/mo floor) that's hard to justify at our scale; <strong>AppFigures'</strong> signature strength — your own first-party numbers — is data <strong>App Store Connect already gives us</strong> for free at P7, so we'd be paying for an overlap. AppKittie is the cheapest and most MCP-native, with ad-creative intel as a bonus. We adopt it <strong>behind the swappable seam, as a commodity input</strong> — mindful that it is also our <strong>closest competitor</strong>, so it stays non-load-bearing and trivially replaceable.</p>
+    <p><strong>The competitor-egress risk — separate from replaceability.</strong> Querying a competitor's API tells them which apps <em>our customers</em> care about — a data-egress / competitive-intelligence leak that a swappable seam does <strong>not</strong> mitigate (you can swap the provider, but the queries already left). Two facts bound it: the app ids we'd query are <strong>already public</strong>, so a single lookup leaks little; the real exposure is <strong>pattern</strong> — batch-querying our whole customer portfolio reveals our customer base. <strong>Decision (default — override if you disagree):</strong> query AppKittie only by public app id, never in customer-identifying batches (interleave/anonymise the query stream); treat this as a ranking input in the bake-off, not just price/MCP-fit — and if competitor-intel egress ever becomes material, prefer a non-competitor provider (AppTweak/AppFigures) for the load-bearing queries.</p>
+  </div>
+
+  <div class="block">
+    <div class="label">Market &amp; ad-creative intelligence — bounded</div>
+    <p>The same paid-data integration also exposes <strong>revenue, download, and growth estimates</strong> and <strong>competitors' ad creatives</strong>. We use them narrowly: market/growth estimates to <strong>weight a competitor's significance</strong> (is this peer big or surging?) and to <strong>prioritise recommendations</strong> by opportunity size; ad creatives as <strong>conversion hypotheses feeding image analysis</strong> (what messaging rivals pay to test). All labelled estimates. <strong>Revenue optimisation and ad/UA optimisation themselves stay deferred neighbour channels</strong> — we read these signals, we don't build those products.</p>
+  </div>
+
+  <div class="uplift">
+    <div class="label">Uplift — now, not future</div>
+    <ul>
+      <li><strong>The 160-char indexed-surface linter — in pure code.</strong> Run Apple's field mechanics deterministically over title (30) + subtitle (30) + keyword field (100): dedupe tokens across fields (Apple tokenises them together), flag plural-redundant <span class="faint">candidates</span>, and catch wasted words ("app", the brand, the category name) — emitting a per-term ledger with reclaimable characters. The keyword field is unobservable, so its findings are <span class="warn">inferred</span> and conditional; only title+subtitle overlap is <span class="green">observed</span>. This is the shared, unit-tested engine the next three uplifts all call.</li>
+    </ul>
+    <p class="faint" style="margin:12px 0 0;font-size:14px"><strong style="color:var(--dim)">Secondary uplifts:</strong> keyword-gap buckets vs competitors (shared / yours-only / theirs-only, weighted by peer frequency); a brand-vs-category demand split of the observable surface; an Apple-free rank probe run as a <strong>time series with a documented noise band</strong> (an observed range, never a false-precise "position 7"); and a reclaim simulator that recounts the operator's own candidate copy live — deterministically, no model call.</p>
+  </div>
+
+  <div class="hard">
+    <div class="label">The hard part</div>
+    <p>A competitor's actual <strong>keyword field is never observable</strong> — we infer it, and we must label that clearly. Keyword wins are also <span class="warn">correlational</span>, not provable: there's no holdout test for metadata. We report this honestly rather than selling guesses as facts.</p>
+    <p><strong>Script matters, too.</strong> The linter's rules are <strong>Latin-first</strong> — its word-splitting assumes spaces and word length, which <span class="warn">breaks for CJK</span> (character-based, no spaces — Apple tokenises it differently) and for right-to-left scripts. Keyword mechanics, on-image-text reads (P2), and sentiment (P4) are all <strong>per-script</strong>; non-Latin storefronts fall back to a script-aware path and are labelled lower-confidence until it exists.</p>
+  </div>
+
+  <div class="ship">
+    <div class="label">What we show</div>
+    <p>A ranked keyword opportunity list with real volume scores and concrete metadata edits.</p>
+  </div>
+</section>
+
+<!-- Phase 4 -->
+<section>
+  <h2><span class="num">P4</span>Deep Review Analysis</h2>
+  <p class="goal">Go beyond the star rating: read the reviews, find what users actually love and complain about, and turn that into actionable moves.</p>
+
+  <div class="block">
+    <div class="label">What we build</div>
+    <ul>
+      <li><strong>Theme extraction</strong>: cluster reviews into praise themes, complaint themes, and feature requests, with a sentiment trend over time.</li>
+      <li><strong>Routing into the loop</strong>: complaints become visual/metadata hypotheses, the words users use become keyword candidates, and feature requests are flagged as a <strong>human hand-off</strong>.</li>
+      <li><strong>Actionable suggestions</strong> with before/after text, each tagged by where it routes and how confident we are.</li>
+    </ul>
+  </div>
+
+  <div class="block">
+    <div class="label">How</div>
+    <p>An LLM pass over the review corpus the project already fetches (iTunes RSS), producing themes and routed suggestions. For a connected app, App Store Connect gives a deeper review history later.</p>
+  </div>
+
+  <div class="uplift">
+    <div class="label">Uplift — now, not future</div>
+    <ul>
+      <li><strong>Per-version sentiment delta — did the last release fix it or break it?</strong> Group the review sample by the <span class="faint">app-version</span> field Apple already ships and chart the rating + complaint-theme shift across the two most-recent versions: "your latest sample shows the crash complaint gone but a new login complaint emerging." <span class="warn">Prerequisite:</span> raise the review fetch from its current default of 25 toward the ~500/country cap first (this cap is <strong>industry-observed, not Apple-documented</strong> — treat it as a working assumption) — otherwise the prior version falls below a readable sample and the delta collapses.</li>
+    </ul>
+    <p class="faint" style="margin:12px 0 0;font-size:14px"><strong style="color:var(--dim)">Secondary uplifts:</strong> cross-country complaint divergence against one shared theme taxonomy (so "divergence" isn't just inconsistent labelling across languages — and this <strong>canonical theme taxonomy is also what gives fix_complaint_theme recommendations a stable value_key across audits</strong>, per Build Appendix §C, so it is <strong>beta-critical for dedup</strong>, not merely a cross-country nicety); competitor review mining for positioning gaps; and helpfulness-weighted theme salience using the vote fields the RSS feed already carries.</p>
+  </div>
+
+  <div class="hard">
+    <div class="label">The hard part</div>
+    <p><strong>Sample bias.</strong> The free RSS feed returns only recent reviews, skewed toward the loudest voices. We weight by recency and volume and state the sample we actually saw — never imply we read every review.</p>
+  </div>
+
+  <div class="ship">
+    <div class="label">What we show</div>
+    <p>A themed review summary where each complaint and request becomes a concrete, routed recommendation.</p>
+  </div>
+</section>
+
+<!-- Net-new uplifts -->
+<section>
+  <h2>Net-new uplifts — what the single-user shape unlocks</h2>
+  <p class="goal">Not phases of their own — standalone wins that being one user (no multi-tenancy, no public access, your own app's data) makes cheap and honest right now.</p>
+
+  <div class="uplift">
+    <div class="label">Uplift — now, not future</div>
+    <ul>
+      <li><strong>Storefront sweep — one app across countries.</strong> Re-run the observation layer for the same app across an operator-chosen set of storefronts (us / gb / de / jp) using only free iTunes calls — the resolver already takes a country param. Surfaces the highest-leverage finding small teams miss: <strong>shipping the US listing untranslated to every market.</strong> A zero-dependency tier (title utilisation, screenshot-count parity, rating spread, availability) always runs; subtitle/promo "localised vs US fallback" rides on the crawler when present. <strong>Runs as sequential per-storefront sub-runs</strong>, each its own audit under its own 5-min cap and pacer — a sweep is <em>N</em> audits, never one monster run that trips the wall-clock cap (see the call-budget note in P5).</li>
+      <li><strong>Connect-to-measure honesty manifest.</strong> A pure-code map of every recommendation into four proof regimes — <span class="accent">provable later via Apple PPO</span> (icon, screenshots, video), <span class="warn">correlational forever</span> even with an account (title, subtitle, keywords), <span class="green">funnel-measurable via App Store Connect</span> (conversion), and <span class="green">observable now</span> via re-audit (ratings, competitive). It turns the honesty discipline into a visible surface and pre-wires the single most important future event — connecting an account — without requiring it today.</li>
+    </ul>
+    <p class="faint" style="margin:12px 0 0;font-size:14px"><strong style="color:var(--dim)">Secondary uplifts:</strong> a portable audit + evidence export (Markdown / PDF — a <strong>persistence-independent</strong> artifact the operator can keep or share, not contingent on the database); and a review-vocabulary keyword miner that counts the full review sample in code and hands the ranked gap to the model as an authoritative signal.</p>
+  </div>
+
+  <div class="ship">
+    <div class="label">What we show</div>
+    <p>One US URL in, four storefronts back: "GB title 18/30 chars; JP has no localised screenshots; DE rating 4.1 vs US 4.6" — with one recommendation per gap, and a per-recommendation panel naming exactly how each would be proven.</p>
+  </div>
+</section>
+
+<!-- Phase 5 -->
+<section id="cost-courtesy">
+  <h2><span class="num">P5</span>Cost &amp; Courtesy Control</h2>
+  <p class="goal">At one user there is <strong>nothing to rate-limit</strong>. No inbound traffic, no second caller, no fleet to arbitrate. A production rate limiter answers "how do I protect my service from my clients?" — a problem that <strong>cannot occur here</strong>. The real job is smaller and sharper: don't get banned, don't get billed by surprise, and don't re-fetch what hasn't changed. Three small local pieces — a <span class="accent">cache</span>, a <span class="accent">spend/loop governor</span>, and a <span class="accent">courtesy throttle</span> — replace the entire rate-limiter frame.</p>
+
+  <div class="block">
+    <div class="label">The real threat — outbound and financial</div>
+    <ul>
+      <li><strong>Apple soft-bans the egress IP.</strong> Lookup, Search and the review RSS share one IP. Apple <strong>documents</strong> "~20 calls/min (subject to change)" for the <strong>Search API</strong> (the <a href="https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/Searching.html">iTunes Search API docs</a>) — and <strong>Lookup is part of that same API</strong>, so the limit covers it. The <strong>review RSS feed is a separate endpoint with no published limit</strong>, so we apply the same ceiling to it as a <strong>conservative assumption, not a documented fact</strong>. A competitor sweep or a tight dev loop trips it and <span class="bad">blinds every source at once</span>. Separately, Lookup serves <strong>Akamai-cached responses</strong> (observed cache up to a few hours, IP-pinned), so the feed can be stale — handled by our own TTLs and a cache-buster, below.</li>
+      <li><strong>A runaway loop — bounded by count, not dollars.</strong> A re-entrant workflow or a dev hot-reload can fan out calls indefinitely. The default LLM is <strong>paid Gemini</strong> — cheap per audit (<span class="green">pennies</span> at one-user volume) but <strong>metered from day one</strong> — so a runaway loop is now both a real (if modest) bill and an IP-ban risk: an unattended overnight loop hammering Apple's IP, compounding Gemini calls, and burning crawler credit. The <strong>enforced</strong> backstop is a <strong>call-count kill</strong>; a <strong>dollar cap rides alongside as a post-hoc estimate/alert</strong> (see the governor row for why it can't be the hard gate yet).</li>
+      <li><strong>One real concurrency nuance.</strong> The confirm step <span class="faint">suspends and resumes</span>, so two browser tabs can yield a few overlapping in-process runs sharing one IP and one tally. Handled by a single <strong>guarded in-process singleton</strong> — not a distributed limiter.</li>
+    </ul>
+    <p><strong>Call budget for the widest single run.</strong> A single deep audit's worst case is bounded: iTunes core (~3–5 calls) + competitor benchmarking (top-3 × ~2) + review fetch (~10 RSS pages at 50/page for ~500 reviews) ≈ <strong>20–25 iTunes calls</strong>. At the ~3.5s pacer that's ~70–90s of spacing — under the <strong>5-min per-run cap</strong>, but the review-fetch pages are the bulk, so the cap is sized for <em>one</em> deep audit, not a sweep. <strong>A storefront sweep is therefore N sequential sub-runs, each under its own cap</strong> (above), not one run — otherwise 4 storefronts × ~22 calls would legitimately brush the wall-clock cap and the honest-degradation path would fire on a feature, not on abuse. Vision/LLM scoring runs <strong>concurrently and is not pacer-bound</strong> (the pacer gates only iTunes), so it doesn't consume the iTunes budget — the 5-min cap holds for a full deep audit including the vision pass.</p>
+  </div>
+
+  <div class="block">
+    <div class="label">The three controls — with concrete numbers</div>
+    <table>
+      <tr><th>Control</th><th>What it does</th><th>Concrete</th></tr>
+      <tr>
+        <td><strong>Cache</strong> <span class="faint">(the dominant lever)</span></td>
+        <td>Wrap the HTTP helper and the LLM/vision calls; a served-from-cache field stamps its provenance <span class="green">observed-from-cache</span> + <span class="faint">fetched-at</span>, so a re-audit costs ~$0 upstream.</td>
+        <td>iTunes core <strong>24h</strong>; review RSS <strong>1–3h</strong> (most time-sensitive); competitors <strong>7d</strong>; vision keyed by screenshot-list fingerprint + per-asset SHA-256 with a <strong>~30-day sanity TTL — never "infinite"</strong>. <span class="green">--fresh</span> is the documented post-release bypass.</td>
+      </tr>
+      <tr>
+        <td><strong>Spend &amp; loop governor</strong></td>
+        <td>A count-first pre-flight guard. Refuse the next metered call when a cap would break; <strong>stop the run honestly</strong> and mark affected dimensions <span class="warn">unavailable (cap reached)</span> — never zero-filled or guessed.</td>
+        <td><strong>Enforced control = the loop backstop</strong> (the only thing wired today): kill at a per-hour <strong>metered-call ceiling</strong> counting <strong>all metered calls</strong> (iTunes + Gemini/vision + crawler, not just the iTunes calls the pacer spaces). One deep audit is <strong>~40 metered calls</strong> (~22 iTunes + ~8 vision + ~10 per-dimension LLM — the P4 theme-extraction pass does canonical-theme classification in the <em>same</em> call, and the rare other-bucket embedding fallback is one cheap embedding call counted when it fires — + ~1 crawler), so a busy single-operator hour (≈ 15–20 audits and sweep sub-runs) is <strong>~600–800 metered calls</strong>. The ceiling is set <strong>above</strong> that — default <strong>~2,000/hr</strong> — comfortably clear of legitimate use yet far below a runaway loop (tens of thousands). The <strong>real fast catch is the run-entry &lt;2s trip</strong>, which kills re-entrancy long before the hourly ceiling. <strong>5-min wall-clock cap per audit run.</strong> The <strong>dollar cap is post-hoc</strong> — token usage isn't wired in the beta, so it's an <strong>estimate/alert</strong> (default <strong>$5/day</strong>), not a hard pre-flight gate. Text calls are estimated from request/response sizes; <strong>vision is sized by Gemini's published per-image-tile token cost</strong>, not response bytes — image cost isn't byte-proportional, and vision is the likely dominant driver from P2 on. Token accounting that makes the dollar cap enforceable lands at <strong>P7</strong> (where it becomes the unit-economics model).</td>
+      </tr>
+      <tr>
+        <td><strong>Courtesy throttle</strong> <span class="faint">(good guest, not gatekeeper)</span></td>
+        <td>One process-global serial pacer in front of all iTunes calls (shared IP → shared pacer). Honour <span class="green">Retry-After</span> verbatim; back off on 429.</td>
+        <td>~<strong>3.5s</strong> min interval (~17/min, a margin under 20). Backoff with full jitter (base 500ms, cap 30s), but the floor always wins: resume at <strong>max(Retry-After, min-interval)</strong>. In-process coalescing dedupes same-key fetches within a run.</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="block">
+    <div class="label">What we deliberately do not build — seams only</div>
+    <ul>
+      <li>Distributed circuit breakers, multi-tenant quota fairness, durable job queues, horizontal workers, cross-instance token buckets, thundering-herd jitter. Each solves a many-users / many-nodes problem that <strong>cannot occur at one user on one process</strong>.</li>
+      <li>The seam we <span class="green">do</span> keep: the cache is keyed <strong>by entity</strong> (app / competitor / asset), never by user, and the governor is a pluggable interface — so "share by entity, shard by credential" and per-tenant budgets drop in the day a second user appears, with no rewrite.</li>
+    </ul>
+  </div>
+
+  <div class="hard">
+    <div class="label">The hard part</div>
+    <p><strong>Cache freshness vs. staleness</strong> — a correctness and honesty problem, not a concurrency one. A stale read mislabelled "observed" is the same sin as fabricating a number. Two traps: the <strong>review feed</strong> is the most time-sensitive dimension and the post-release re-audit is its whole point (hence the 1–3h TTL plus <span class="green">--fresh</span>); and the <strong>vision cache</strong> must key on the screenshot-list fingerprint <strong>and</strong> a per-asset hash, because hashing one image can't detect a reordered or added slot. The resolution is discipline, not cleverness: TTLs set to each source's real change cadence, every cached field stamped with its fetch time and surfaced in the footer, and an explicit bypass.</p>
+  </div>
+
+  <div class="ship">
+    <div class="label">What we show</div>
+    <p>One screen, one operator, no servers. Run an audit, then re-run it — the second completes in seconds at ~$0 with every field's provenance flipped to <span class="green">observed-from-cache</span>; <span class="green">--fresh</span> re-pulls the reviews. Then simulate a re-entrant loop and watch the run-entry backstop kill it within ~2s. Finally, brush the iTunes soft limit on a competitor sweep and watch the pacer space calls ~3.5s apart and honour an injected <span class="green">Retry-After</span> verbatim — three controls proven without a single piece of rate-limit machinery.</p>
+  </div>
+</section>
+
+<!-- Phase 6 -->
+<section id="multi-tenant-alpha">
+  <h2><span class="num">P6</span>Multi-Tenant Alpha <span class="faint" style="font-size:16px;font-weight:400">· → 1K users</span></h2>
+  <p class="goal">The first scale wall, and the steepest. Going from one operator to a thousand crosses many "cannot happen at one user" boundaries — but <strong>not all at the same moment</strong>, so to honour "one wall at a time" P6 ships in two ordered stages: <strong>6a — correctness gates the <em>second</em> user forces</strong>, and <strong>6b — scale-out that only ~1K users justify.</strong> The beta was right to take in-process shortcuts; this is where we pay them back. Nothing new about ASO; everything about becoming a service.</p>
+
+  <div class="block">
+    <div class="label">6a · Correctness gates — triggered by user #2 (not by 1K)</div>
+    <p>These are not optional and not scale-driven: the instant a second tenant or a second instance exists, the beta's shortcuts become <em>bugs</em>. Build these before the second user.</p>
+    <ul>
+      <li><strong>Tenancy &amp; isolation.</strong> Auth, accounts, and strict <span class="accent">row-level isolation</span> so one user's apps, audits, and ledger are never visible to another. Net-new — the beta had exactly one tenant and never needed it.</li>
+      <li><strong>The in-process singletons go shared.</strong> The beta's pacer, spend tally, and coalescing map all live in one process. The moment we run a second instance, a per-process iTunes pacer means 2× the call rate — the exact <span class="bad">IP ban</span> it was built to prevent. They move behind a <strong>shared limiter</strong> (Redis or equivalent). A correctness gate, not polish.</li>
+      <li><strong>Postgres earns its place.</strong> Now there are concurrent workers and shared state, the storage client — a beta seam — swaps from LibSQL to <span class="green">Postgres</span>. A config change, not a migration, precisely because the seam was there from day one.</li>
+      <li><strong>Share by entity, shard by credential.</strong> Two tenants auditing the same competitor cause <strong>one</strong> fetch — the entity-keyed cache from the beta becomes the platform-level dedup layer that keeps the shared APIs (iTunes, crawler, vision) from melting.</li>
+    </ul>
+  </div>
+
+  <div class="block">
+    <div class="label">6b · Scale-out — triggered by approaching ~1K</div>
+    <p>This is genuine scale infrastructure; building it before 6a is the "build for a scale you haven't reached" mistake the plan warns against.</p>
+    <ul>
+      <li><strong>Durable queue + horizontal workers.</strong> Audits (and scheduled tracking) become idempotent, retryable jobs on a durable queue; stateless workers scale out.</li>
+      <li><strong>Observability baseline.</strong> Structured logs, tracing across the loop, and per-provider metrics (latency, error rate, quota use, cost) — so we can see the system before it has problems. <span class="faint">(Minimal request logging belongs in 6a; full tracing/metrics is here.)</span></li>
+      <li><strong>Recommendation-quality eval.</strong> Observability watches the system's <strong>outputs</strong>; this watches its <strong>judgement</strong> — a frozen golden set of audited apps with expected findings, run as a regression, so a prompt or model change can't silently degrade advice. <span class="faint">(Named honestly: the beta measures outcomes via the ledger, but not recommendation quality offline — this closes that gap before we let more users in.)</span></li>
+    </ul>
+  </div>
+
+  <div class="hard">
+    <div class="label">The hard part</div>
+    <p>The shared rate-limit budget. At one user a process-global pacer was enough; across N workers, <strong>iTunes' Apple-documented ~20/min ceiling becomes a shared resource</strong> contended by every worker and every tenant. Get the shared limiter wrong and you either trip the ban (too loose) or starve real audits (too tight). The beta's "good guest" courtesy throttle graduates into a genuine distributed budget — the one piece of production rate-limit machinery we honestly deferred, now built because real concurrency has finally arrived.</p>
+  </div>
+
+  <div class="ship">
+    <div class="label">What we show</div>
+    <p>A thousand accounts, each isolated; many workers behind a shared limiter that never trips Apple's ceiling; and a view showing two tenants who track the same competitor served from a single cached fetch.</p>
+  </div>
+</section>
+
+<!-- Phase 7 -->
+<section>
+  <h2><span class="num">P7</span>Connected &amp; Always-On <span class="faint" style="font-size:16px;font-weight:400">· → 5K users</span></h2>
+  <p class="goal">Until now the system has only ever <strong>observed the public listing</strong>. This phase connects the private data that turns "we think this helped" into "we measured it" — and turns the run-on-demand audit into a loop that runs on its own, every day. Connecting App Store Connect is itself phased: this is <strong>API integration v1 — read &amp; connect only</strong>; writing changes back to the store is a deliberate later step (Phase 8).</p>
+
+  <div class="block">
+    <div class="label">What we build</div>
+    <ul>
+      <li><strong>App Store Connect integration.</strong> Auth is a <strong>JWT signed with a private key (ES256, the .p8 key + issuer id + key id)</strong> — <em>not</em> OAuth (that's the Apple Search Ads API, at P3). The funnel comes from the <strong>Analytics Reports API</strong>, which is request-a-report-instance (ONE_TIME / ONGOING), not a live query — so we request the reports, then poll for the generated instance. <em>(Assumption to verify at P7 kickoff: the exact request→instance→poll lifecycle. Consistent with Apple's documented <span class="faint">ReportRequests → instances</span> model, but P7-gated — nothing before P7 depends on it, so confirm it then, not now.)</em> A connected user's real funnel — impressions, conversion, downloads, by source and territory — becomes the baseline we measure against. ASC creds are <span class="green">per-tenant</span>, so this load <strong>shards naturally</strong> — it is not a shared bottleneck.</li>
+      <li><strong>Continuous tracking.</strong> Scheduled daily snapshots of every tracked signal — your listing, creative (by asset hash), reviews, ranks, competitors — with change detection that diffs each snapshot and emits events. The audit stops being something you run and becomes something that watches. Once connected, <strong>go-live is read from App Store Connect's version status + scheduled release date</strong>, not inferred from a public re-scrape — scraping was the pre-account workaround, now kept only for competitor and public-listing verification. The emitted change-events have a defined consumer from day one: they <strong>append to the ledger and surface in the in-app activity view</strong> (the North-Star digest is just a later <em>delivery channel</em> over the same event log) — so P7's event stream is never built without a sink.</li>
+      <li><strong>The measurement loop, for real.</strong> A metadata change opens a lag-aware window (industry-estimated ~4-week reindex; Apple publishes no figure) before any verdict; the ledger records what was applied, when, and what moved — finally answering the north-star question with evidence rather than assertion.</li>
+      <li><strong>Cost economics as a first-class concern.</strong> The beta ran on paid Gemini — cheap at one-user volume; at 5K users the bill is real. Model-tiering (a cheap model for extraction/classification, the capable one for judgement), vision <span class="accent">gate-on-change</span>, cadence by tier, and per-task budgets with alerting. This is where the usage-counting we instrumented in the beta pays off as a true unit-economics model.</li>
+    </ul>
+  </div>
+
+  <div class="hard">
+    <div class="label">The hard part</div>
+    <p><strong>Honest measurement of metadata.</strong> Visual changes get a true A/B test (next phase); metadata never can — it reindexes globally per locale over ~4 weeks, confounded by silent algorithm shifts and competitor edits we cannot see. We measure it with synthetic-control / before-after baselines and label it permanently <span class="warn">correlational, never proven</span>. Saying that out loud — rather than dressing a correlation as a causal win — is the discipline the whole system rests on.</p>
+  </div>
+
+  <div class="ship">
+    <div class="label">What we show</div>
+    <p>A connected user's real funnel on screen; a listing change tracked from applied → settled → measured; and a per-audit cost that's predictable because the cheap work runs on the cheap model.</p>
+  </div>
+</section>
+
+<!-- Phase 8 -->
+<section>
+  <h2><span class="num">P8</span>Acting on the Listing <span class="faint" style="font-size:16px;font-weight:400">· API integration v2</span></h2>
+  <p class="goal">Phase 7 connected and read; this phase <strong>writes</strong> — it closes the loop's <strong>ACT</strong> step for real. The App Store Connect API can change the listing, but the search-relevant fields are gated by <strong>App Review</strong>, so "apply" is never one call — it's an asynchronous submit-and-wait with a rejection path. This phase handles that lifecycle honestly. It is gated by a <strong>proven track record</strong>, not a user count: we don't write to someone's store until the ledger has earned it.</p>
+
+  <div class="block">
+    <div class="label">What we build</div>
+    <ul>
+      <li><strong>Two write tiers, because Apple has two.</strong> The <span class="green">no-review surfaces</span> — launching a PPO experiment, promotional text, and review responses — can be applied immediately through the API. The <span class="warn">App-Review-gated fields</span> — title, subtitle, keyword field, description, screenshots, icon — require submitting a new version and waiting for review. The agent treats these as fundamentally different actions.</li>
+      <li><strong>Gated edits ship as one version, not N writes.</strong> App-Review-gated fields all attach to the next <strong>app version</strong>, so the agent's recommendations and the operator's own edits coalesce into a single <strong>pending-version</strong> object — one submission, one review, one go-live — carrying its release type and target release date. Each change keeps its own ledger entry, but they share that version and its go-live timestamp. The no-review surfaces (PPO, promo text, review responses) are tracked as their own independent objects, not part of the version bundle.</li>
+      <li><strong>The submit → review → rejection loop.</strong> Applying a gated change is a state machine, not a write: <span class="faint">proposed → human-approved → submitted → in review → live</span>, with <span class="bad">rejected → back to a human</span> as a first-class branch. On rejection we parse the Resolution Center feedback, surface it next to the original recommendation, and never silently retry. Submissions are <strong>idempotent</strong>, so a retry never double-files a version.</li>
+      <li><strong>Human approval stays mandatory for gated changes.</strong> The agent proposes and submits; it does not decide to ship a metadata change on its own. Autonomy is reserved for the no-review surfaces, and even there it is policy-gated and reversible.</li>
+      <li><strong>Apply opens the measurement window.</strong> Shipping is unconstrained — coordinated changes and full facelifts are fine; what's constrained is what we <strong>claim</strong>. Causal proof is visual-only: a PPO test measures a whole creative <strong>bundle</strong> against a live control, so a facelift is provable as a bundle, while metadata stays <strong>correlational however it's sequenced</strong> (industry-estimated ~4-week reindex; Apple publishes no duration). The baseline pins at <strong>go-live</strong>, not submit; when several changes share one version they share one window, so attribution is <strong>bundle-level and flagged mixed-authorship</strong>, never per-change causation. So we bundle by coherent theme, report directional attribution honestly, and never run a metadata change that pollutes a live PPO test. A rejected or rolled-back change reopens the ledger entry cleanly; it never corrupts the measurement thread.</li>
+      <li><strong>Rollback is a forward move, not an undo.</strong> There is no atomic revert: undoing a gated change (title/subtitle/keywords) is <strong>another version submission + review</strong>, which restarts the reindex window — recovery is slow even though the submit is fast. Promotional text is the exception (instant, no review, non-indexed). Harm can't be <em>proven</em> mid-window, so the stop-loss is an explicit <strong>risk-managed call on a correlational signal, not a proof</strong> — and it is defined, not vibes:
+        <ul style="margin-top:8px">
+          <li><strong>Metric:</strong> median organic rank of the <strong>defended set</strong> (the top terms the listing already ranked for pre-change), tracked daily.</li>
+          <li><strong>Noise band:</strong> reuse P3's documented rank noise band — day-to-day movement inside that band is ignored.</li>
+          <li><strong>Trigger:</strong> defended-set median falls <strong>&gt; N positions beyond the noise band</strong> <em>and</em> holds for <strong>≥ M consecutive days</strong> (default chosen N = 5, M = 5 — override before P8), read off the <strong>early reindex signal</strong> (~1–2 weeks) rather than the full window.</li>
+          <li><strong>Cost of acting:</strong> a revert restarts the reindex clock, so a false positive is expensive — which is <em>why</em> the dual threshold (magnitude <strong>and</strong> persistence) exists. The operator confirms the revert; the agent never auto-reverts a gated field. Revert composes the <strong>last good listing snapshot</strong>, not a hand-rebuild.</li>
+        </ul>
+      </li>
+    </ul>
+  </div>
+
+  <div class="hard">
+    <div class="label">The hard part</div>
+    <p><strong>App Review is asynchronous, slow, and opaque.</strong> You submit, you may wait a day, and you might get a terse rejection with no machine-readable cause. The hard part is a durable state machine that survives that latency without losing the thread — tracking every in-flight change through review, mapping a rejection back to the exact recommendation and ledger entry that motivated it, and keeping the measurement window honest when a change is rejected, amended, and resubmitted. Get this wrong and the system either spams App Review or loses track of what it actually changed.</p>
+  </div>
+
+  <div class="ship">
+    <div class="label">What we show</div>
+    <p>A recommendation proposed → approved by a human → submitted to App Store Connect via the API → tracked through review to <span class="green">live</span> (measurement window opens) <strong>or</strong> returned <span class="bad">rejected</span> with the reason surfaced and the ledger entry reopened — alongside a PPO experiment launched through the API with no review required at all.</p>
+  </div>
+</section>
+
+<!-- North Star -->
+<section id="north-star">
+  <h2><span class="num">★</span>The Always-On Advisor — the North Star <span class="faint" style="font-size:16px;font-weight:400">· → 10K+ users</span></h2>
+  <p class="goal">The destination, and the bar everything was built to clear: a system that doesn't just advise but can <strong>prove it helped</strong> — and that puts the decisions which need a human front and centre.</p>
+
+  <div class="block">
+    <div class="label">What it adds</div>
+    <ul>
+      <li><strong>The daily digest.</strong> In priority order: decisions that need a human first, then experiments that resolved, then market and anomaly alerts (rank drops, competitor moves, rating shifts), then the next recommended move. No item without its evidence and a link back to the ledger.</li>
+      <li><strong>Provable visual wins.</strong> Image analysis generates variant hypotheses; the <span class="green">Apple Product Page Optimization</span> experiments launched in Phase 8 — real, concurrent A/B tests — supply the proof. This is the one place the system can say "we changed X and it <strong>caused</strong> +Y% conversion" and mean it.</li>
+      <li><strong>Honest about underpowered apps.</strong> A true A/B test needs traffic — Apple declares a treatment "performing better/worse" only at <strong>≥ 90% confidence</strong>, and recommends waiting for that before applying; a test can run up to <strong>90 days</strong> (<a href="https://developer.apple.com/help/app-store-connect/view-app-analytics/view-product-page-optimization-results/">Apple — View PPO results</a>, <a href="https://developer.apple.com/help/app-store-connect/create-product-page-optimization-tests/overview-of-product-page-optimization/">Overview of PPO</a>). A low-traffic app's experiment may never reach that bar, so we <strong>detect an underpowered test and report <span class="warn">"inconclusive,"</span></strong> never fake significance. The promise scales with the app, and we say so.</li>
+      <li><strong>Agency portfolio.</strong> Every app's ASO health, in-flight experiments, and pending human decisions in one view, sortable by what needs attention.</li>
+      <li><strong>The system measures itself.</strong> Of the recommendations applied, what fraction were measured — and of those, what fraction improved the target metric — reported as two honest numbers: a <span class="green">proven-win rate</span> on visual experiments (A/B-backed) and a <span class="warn">directional-improvement rate</span> on metadata (correlational). A system that can't report this is opining, not optimising.</li>
+      <li><strong>Run on rails.</strong> SLOs — the digest delivered by a target time each day, freshness within ASC's ~2-day bound — tracked and alerted.</li>
+    </ul>
+  </div>
+  <p>This is the line the whole plan was drawn toward: <strong>"we recommended X, and it measurably worked."</strong> Every earlier phase exists to make that sentence honest — the ledger to remember it, the connection to measure it, the scale to deliver it to everyone.</p>
+</section>
+
+<!-- The bet / ask -->
+<section id="external-services" style="border-bottom:none">
+  <h2>The principle, and what we'll need</h2>
+  <p>One line runs through every phase: <strong>a plain recommendation we can prove beats a beautiful one we can't.</strong> We lead with what's measurable, label what's only correlational, and prefer "we couldn't observe this" over a confident guess. The same rule covers the empty cases — <strong>no reviews, no real competitors, an app pulled or unavailable in a storefront</strong>: we report <span class="warn">insufficient data</span> and degrade the audit honestly, never fabricate output to fill the gap.</p>
+  <p><strong>Scope is iOS / App Store, end to end.</strong> Android / Google Play is a <strong>deliberate deferral</strong>, not an oversight — every load-bearing surface here is Apple-specific (iTunes, review RSS, Search Ads popularity, App Store Connect, PPO), and Play needs its own data and proof stack (different metadata model, separate Play Console APIs, no PPO equivalent). It slots in later behind the same per-source seam, demand-gated — a future <em>source</em>, not a re-platform.</p>
+  <div class="block">
+    <div class="label">External services &amp; tooling — what we need, and when</div>
+    <p>Naming the dependencies up front, by phase. Most of the beta runs on free Apple endpoints; paid data and scale infrastructure arrive only when a phase needs them.</p>
+    <table>
+      <tr><th>Data &amp; API access</th><th>For</th><th>When</th></tr>
+      <tr><td>iTunes Lookup / Search / Review RSS <span class="green">(free)</span></td><td>core metadata, competitors, reviews</td><td>Beta</td></tr>
+      <tr><td>Crawler w/ quota (Firecrawl)</td><td>landing-page fetch, subtitle/promo, footprint pages</td><td>Beta</td></tr>
+      <tr><td>Web search / research (Exa or Tavily)</td><td>identity external-corroboration + footprint</td><td>Beta</td></tr>
+      <tr><td>Vision-capable LLM (Gemini or Claude)</td><td>icon / screenshot analysis</td><td>P2</td></tr>
+      <tr><td>Base text LLM (<span class="green">paid Gemini</span> — cheap Flash → capable tier at scale)</td><td>scoring / judgement (same Gemini can serve vision)</td><td>Beta → P7</td></tr>
+      <tr><td>Apple Search Ads account + API <span class="green">(OAuth2 client-credentials)</span></td><td>keyword popularity (5–100 score)</td><td>P3</td></tr>
+      <tr><td>Paid ASO data — a bake-off (AppTweak / AppFigures / AppKittie; most ship MCPs)</td><td>volume, rank, competitor keywords, reviews, revenue</td><td>P3 — <strong>optional, behind the seam</strong></td></tr>
+      <tr><td>App Store Connect API — read (JWT/ES256 .p8 key + Analytics Reports API)</td><td>the real funnel / measurement</td><td>P7</td></tr>
+      <tr><td>App Store Connect API — write scopes</td><td>applying changes (own the client for production)</td><td>P8</td></tr>
+    </table>
+    <table>
+      <tr><th>Infrastructure (provision at scale)</th><th>For</th><th>When</th></tr>
+      <tr><td>LibSQL → Postgres</td><td>persistent store (beta → shared)</td><td>Beta → P6</td></tr>
+      <tr><td>Redis / shared limiter</td><td>cross-instance rate limit + tally</td><td>P6</td></tr>
+      <tr><td>Durable job queue</td><td>scheduled + horizontal jobs</td><td>P6</td></tr>
+      <tr><td>Observability (logs / traces / metrics)</td><td>production monitoring</td><td>P6</td></tr>
+      <tr><td>Secret store / vault (encrypted-at-rest)</td><td>ASC / Apple-Ads credentials</td><td>P6 / P7</td></tr>
+      <tr><td>Digest delivery (email / Slack / push)</td><td>the daily digest</td><td>North Star</td></tr>
+    </table>
+    <p class="faint"><strong style="color:var(--dim)">On MCPs:</strong> every service above can be a plain API client; an MCP is just an optional accelerator that plugs into Mastra natively. <strong>AppKittie's MCP is one option among several, never a requirement</strong> — any paid provider sits behind the one-swappable-client-per-source seam (its schema never touches the domain model), and we run as few as possible (the crawler is already in the stack; one web-search MCP; one P3 data provider; optionally an App Store Connect MCP to prototype P7).</p>
+  </div>
+</section>
+
+<!-- Build Appendix -->
+<section id="build-appendix">
+  <h2>Build Appendix — the artifacts an engineer builds against</h2>
+  <p class="goal">The body above is the <em>plan</em>; this appendix is the <em>contract</em>. It pins the data model, the seam interfaces, the two algorithms the body calls "the hard part," the evidence type, the identity thresholds, per-phase acceptance criteria, and the spec→code map. Beta-critical items are concrete; later-phase items define the seam and defer the fill-in.</p>
+
+  <div class="block">
+    <div class="label">A · Data model (beta — LibSQL/SQLite flavour, portable to Postgres)</div>
+    <p>Keys are <span class="faint">(app_id, country)</span> throughout — <span class="faint">app_id</span> is the iTunes track id, <span class="faint">country</span> the storefront. Timestamps UTC ISO-8601. <span class="faint">provenance</span> ∈ <span class="green">observed | observed_from_cache | inferred | unavailable</span>. <strong>All our tables are namespaced <span class="faint">aso_</span></strong> — they share the LibSQL/Postgres database with Mastra's own storage tables (workflow state, agent memory), so the prefix prevents collisions and marks ownership.</p>
+    <pre style="background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:14px;overflow-x:auto;font-family:var(--mono);font-size:12.5px;color:var(--dim);line-height:1.5;white-space:pre">aso_listing_snapshots
+  id TEXT PK (ulid) · app_id · country · fetched_at
+  listing_json   -- normalised AppListing (domain/listing.ts)
+  signals_json   -- deterministic signals (scoring/signals.ts)
+  report_json    -- assembled AuditReport (domain/audit.ts)
+  rubric_version · prompt_hash · model_id
+  INDEX (app_id, country, fetched_at DESC)
+
+aso_recommendations  -- the suggestion ledger
+  id PK · app_id · country
+  rec_key        -- hash(dimension,intent,target_field,value_key); see C
+  value_key      -- normalized candidate (keyword/theme/review id); '' for single-instance intents
+  taxonomy_version -- hand-bumped semver e.g. 'theme-taxonomy@1' (fix_complaint_theme only); traceability, NOT in rec_key
+  dimension      -- DimensionId · intent (IntentTag, see C) · target_field
+  title · body · before_text · after_text
+  evidence_json  -- EvidenceRef[] (see D)
+  status         -- proposed | applied | dismissed | superseded
+  superseded_by  -- nullable self-FK aso_recommendations.id; set on taxonomy-bump remap (§C); deferred-use
+  first_seen_at · last_seen_at · applied_at
+  proof_regime   -- ppo_causal | funnel_asc | correlational | observable_now
+  UNIQUE (app_id, country, rec_key)
+
+aso_identity_versions  -- append-only; ID-lite writes first, ID-full augments
+  id PK · app_id · country · version (monotonic) · stage ('lite'|'full')
+  category · category_band · niche · niche_band · audience_json
+  tally_json     -- per-family: value, source_tier, fetched_at
+  source         -- resolved | human_confirmed
+  INDEX (app_id, country, version DESC)
+
+aso_competitors
+  id PK · identity_id FK · competitor_app_id
+  basis ('function'|'category'|'human')
+  -- 'rejected' is NOT stored here; resolved against the app-scoped tombstones below
+
+aso_competitor_tombstones   -- app-scoped, version-independent
+  PK (app_id, country, competitor_app_id) · rejected_at
+  -- a human-rejected peer, never re-surfaced across identity versions
+
+aso_rec_occurrences         -- per-audit presence, for belief accumulation
+  PK (rec_id, snapshot_id) · was_dismissed
+  -- "raised in 3 of last 4" needs per-audit rows, not two timestamps</pre>
+    <p class="faint">A new identity version's competitor set is filtered through <span class="faint">aso_competitor_tombstones</span> at read time, so a rebrand inherits prior rejections by construction — no carry-forward step to forget.</p>
+    <p class="faint"><span class="green">aso_measurement_windows</span> and <span class="green">aso_submissions</span> (P7/P8) are deferred but <strong>seam-reserved</strong>: a window has <span class="faint">(rec_key, opened_at_golive, baseline_json, regime, verdict)</span>; a submission has <span class="faint">(version_id, idempotency_key, state, rec_keys[], resolution_text)</span>. Defined when those phases land, not before.</p>
+  </div>
+
+  <div class="block">
+    <div class="label">B · Seam interface contracts (some already exist in code — reference, don't rebuild)</div>
+    <pre style="background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:14px;overflow-x:auto;font-family:var(--mono);font-size:12.5px;color:var(--dim);line-height:1.5;white-space:pre">// EXISTS: domain/result.ts — the error contract for everything below
+type Result&lt;T,E=string&gt; = {ok:true; value:T} | {ok:false; error:E};
+
+// EXISTS: sources/index.ts — one provider per source already follows this
+interface SourceProvider&lt;TQuery,TData&gt; {
+  id: string;                       // 'itunes' | 'firecrawl' | ...
+  fetch(q: TQuery): Promise&lt;Result&lt;TData, SourceError&gt;&gt;;
+}
+
+// EXISTS: llm/provider.ts — keep; resolve Ollama-vs-Gemini default (see G)
+interface LlmProvider { /* generate, reachable, endpoint, modelId */ }
+
+// NEW (P1): the storage seam the "config change, not migration" rests on
+interface StorageClient {
+  putSnapshot(s): Promise&lt;Result&lt;void&gt;&gt;;
+  latestSnapshot(appId,country): Promise&lt;Result&lt;Snapshot|null&gt;&gt;;
+  upsertRecommendation(r): Promise&lt;Result&lt;void&gt;&gt;;  // dedup on rec_key
+  recordOccurrence(recId, snapshotId, wasDismissed): Promise&lt;Result&lt;void&gt;&gt;;  // writes aso_rec_occurrences (belief-accumulation write path)
+  ledger(appId,country): Promise&lt;Result&lt;Recommendation[]&gt;&gt;;
+  appendIdentity(v): Promise&lt;Result&lt;void&gt;&gt;;
+  latestIdentity(appId,country): Promise&lt;Result&lt;IdentityVersion|null&gt;&gt;;
+  tombstoneCompetitor(appId,country,competitorAppId): Promise&lt;Result&lt;void&gt;&gt;;
+  tombstones(appId,country): Promise&lt;Result&lt;Set&lt;string&gt;&gt;&gt;;  // app-scoped, version-independent
+}
+// Forbidden to leak through: no vendor schema, no SQL dialect in the
+// return types — only domain types. That is what makes LibSQL↔Postgres
+// a config swap, not a migration.
+
+// NEW (P5): cache + governor, keyed by ENTITY not user (multi-tenant seam)
+interface Cache {
+  get&lt;T&gt;(key): Promise&lt;{value:T; fetchedAt:string}|null&gt;; // key=`${kind}:${id}`
+  set&lt;T&gt;(key, value:T, ttlSeconds): Promise&lt;void&gt;;
+}
+interface Governor {               // in-process singleton in beta
+  preflight(call): Result&lt;void,'count_cap'|'wallclock_cap'&gt;;
+  recordEstimate(tokens, dollars): void;   // post-hoc in beta
+}</pre>
+  </div>
+
+  <div class="block">
+    <div class="label">C · Recommendation identity + dedup (P1's "hard part"), and the intent taxonomy</div>
+    <p><strong>rec_key = stable hash of (dimension, intent, target_field, value_key)</strong> — <em>not</em> the wording. value_key is the <strong>normalized candidate value</strong> distinguishing instances of a multi-instance intent — the keyword string for add_keyword/remove_wasted_term, a <strong>canonical complaint-theme id</strong> for fix_complaint_theme (see below), the <strong>review id</strong> for respond_to_reviews (Apple's stable RSS review id) — and is <strong>empty for single-instance intents</strong> (add_preview_video, enable_promo_text, rebalance_title_subtitle, reposition_identity, improve_icon_legibility). Without value_key, two <em>different</em> keyword suggestions for the subtitle would hash identically and the second would silently upsert over the first — the exact collision P1 exists to prevent. Two runs that produce the <strong>same</strong> suggestion (same value_key) phrased differently still map to one rec_key, so re-suggestion is an <span class="green">upsert</span> (bump last_seen_at), not a duplicate row. The <strong>contradiction guard</strong> is then a pure lookup: a new rec whose rec_key matches a dismissed/opposite row is flagged before emit. <strong>Applied-detection</strong> sets status=applied when the new snapshot satisfies the rec's after_text/target change — a <strong>match, not a causal claim</strong> (we don't assert we caused the edit; causation is the P7 window's job); a rec the listing has moved past becomes <span class="faint">superseded</span>, never silently dropped.</p>
+    <p><strong>value_key normalization is pinned:</strong> casefold + Unicode NFC + trim, <strong>plus the linter's own plural rule (s/es)</strong> — so <strong>plural variants collapse to one value_key</strong>. Apple indexes singular and plural together, so "add <em>tracker</em>" and "add <em>trackers</em>" are the <em>same</em> opportunity and must not re-litigate as two recs; using the <strong>same plural rule the P3 linter uses</strong> means dedup and the linter's plural-redundant flag never disagree. <strong>No full stemming</strong> (it would over-collapse e.g. "analytic"/"analytics").</p>
+    <p><strong>The one intent without a free stable id is fix_complaint_theme.</strong> A keyword string and a review id are stable across audits; a <em>theme</em> is not — P4 re-clusters a <strong>different review sample each run</strong>, so a naive "theme id" would drift and a dismissed complaint could resurface under a new key (the exact P1 collision, reopened). So fix_complaint_theme's value_key hashes a <strong>canonical complaint-theme id from a fixed v1 taxonomy</strong> — <strong>enumerated, not just named</strong>, the same way IntentTag is:</p>
+    <p class="faint" style="font-family:var(--mono);font-size:12.5px">crash_stability · login_auth · pricing_subscription · ads_intrusive · performance_speed · battery_resource · data_loss_sync · ui_ux_confusion · onboarding · notifications · privacy_permissions · customer_support · device_compat · content_quality · other</p>
+    <p>The classifier maps each extracted theme to one of these, <strong>riding the existing P4 theme-extraction LLM pass</strong> (no extra call). The <strong>canonical path is the normal case</strong>; only a theme that lands in <span class="faint">other</span> falls back to an <strong>embedding-similarity match against prior audits' other-bucket theme texts</strong> (Gemini embedding model, <strong>cosine ≥ 0.85</strong>, tuned on the golden set), and that match is <strong>labelled approximate</strong> — never presented as as-solid-as a canonical id. This <strong>promotes P4's "shared theme taxonomy" from a secondary uplift to a beta-critical dependency</strong> for this one intent. Growing the taxonomy is a <strong>versioned change</strong> — <span class="faint">taxonomy_version</span> is a <strong>hand-bumped semver string</strong> (<span class="faint">theme-taxonomy@1</span> → <span class="faint">@2</span>), <em>not</em> a hash like <span class="faint">rubric_version</span> (the taxonomy is a rare, human-curated list, so a readable bump fits how it actually changes) — so <span class="faint">other</span> stays small over time rather than becoming the default path. <strong>A bump that <em>remaps</em> a theme</strong> (e.g. splitting <span class="faint">crash_stability</span> into <span class="faint">crash_on_launch</span> + <span class="faint">crash_on_action</span>) marks the old rec <strong>superseded</strong> and sets its <strong>superseded_by</strong> (§A) to the new rec's id — extending that status's trigger from listing-change to taxonomy-change — so an ongoing complaint migrates rather than stranding silently. <em>(Deferred by design: no bump occurs before ~6b; the rule is decided now, implemented at the first bump.)</em></p>
+    <p><strong>Feature requests are disjoint</strong> — a "users keep asking for X" review routes to P4's <strong>human hand-off</strong>, <em>not</em> to a fix_complaint_theme recommendation (you can't fix a missing feature with metadata). It carries no value_key, never enters the ledger, and is therefore deliberately <strong>not</strong> a complaint-theme bucket — keeping P4's two routing paths (actionable complaint → ledgered rec; feature request → human queue) from ever claiming the same review.</p>
+    <p><strong>Beta calibration:</strong> the <strong>cosine ≥ 0.85</strong> threshold here (and §E's confidence bands) ship as <strong>fixed engineering defaults</strong>, sanity-checked against the §F fixtures (which exist at beta). The <strong>6b golden set</strong> is the formal validation step and may <strong>retune</strong> them — but a retune is a <strong>versioned change</strong> (hence taxonomy_version), never silent drift, and it does <strong>not</strong> reclassify historical rows: existing recs keep the threshold/taxonomy version they were computed under.</p>
+    <p><strong>IntentTag — the fixed taxonomy</strong> (closed enum; belief-accumulation counts against it): <span class="faint">add_keyword · remove_wasted_term · rebalance_title_subtitle · reposition_identity · improve_icon_legibility · reorder_screenshots · add_preview_video · localise_storefront · respond_to_reviews · fix_complaint_theme · improve_description_hook · enable_promo_text</span>.</p>
+  </div>
+
+  <div class="block">
+    <div class="label">D · Evidence-trail type (the clickable chip)</div>
+    <pre style="background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:14px;overflow-x:auto;font-family:var(--mono);font-size:12.5px;color:var(--dim);line-height:1.5;white-space:pre">type EvidenceRef =
+  | {kind:'signal';        signalId; snapshotId}        // a deterministic signal
+  | {kind:'listing_field'; field; snapshotId}           // e.g. 'subtitle'
+  | {kind:'review';        reviewId; snapshotId}         // a specific review
+  | {kind:'competitor';    competitorAppId; field}
+  | {kind:'unavailable';   reason:'not_observed'|'capped'|'script_unsupported'};</pre>
+    <p>Every claim carries ≥1 EvidenceRef, frozen into the snapshot — so a chip resolves deterministically into <em>that date's</em> source data and can never be back-dated or mis-pointed. <span class="warn">unavailable</span> is a first-class value, never an empty string.</p>
+    <p><strong>On upsert (a rec re-raised in a later audit):</strong> <span class="faint">evidence_json</span> updates to the <strong>most recent snapshot that still supports the rec</strong>, so the chip a user clicks always resolves to currently-true evidence. The full per-audit history is <strong>reconstructable</strong> from <span class="faint">aso_rec_occurrences</span>: it stores the <span class="faint">snapshot_id</span> the rec appeared in, and that date's source data lives immutably in <span class="faint">aso_listing_snapshots</span>, so the chip's <em>then</em>-target is re-derivable from the snapshot (not stored verbatim per occurrence). The audit trail stays immutable even as the live chip moves forward.</p>
+  </div>
+
+  <div class="block">
+    <div class="label">E · ID confidence — weighted tally → band (resolves "counted vs weighted")</div>
+    <p>Signal families score by tier: <strong>observed-on-store = 2, fetched-and-cited = 2, cross-store = 1, review-inferred = 1, world-knowledge = 0</strong> (prior only; never counts alone). Let <span class="faint">S</span> = summed weight of <em>agreeing</em> families.</p>
+    <table>
+      <tr><th>Band</th><th>Rule (illustrative defaults — tune on the golden set)</th></tr>
+      <tr><td><span class="green">high</span></td><td>S ≥ 4 from ≥2 distinct families, <strong>and</strong> no cross-domain divergence, <strong>and</strong> ≥1 tier-2 family. The <strong>cap is applied after the tally</strong>: if every agreeing family is <strong>on-store only</strong> (developer, bundle-id, permissions, IAPs), the result is <strong>capped at medium</strong> regardless of S — so two on-store tier-2 families (S = 4) resolve to medium, not high, because an app's own first-party signals aren't independent corroboration.</td></tr>
+      <tr><td><span class="warn">medium</span></td><td>S = 2–3, or high-evidence but with a within-domain divergence flag.</td></tr>
+      <tr><td><span class="bad">low / escalate</span></td><td>S ≤ 1, <strong>or</strong> two tier-2 families in <strong>cross-domain</strong> conflict (conflict→low, never averaged), <strong>or</strong> a high observed function over an inferred-only niche.</td></tr>
+    </table>
+    <p class="faint">Escalation is asymmetric: a low <em>niche</em> under a high <em>category</em> adds a flag, never blocks. <span class="green">human_confirmed</span> is its own categorical tier, above all of these, never a percentage.</p>
+    <p><strong>Beta calibration (same rule as §C):</strong> these bands ship as <strong>fixed engineering defaults</strong> validated against the §F fixtures (Rivian / TikTok / Spotify), not against a golden set that doesn't exist yet. The <strong>6b golden set</strong> is the formal retuning step — a <strong>versioned change</strong>, no silent drift, and it never reclassifies historical identity rows (each keeps the band logic it was computed under).</p>
+  </div>
+
+  <div class="block">
+    <div class="label">F · Per-phase acceptance criteria (Definition of Done — testable)</div>
+    <ul>
+      <li><strong>ID-lite:</strong> resolver returns category + band + a tally citing each family; Rivian fixture → cross-domain → <strong>escalate</strong>; TikTok/Spotify → <strong>zero asks</strong>; on-store-only → band <strong>≤ medium</strong>; identity row written to aso_identity_versions (stage=lite).</li>
+      <li><strong>P1:</strong> audit twice → a re-raised suggestion yields <strong>no duplicate ledger row</strong>, <strong>yet two distinct add_keyword recs for the same field survive as two rows</strong> (the value_key discriminator works — the test asserts <em>both</em> directions, so a key-collision bug can't pass); contradiction guard fires on a reversed rec; rubric-weight replay recomputes a stored draft <strong>with zero LLM calls</strong> (assert call count = 0).</li>
+      <li><strong>P2 / ID-full:</strong> each image gets a confidence-labelled critique; ID-full augments the identity row (stage=full) <strong>without changing</strong> ID-lite's deterministic fields; pHash <span class="green">observed</span>, confusability <span class="warn">inferred</span>.</li>
+      <li><strong>P3:</strong> linter deterministic (same input → byte-identical output, no model call); competitor keyword findings labelled inferred; non-Latin storefront → mechanics suppressed + labelled.</li>
+      <li><strong>P4:</strong> review fetch paginates to the cap; per-version delta only when both versions clear the min-sample threshold, else "insufficient sample." A <strong>dismissed complaint theme does not resurface</strong> across two audits on different review samples — for a <strong>canonical-taxonomy</strong> theme the id keeps value_key stable; for an <strong>other-bucket</strong> theme, two differently-worded-but-equivalent complaints <strong>collapse to one value_key via the embedding fallback</strong> (cosine ≥ threshold) while two genuinely distinct complaints stay separate. The test re-runs with a perturbed sample and asserts both paths.</li>
+      <li><strong>P5:</strong> re-audit hits cache (0 upstream calls, provenance observed-from-cache); re-entrant loop killed ~2s; pacer ≥3.5s and honours injected Retry-After; one deep audit stays under the 5-min cap.</li>
+      <li><strong>6a:</strong> two tenants fully isolated; two instances share one limiter (aggregate iTunes rate ≤ ceiling); LibSQL→Postgres passes the <strong>same</strong> StorageClient suite.</li>
+      <li><strong>6b:</strong> audit survives a worker kill (idempotent retry, no double-file); golden-set regression catches a deliberately-degraded prompt.</li>
+      <li><strong>P7:</strong> funnel baseline pinned at go-live from ASC version status; metadata verdicts labelled correlational.</li>
+      <li><strong>P8:</strong> gated bundle = one version, one idempotency key; rejection maps back to the exact rec_key; stop-loss fires only on (magnitude <strong>and</strong> persistence) past the noise band.</li>
+      <li><strong>North Star:</strong> self-measurement reports two separate numbers (A/B-proven vs. correlational); underpowered PPO reported inconclusive.</li>
+    </ul>
+  </div>
+
+  <div class="block">
+    <div class="label">G · Spec → code map, and the reconciliations the build must make</div>
+    <table>
+      <tr><th>Phase</th><th>Adds</th><th>Modifies (existing)</th></tr>
+      <tr><td>ID-lite</td><td>mastra/tools/resolve-identity.ts, domain/identity.ts</td><td>tools/identify-app.ts, workflows/audit-workflow.ts</td></tr>
+      <tr><td>P1</td><td>memory/ (StorageClient + schema), memory/dedup.ts</td><td>audit-workflow.ts (read history pre-score), scoring/score.ts</td></tr>
+      <tr><td>P2</td><td>vision/ pass</td><td>scoring/signals.ts, rubric.ts</td></tr>
+      <tr><td>P3</td><td>keywords/ (linter + ASA client)</td><td>rubric.ts (keyword checks)</td></tr>
+      <tr><td>P4</td><td>reviews/themes.ts</td><td>sources/itunes.ts (RSS pagination 25→~500)</td></tr>
+      <tr><td>P5</td><td>cost/{cache,governor,pacer}.ts</td><td>sources/http.ts (wrap), llm/* (wrap)</td></tr>
+    </table>
+    <p><strong>Required reconciliations</strong> (do these in the relevant phase — they are live spec↔code contradictions today):</p>
+    <ul>
+      <li><strong>scoring/rubric.ts:83</strong> asserts <em>"Readable on-image text (Apple OCR-indexes it)"</em> — change to match v1.1.1: OCR is <strong>contested</strong>; on-image text is a conversion lever, keyword value a hypothesis. <span class="faint">(Do at P2.)</span></li>
+      <li><strong>Ollama vs Gemini:</strong> audit-workflow.ts error text and llm/ollama.ts make Ollama the implied default; the spec says <strong>paid Gemini</strong>. Decide (see H) and update the error message. <span class="faint">(Do at build start.)</span></li>
+    </ul>
+  </div>
+
+  <div class="block">
+    <div class="label">H · Open decisions — defaults chosen, override any before the relevant phase</div>
+    <table>
+      <tr><th>#</th><th>Decision</th><th>Default chosen</th></tr>
+      <tr><td>1</td><td>ID one phase or two?</td><td><strong>Two — ID-lite (beta) + ID-full (P2).</strong></td></tr>
+      <tr><td>2</td><td>Loop-kill ceiling / dollar-cap default</td><td><strong>~2,000 metered calls/hr (above the ~600–800 busy-hour legit peak); $5/day estimate.</strong></td></tr>
+      <tr><td>3</td><td>Beta dollar cap enforced or advisory?</td><td><strong>Advisory/post-hoc;</strong> count-kill enforced; tokens wired at P7.</td></tr>
+      <tr><td>4</td><td>P6 one phase or split?</td><td><strong>Split 6a / 6b.</strong></td></tr>
+      <tr><td>5</td><td>P8 stop-loss threshold</td><td><strong>Defended-set median &gt; 5 positions beyond noise, held ≥5 days.</strong></td></tr>
+      <tr><td>6</td><td>AppKittie competitor egress</td><td><strong>Public app id only, never customer-identifying batches; prefer non-competitor for load-bearing queries.</strong></td></tr>
+      <tr><td>7</td><td>Keep Ollama as LLM fallback?</td><td><strong>Keep as labelled dev fallback</strong> (avoids single-provider SPOF); Gemini is default.</td></tr>
+    </table>
+  </div>
+</section>
+
+<footer>ASO Agent · phased build plan v1.3.1 · specification.html (human) + specification.md (LLM/agent)</footer>
+
+</div>
+</body>
+</html>

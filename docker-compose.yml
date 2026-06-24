@@ -20,9 +20,7 @@ services:
     image: aso-audit-agent:local
     # Loads LLM_* and FIRECRAWL_API_KEY when a .env is present.
     # `required: false` keeps `docker compose up` working without one.
-    env_file:
-      - path: .env
-        required: false
+    env_file: .env
     extra_hosts:
       # Lets LLM_BASE_URL=http://host.docker.internal:... reach a host-local
       # Ollama (automatic on Docker Desktop; explicit here for Linux too).
