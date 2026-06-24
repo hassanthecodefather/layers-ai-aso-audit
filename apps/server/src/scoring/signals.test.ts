@@ -10,6 +10,8 @@ function makeListing(overrides: Partial<AppListing> = {}): AppListing {
     url: 'https://apps.apple.com/us/app/id1',
     name: 'Test App',
     developer: 'Test Dev',
+    bundleId: null,
+    sellerUrl: null,
     iconUrl: 'https://example.com/icon.png',
     primaryGenre: 'Productivity',
     genres: ['Productivity'],

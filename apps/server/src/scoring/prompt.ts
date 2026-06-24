@@ -119,11 +119,17 @@ export const AUDIT_JSON_SHAPE = `{
 export function buildAuditPrompt(
   listing: AppListing,
   signals: ListingSignals,
+  priorContext?: string,
 ): string {
   return [
     `Audit this App Store listing: "${listing.name}" by ${listing.developer}.`,
     `Store: ${listing.country.toUpperCase()} · ${listing.url}`,
     '',
+    // The resolved identity fact sheet + prior-audit history (P1 memory),
+    // injected the same way the deterministic signals are, so the model
+    // interprets a grounded identity and its own past advice rather than
+    // re-deriving either from the (possibly misleading) listing.
+    ...(priorContext ? ['## Identity & prior-audit memory — AUTHORITATIVE', priorContext, ''] : []),
     '## Text fields',
     textFields(listing),
     '',

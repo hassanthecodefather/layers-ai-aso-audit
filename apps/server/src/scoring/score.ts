@@ -9,7 +9,7 @@ import { extractJsonObject } from './extract';
  * The structured-output strategy: generate → validate → repair.
  *
  * Rather than trust a provider's `response_format` to enforce the schema
- * (Ollama, for one, does not), we own it: ask for the JSON, extract and
+ * (not every model honours it), we own it: ask for the JSON, extract and
  * validate it, and on a schema miss make exactly one repair call with the
  * validation errors fed back. Provider-agnostic and robust — and the LLM
  * still only supplies judgement; weighting stays in `aggregate.ts`.
@@ -60,8 +60,9 @@ async function generate(agent: Agent, prompt: string): Promise<string> {
 export async function produceAuditDraft(
   agent: Agent,
   listing: AppListing,
+  priorContext?: string,
 ): Promise<AuditDraft> {
-  const prompt = buildAuditPrompt(listing, computeSignals(listing));
+  const prompt = buildAuditPrompt(listing, computeSignals(listing), priorContext);
 
   let attempt = parseDraft(await generate(agent, prompt));
   if (attempt.draft) return attempt.draft;

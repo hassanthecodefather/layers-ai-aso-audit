@@ -23,6 +23,8 @@ export interface ITunesCore {
   url: string;
   name: string;
   developer: string;
+  bundleId: string | null;
+  sellerUrl: string | null;
   iconUrl: string | null;
   primaryGenre: string | null;
   genres: string[];
@@ -48,6 +50,8 @@ interface RawLookupApp {
   trackId?: number;
   trackName?: string;
   artistName?: string;
+  bundleId?: string;
+  sellerUrl?: string;
   artworkUrl512?: string;
   artworkUrl100?: string;
   primaryGenreName?: string;
@@ -83,6 +87,8 @@ function toCore(app: RawLookupApp, ref: AppRef): ITunesCore {
     url: appStoreUrl(ref),
     name: app.trackName?.trim() ?? 'Unknown app',
     developer: app.artistName?.trim() ?? 'Unknown developer',
+    bundleId: app.bundleId?.trim() ?? null,
+    sellerUrl: app.sellerUrl?.trim() ?? null,
     iconUrl: app.artworkUrl512 ?? app.artworkUrl100 ?? null,
     primaryGenre: app.primaryGenreName ?? null,
     genres: app.genres ?? [],
