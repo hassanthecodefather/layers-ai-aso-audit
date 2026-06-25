@@ -7,7 +7,7 @@ Companion to `specification.md` / `specification.html` **v1.3.1**. This is the *
 - **TDD against §F.** Every phase starts by writing its Build-Appendix §F acceptance test (red), then implements to green. `vitest` + `*.test.ts` already exist in `apps/server`.
 - **Gemini-only.** Ollama is removed (spec §H #7 overridden). Gemini serves text scoring, vision (P2), and embeddings (P4 fallback).
 - **Keys live now:** paid **Gemini**, **Firecrawl**. **Not yet keyed:** web-search (Exa/Tavily), Apple Search Ads. Anything depending on a missing key is **built behind its seam and stubbed**, with the real client a one-task follow-up when the key lands. The spec's confidence ladder + tri-state probe make this honest (a stubbed source reports `searched-and-empty`, never fakes data).
-- **Definition of Done, per phase:** its §F acceptance test is green, both editions of the spec already describe it, and no `*.test.ts` regressions.
+- **Definition of Done, per phase:** its §F acceptance test is green, both editions of the spec already describe it, no `*.test.ts` regressions, **and [`STATUS.md`](STATUS.md) is refreshed** (phase row, file map, test counts, known gaps) — the dashboard is not allowed to drift from reality, so updating it is the *last step of every phase*, not an afterthought.
 - **Two spec↔code reconciliations** (spec §G) are scheduled at their phases: Ollama removal (Phase 0) and the `rubric.ts:83` OCR line (Phase B).
 
 Legend: **[live]** builds against a real key · **[stub]** seam built now, real client deferred · **[pure]** no external dependency.
@@ -22,7 +22,7 @@ Legend: **[live]** builds against a real key · **[stub]** seam built now, real 
 - **0.2 Gemini reachability + one beta model.** Confirm `llm/google.ts` reads the key from `.env`; `reachable()`, `modelId`/`endpoint` work. **Pin one beta model** — `gemini-2.5-flash` is already the Google default (`llm/index.ts: DEFAULT_GOOGLE_MODEL`); keep it, or set a more capable id if judgement quality needs it. Add a startup check that the pinned model responds. *(Cheap/capable model-tiering is a **P7** concern — the current `LlmProvider` carries a single `modelId`, so don't build tiering now.)*
 - **0.3 Migration runner.** A tiny `memory/migrate.ts` that creates the `aso_*` tables (idempotent, `CREATE TABLE IF NOT EXISTS`). Empty for now; each phase adds its tables.
 - **Tests:** existing suite stays green with Ollama gone (the one regression risk); add a smoke test that a full audit runs end-to-end on Gemini.
-- **DoD:** `vitest` green; an audit of one real URL completes with Gemini only.
+- **DoD:** `vitest` green; an audit of one real URL completes with Gemini only; `STATUS.md` refreshed.
 
 ---
 
@@ -53,7 +53,7 @@ ID-lite and P1's storage ship together (spec: ID-lite has no standalone existenc
 
 **A4 · P1 uplifts [live] — ✅ built**
 - Applied-detection (status=`applied` = *match, not cause*), change-diff, contradiction guard, snapshot + rubric-replay, clickable evidence trail (`EvidenceRef`, spec §D — frozen into snapshot; `evidence_json` updates on upsert, history reconstructable via `aso_rec_occurrences`).
-- **DoD:** §F ID-lite **and** §F P1 green; second audit references the first, marks applied, never repeats. *(All green; verified hermetically and via a live end-to-end audit on Gemini.)*
+- **DoD:** §F ID-lite **and** §F P1 green; second audit references the first, marks applied, never repeats; `STATUS.md` refreshed. *(All green; verified hermetically and via a live end-to-end audit on Gemini.)*
 
 **A5 · Human-escalation gate + human-confirmed override [live] — ✅ built**
 The interactive half of the spec's identity-escalation logic (the A2 line above only handled the *non-engagement* fallback — suppress identity-rewriting recs + stamp "unconfirmed"). A5 makes the **ask** real and lights up the **override** path.
@@ -119,7 +119,7 @@ The interactive half of the spec's identity-escalation logic (the A2 line above 
 - **Connect-to-measure honesty manifest** — pure-code map of each rec into the four proof regimes.
 - **Portable export** (Markdown/PDF) — persistence-independent artifact.
 - **Review-vocabulary keyword miner** — counts the full sample in code, hands the ranked gap to the model.
-- **DoD:** one US URL → four storefronts back with one rec per gap + per-rec proof regime.
+- **DoD:** one US URL → four storefronts back with one rec per gap + per-rec proof regime; `STATUS.md` refreshed.
 
 ---
 
