@@ -11,3 +11,4 @@ dist/
 *.log
 apps/web/dist/
 spec_the_future_ASO.txt
+.docker-data/

@@ -39,6 +39,8 @@ function rec(over: Partial<ReportRec>): ReportRec {
   return {
     category: 'quick-win',
     dimension: 'subtitle',
+    intent: 'add_keyword',
+    referent: { kind: 'keyword', value: 'tracker' },
     title: 'Add "tracker" to the subtitle',
     rationale: 'High-intent term you do not rank for.',
     evidence: 'subtitle is empty',
@@ -109,7 +111,7 @@ describe('persistAudit — the memory loop', () => {
       const escalating: ResolvedIdentity = { ...CONFIDENT, categoryBand: 'low', divergence: 'cross_domain', escalate: true };
       const l = listingWith({});
       await persistAudit(h.client, {
-        ...persistArgs(l, report([rec({ dimension: 'competitive', category: 'strategic', title: 'Reposition around EVs', after: null })]), '2026-06-01T00:00:00.000Z'),
+        ...persistArgs(l, report([rec({ dimension: 'competitive', category: 'strategic', intent: 'reposition_identity', referent: { kind: 'none' }, title: 'Reposition around EVs', after: null })]), '2026-06-01T00:00:00.000Z'),
         resolved: escalating,
       });
       const ledger = unwrap(await h.client.ledger('1', 'us'));
@@ -129,7 +131,7 @@ describe('persistAudit — the memory loop', () => {
       };
       const l = listingWith({});
       await persistAudit(h.client, {
-        ...persistArgs(l, report([rec({ dimension: 'competitive', category: 'strategic', title: 'Reposition around EVs', after: null })]), '2026-06-01T00:00:00.000Z'),
+        ...persistArgs(l, report([rec({ dimension: 'competitive', category: 'strategic', intent: 'reposition_identity', referent: { kind: 'none' }, title: 'Reposition around EVs', after: null })]), '2026-06-01T00:00:00.000Z'),
         resolved: confirmed,
       });
       const idRow = unwrap(await h.client.latestIdentity('1', 'us'));
@@ -137,6 +139,30 @@ describe('persistAudit — the memory loop', () => {
       const ledger = unwrap(await h.client.ledger('1', 'us'));
       // Identity is confirmed, so the identity-rewriting rec is allowed through.
       expect(ledger.find((r) => r.intent === 'reposition_identity')).toBeDefined();
+    } finally {
+      h.close();
+    }
+  });
+
+  it('a reworded re-raise with the same referent does not mint a new row', async () => {
+    const h = await fresh();
+    try {
+      const l = listingWith({ subtitle: null });
+      // Run 1: recommend adding keyword "tracker" with one phrasing.
+      await persistAudit(h.client, persistArgs(l, report([rec({})]), '2026-06-01T00:00:00.000Z'));
+
+      // Run 2: same referent (keyword: "tracker") but completely different prose.
+      // Pre-fix, this minted a new row because rec_key used rec.after prose.
+      // Post-fix, rec_key is hash(dimension, intent, targetField, "tracker") — stable.
+      const reworded = rec({
+        title: 'Include the word tracker in your subtitle copy',
+        after: 'Tracker - Budget Planner',
+      });
+      await persistAudit(h.client, persistArgs(l, report([reworded]), '2026-06-20T00:00:00.000Z'));
+
+      const ledger = unwrap(await h.client.ledger('1', 'us'));
+      expect(ledger).toHaveLength(1); // ← must collapse, not duplicate
+      expect(ledger[0]!.status).toBe('proposed');
     } finally {
       h.close();
     }

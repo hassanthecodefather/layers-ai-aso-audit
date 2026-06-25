@@ -28,15 +28,19 @@ describe('computeRecKey (spec §C)', () => {
     dimension: 'keywords',
     intent: 'add_keyword' as const,
     targetField: 'subtitle' as string | null,
-    valueKey: 'tracker',
+    referent: { kind: 'keyword' as const, value: 'tracker' },
   };
 
-  it('is stable: same logical inputs → same key', () => {
-    expect(computeRecKey(base)).toBe(computeRecKey({ ...base, valueKey: 'Trackers' }));
+  it('is stable: same logical inputs → same key (plural referent collapses)', () => {
+    expect(computeRecKey(base)).toBe(
+      computeRecKey({ ...base, referent: { kind: 'keyword', value: 'Trackers' } }),
+    );
   });
 
-  it('two different value_keys for the same field → different keys', () => {
-    expect(computeRecKey(base)).not.toBe(computeRecKey({ ...base, valueKey: 'budget' }));
+  it('two different referent values for the same field → different keys', () => {
+    expect(computeRecKey(base)).not.toBe(
+      computeRecKey({ ...base, referent: { kind: 'keyword', value: 'budget' } }),
+    );
   });
 
   it('a different intent or target field → different key', () => {
@@ -44,11 +48,11 @@ describe('computeRecKey (spec §C)', () => {
     expect(computeRecKey(base)).not.toBe(computeRecKey({ ...base, targetField: 'title' }));
   });
 
-  it('single-instance intents ignore value_key entirely', () => {
-    const a = computeRecKey({ dimension: 'media', intent: 'add_preview_video', targetField: null, valueKey: 'anything' });
-    const b = computeRecKey({ dimension: 'media', intent: 'add_preview_video', targetField: null, valueKey: 'other' });
+  it('single-instance intents ignore referent entirely', () => {
+    const a = computeRecKey({ dimension: 'media', intent: 'add_preview_video', targetField: null, referent: { kind: 'none' } });
+    const b = computeRecKey({ dimension: 'media', intent: 'add_preview_video', targetField: null, referent: { kind: 'keyword', value: 'anything' } });
     expect(a).toBe(b);
-    expect(valueKeyFor('add_preview_video', 'anything')).toBe('');
+    expect(valueKeyFor('add_preview_video', { kind: 'none' })).toBe('');
   });
 });
 

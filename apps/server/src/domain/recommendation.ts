@@ -31,8 +31,11 @@ export type IntentTag = z.infer<typeof IntentTagSchema>;
 /**
  * Intents that name a *single* opportunity per listing — there is only ever
  * one "add a preview video" suggestion — so their `value_key` is empty (spec
- * §C). Every other intent is multi-instance and must carry a discriminating
- * `value_key` or two distinct suggestions would collide on one `rec_key`.
+ * §C). Multi-instance intents (`add_keyword`, `remove_wasted_term`,
+ * `localise_storefront`) carry a typed `Referent` whose value is the stable
+ * discriminator (never the model's prose). `fix_complaint_theme` is upgraded
+ * to multi-instance in Phase D when canonical theme IDs are extracted from
+ * reviews.
  */
 export const SINGLE_INSTANCE_INTENTS: ReadonlySet<IntentTag> = new Set<IntentTag>([
   'add_preview_video',
@@ -40,7 +43,24 @@ export const SINGLE_INSTANCE_INTENTS: ReadonlySet<IntentTag> = new Set<IntentTag
   'rebalance_title_subtitle',
   'reposition_identity',
   'improve_icon_legibility',
+  'reorder_screenshots',
+  'respond_to_reviews',
+  'improve_description_hook',
+  'fix_complaint_theme',
 ]);
+
+/**
+ * The typed referent that pins a multi-instance recommendation's identity.
+ * `value_key` is always derived from `referent.value` in code — never from
+ * the model's free-text `after`/`title`, so reworded suggestions still
+ * collapse to one ledger row.
+ */
+export const ReferentSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('keyword'), value: z.string().min(1) }),
+  z.object({ kind: z.literal('country'), value: z.string().min(2).max(2) }),
+  z.object({ kind: z.literal('none') }),
+]);
+export type Referent = z.infer<typeof ReferentSchema>;
 
 /** The canonical complaint-theme taxonomy (spec §C) — `value_key` for `fix_complaint_theme`. */
 export const COMPLAINT_THEMES = [

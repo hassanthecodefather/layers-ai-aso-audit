@@ -98,6 +98,8 @@ export const AUDIT_JSON_SHAPE = `{
     {
       "category": "<quick-win|high-impact|strategic>",
       "dimension": "<one of the 10 dimension ids>",
+      "intent": "<pick exactly one: add_keyword|remove_wasted_term|rebalance_title_subtitle|reposition_identity|improve_icon_legibility|reorder_screenshots|add_preview_video|localise_storefront|respond_to_reviews|fix_complaint_theme|improve_description_hook|enable_promo_text>",
+      "referent": "<see rules below>",
       "title": "<the change, as an imperative>",
       "rationale": "<why it matters, citing the evidence>",
       "evidence": "<the specific data point behind it>",
@@ -113,7 +115,14 @@ export const AUDIT_JSON_SHAPE = `{
     ]
   },
   "limitations": ["<what could not be assessed from public data, and why>"]
-}`;
+}
+
+REFERENT RULES — the referent field pins the recommendation's identity for deduplication:
+- intent is add_keyword or remove_wasted_term  → {"kind":"keyword","value":"<the single keyword, lowercase>"}
+- intent is localise_storefront               → {"kind":"country","value":"<2-letter ISO country code>"}
+- ALL other intents                           → {"kind":"none"}
+There is at most ONE recommendation per (dimension, intent, referent) combination. For example,
+two add_keyword suggestions for the subtitle must have different referent.value keywords.`;
 
 /** The full per-listing audit prompt. */
 export function buildAuditPrompt(

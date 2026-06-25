@@ -3,7 +3,8 @@ import { openDb, runMigrations } from './migrate';
 import { LibSqlStorageClient } from './libsql-storage-client';
 import { computeRecKey, valueKeyFor, findContradiction } from './dedup';
 import { replayReportScore } from '../scoring/replay';
-import type { LedgerRecommendation, IntentTag } from '../domain/recommendation';
+import type { LedgerRecommendation, IntentTag, Referent } from '../domain/recommendation';
+import { SINGLE_INSTANCE_INTENTS } from '../domain/recommendation';
 import type { ListingSnapshot } from '../domain/snapshot';
 import type { ScoredDimension, AuditReport } from '../domain/audit';
 import { loadFixtureListing } from '../identity/__fixtures__/load';
@@ -22,12 +23,15 @@ function makeRec(
 ): LedgerRecommendation {
   const dimension = over.dimension ?? 'subtitle';
   const targetField = over.targetField ?? 'subtitle';
-  const valueKey = valueKeyFor(intent, rawValue);
+  const referent: Referent = SINGLE_INSTANCE_INTENTS.has(intent)
+    ? { kind: 'none' }
+    : { kind: 'keyword', value: rawValue };
+  const valueKey = valueKeyFor(intent, referent);
   return {
     id: over.id ?? `rec_${intent}_${rawValue}`,
     appId: APP,
     country: CC,
-    recKey: computeRecKey({ dimension, intent, targetField, valueKey: rawValue }),
+    recKey: computeRecKey({ dimension, intent, targetField, referent }),
     valueKey,
     taxonomyVersion: null,
     dimension,

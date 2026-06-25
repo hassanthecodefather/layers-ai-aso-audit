@@ -5,7 +5,7 @@ contracts live elsewhere: [`specification.md`](specification.md) is the *what*,
 [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) is the *how-to-build*. This
 file is the *where-we-are* — read it first, trust the tests over the prose.
 
-_Last updated: 2026-06-25 · spec v1.3.1_
+_Last updated: 2026-06-26 · spec v1.3.1_
 
 Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferred (by design)
 
@@ -14,7 +14,7 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
 | Phase | Scope | Status | DoD gate |
 |---|---|---|---|
 | **0** | Groundwork: Gemini-only, migration runner | ✅ | suite green + live audit on Gemini |
-| **A** | ID-lite identity + P1 persistent memory | ✅ | §F ID-lite **and** §F P1 green; 2nd audit references 1st, marks applied, never repeats |
+| **A** | ID-lite identity + P1 persistent memory | ✅ | §F ID-lite **and** §F P1 green; reworded re-raise collapses to one row (typed referent); 2nd audit references 1st, marks applied, never repeats |
 | **B** | P2 image analysis + ID-full | ⬜ | — |
 | **C** | P3 keyword research (160-char linter) | ⬜ | — |
 | **D** | P4 deep review analysis | ⬜ | — |
@@ -35,11 +35,11 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
 
 ## Tests (the source of truth)
 
-- **95 hermetic tests pass** (`npm test`). Covers: StorageClient conformance,
+- **96 hermetic tests pass** (`npm test`). Covers: StorageClient conformance,
   ID-lite §F gates, P1 §F gates (dedup, contradiction, zero-LLM replay),
   human-confirm reuse/re-ask, memory loop end-to-end, classifier fail-safe
-  parsing, dismissal-is-honoured, and the Mastra `getStepResult`-across-resume
-  contract A5 relies on.
+  parsing, dismissal-is-honoured, **reworded re-raise collapses to one row**,
+  and the Mastra `getStepResult`-across-resume contract A5 relies on.
 - **Live smokes (gated on a Gemini key, skipped by default):**
   - `scoring/audit-smoke.test.ts` — full audit + identity + persist on real Gemini.
   - `mastra/workflow-smoke.test.ts` — real workflow suspend → resume(decision) → report.
@@ -51,12 +51,7 @@ Fixed + tested: dismissed recs no longer silently re-open on re-raise; the
 identity classifier fails safe instead of throwing on malformed JSON; the
 `getStepResult`-across-resume assumption is now guarded (it holds).
 
-Still open (tracked, not yet fixed — fold into a Phase A follow-up or Phase B):
-- **value_key from LLM prose** — `rec_key` for multi-instance intents derives
-  from the model's free-text `after`/`title`, so rewording the same suggestion
-  can mint a new key (weakens "never repeats" + the contradiction guard). Real
-  fix: add `intent` + `valueKey` to the `AuditDraft` recommendation schema and
-  have the model emit them (also fixes most of applied-detection below).
+Still open (tracked, not yet fixed — fold into Phase B):
 - **applied-detection coverage** — `listingField()` only maps title/subtitle/
   description, so keywordField/icon/screenshots/reviews recs never flip to
   `applied`.

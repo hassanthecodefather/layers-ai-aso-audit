@@ -5,7 +5,6 @@ import type { IdentityVersion } from '../domain/identity';
 import type { ResolvedIdentity } from '../identity/resolve';
 import {
   type LedgerRecommendation,
-  type IntentTag,
   type ProofRegime,
   type EvidenceRef,
 } from '../domain/recommendation';
@@ -22,21 +21,18 @@ import { toIdentityVersion } from '../mastra/tools/resolve-identity';
  * first, marks applied, never repeats" true end-to-end.
  */
 
-/** How each scored dimension maps to a ledger intent / target / proof regime. */
-const DIMENSION_MAP: Record<
-  DimensionId,
-  { intent: IntentTag; targetField: string | null; proofRegime: ProofRegime; usesAfterText: boolean }
-> = {
-  title: { intent: 'rebalance_title_subtitle', targetField: 'title', proofRegime: 'observable_now', usesAfterText: false },
-  subtitle: { intent: 'add_keyword', targetField: 'subtitle', proofRegime: 'observable_now', usesAfterText: true },
-  keywordField: { intent: 'add_keyword', targetField: 'keywordField', proofRegime: 'observable_now', usesAfterText: true },
-  description: { intent: 'improve_description_hook', targetField: 'description', proofRegime: 'correlational', usesAfterText: true },
-  screenshots: { intent: 'reorder_screenshots', targetField: 'screenshots', proofRegime: 'ppo_causal', usesAfterText: false },
-  previewVideo: { intent: 'add_preview_video', targetField: null, proofRegime: 'ppo_causal', usesAfterText: false },
-  ratings: { intent: 'respond_to_reviews', targetField: 'reviews', proofRegime: 'correlational', usesAfterText: true },
-  icon: { intent: 'improve_icon_legibility', targetField: 'icon', proofRegime: 'ppo_causal', usesAfterText: false },
-  conversion: { intent: 'improve_description_hook', targetField: null, proofRegime: 'correlational', usesAfterText: true },
-  competitive: { intent: 'reposition_identity', targetField: null, proofRegime: 'correlational', usesAfterText: false },
+/** Per-dimension defaults for fields the model doesn't emit. */
+const DIMENSION_MAP: Record<DimensionId, { targetField: string | null; proofRegime: ProofRegime }> = {
+  title:        { targetField: 'title',        proofRegime: 'observable_now' },
+  subtitle:     { targetField: 'subtitle',     proofRegime: 'observable_now' },
+  keywordField: { targetField: 'keywordField', proofRegime: 'observable_now' },
+  description:  { targetField: 'description',  proofRegime: 'correlational'  },
+  screenshots:  { targetField: 'screenshots',  proofRegime: 'ppo_causal'     },
+  previewVideo: { targetField: null,            proofRegime: 'ppo_causal'     },
+  ratings:      { targetField: 'reviews',      proofRegime: 'correlational'  },
+  icon:         { targetField: 'icon',          proofRegime: 'ppo_causal'     },
+  conversion:   { targetField: null,            proofRegime: 'correlational'  },
+  competitive:  { targetField: null,            proofRegime: 'correlational'  },
 };
 
 /** Intents that rewrite the app's *identity* — suppressed when ID is unconfirmed. */
@@ -48,13 +44,14 @@ export function toLedgerRec(
   ctx: { appId: string; country: string; snapshotId: string; now: string },
 ): LedgerRecommendation {
   const map = DIMENSION_MAP[rec.dimension];
-  const rawValue = map.usesAfterText ? rec.after ?? rec.title : '';
-  const valueKey = valueKeyFor(map.intent, rawValue);
+  // rec.intent and rec.referent are emitted by the model (closed enum + typed
+  // discriminator), so rec_key never depends on free-text prose.
+  const valueKey = valueKeyFor(rec.intent, rec.referent);
   const recKey = computeRecKey({
     dimension: rec.dimension,
-    intent: map.intent,
+    intent: rec.intent,
     targetField: map.targetField,
-    valueKey: rawValue,
+    referent: rec.referent,
   });
   const evidence: EvidenceRef[] = [
     map.targetField
@@ -69,7 +66,7 @@ export function toLedgerRec(
     valueKey,
     taxonomyVersion: null,
     dimension: rec.dimension,
-    intent: map.intent,
+    intent: rec.intent,
     targetField: map.targetField,
     title: rec.title,
     body: rec.rationale,
