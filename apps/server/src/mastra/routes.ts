@@ -31,16 +31,21 @@ function firstOf<T>(...candidates: (T | null | undefined)[]): T | undefined {
   return candidates.find((c) => c != null) ?? undefined;
 }
 
-/** Locate the confirmation summary in a suspended workflow result. */
-function extractSummary(result: any): unknown {
+/** Locate the confirm-app suspend payload ({ summary, identity, ... }). */
+function extractSuspendPayload(result: any): any {
   const step = result?.steps?.['confirm-app'];
   return firstOf(
-    step?.suspendPayload?.summary,
-    step?.payload?.summary,
-    step?.suspendedPayload?.summary,
-    result?.suspendPayload?.summary,
-    result?.payload?.summary,
+    step?.suspendPayload,
+    step?.payload,
+    step?.suspendedPayload,
+    result?.suspendPayload,
+    result?.payload,
   );
+}
+
+/** Locate the confirmation summary in a suspended workflow result. */
+function extractSummary(result: any): unknown {
+  return extractSuspendPayload(result)?.summary;
 }
 
 /** Locate the audit report in a completed workflow result. */
@@ -118,7 +123,8 @@ export const auditRoutes = [
         const result: any = await run.start({ inputData: { url } });
 
         if (result?.status === 'suspended') {
-          const summary = extractSummary(result);
+          const payload = extractSuspendPayload(result);
+          const summary = payload?.summary;
           if (!summary) {
             console.error(
               '[identify] no summary; result keys:',
@@ -131,7 +137,15 @@ export const auditRoutes = [
             );
           }
           pendingRuns.set(run.runId, run);
-          return c.json({ runId: run.runId, summary });
+          // Surface the resolved identity too, so the UI can widen the prompt to
+          // "here's what we think your app is — confirm, correct, or pick" when
+          // the identity escalates (spec ID). Most apps need no identity ask.
+          return c.json({
+            runId: run.runId,
+            summary,
+            identity: payload?.identity ?? null,
+            identityNeedsConfirm: Boolean(payload?.identityNeedsConfirm),
+          });
         }
 
         // Failing this early means a bad URL or an unknown app.
@@ -154,6 +168,9 @@ export const auditRoutes = [
       const body = await c.req.json().catch(() => ({}));
       const runId = typeof body?.runId === 'string' ? body.runId : '';
       if (!runId) return c.json({ error: 'Missing runId.' }, 400);
+      // Optional identity decision from the widened confirm prompt
+      // (confirm / correct / pick). Absent for the common no-ask case.
+      const identityDecision = body?.identityDecision ?? null;
 
       const workflow = mastra.getWorkflow(WORKFLOW_ID);
       const run =
@@ -177,7 +194,7 @@ export const auditRoutes = [
         try {
           const wfStream = await run.resumeStream({
             step: 'confirm-app',
-            resumeData: { confirmed: true },
+            resumeData: { confirmed: true, identityDecision },
           });
 
           const seen = new Set<string>();

@@ -124,7 +124,9 @@ export function toIdentityVersion(
     tally: resolved.tally,
     divergence: resolved.divergence,
     escalate: resolved.escalate,
-    source: opts.source ?? 'resolved',
+    // The resolution itself carries the tier (`human_confirmed` after an
+    // override); an explicit opts.source still wins if a caller forces it.
+    source: opts.source ?? resolved.source ?? 'resolved',
     createdAt: opts.createdAt,
   };
 }

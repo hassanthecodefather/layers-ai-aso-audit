@@ -1,7 +1,12 @@
+import { z } from 'zod';
 import {
   type ConfidenceBand,
   type Divergence,
   type SignalTallyEntry,
+  SignalTallyEntrySchema,
+  ConfidenceBandSchema,
+  DivergenceSchema,
+  IdentitySourceSchema,
   SOURCE_TIER_WEIGHT,
   ON_STORE_TIERS,
 } from '../domain/identity';
@@ -24,17 +29,24 @@ export interface IdentityClassification {
   functionTerms: string[];
 }
 
-/** The resolved identity, before it is stamped into an `IdentityVersion` row. */
-export interface ResolvedIdentity {
-  category: string;
-  categoryBand: ConfidenceBand;
-  niche: string | null;
-  nicheBand: ConfidenceBand | null;
-  divergence: Divergence;
+/**
+ * The resolved identity, before it is stamped into an `IdentityVersion` row.
+ * A zod schema (not just a type) so it can serialise as a workflow step output
+ * across a `suspend()` boundary.
+ */
+export const ResolvedIdentitySchema = z.object({
+  category: z.string(),
+  categoryBand: ConfidenceBandSchema,
+  niche: z.string().nullable(),
+  nicheBand: ConfidenceBandSchema.nullable(),
+  divergence: DivergenceSchema,
   /** Did the hard gate fire? (low/conflict → ask a human.) */
-  escalate: boolean;
-  tally: SignalTallyEntry[];
-}
+  escalate: z.boolean(),
+  tally: z.array(SignalTallyEntrySchema),
+  /** `resolved` by the agent, or `human_confirmed` — the sticky override tier. */
+  source: IdentitySourceSchema.default('resolved'),
+});
+export type ResolvedIdentity = z.infer<typeof ResolvedIdentitySchema>;
 
 export interface ResolveOptions {
   /** Below this many reviews, the review-vocabulary family doesn't vote. */
@@ -168,5 +180,6 @@ export function resolveIdentity(
     divergence,
     escalate,
     tally,
+    source: 'resolved',
   };
 }

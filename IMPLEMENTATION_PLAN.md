@@ -38,22 +38,29 @@ ID-lite and P1's storage ship together (spec: ID-lite has no standalone existenc
 - Contract guard: only domain types cross the interface — no SQL dialect, no vendor schema (this is what makes the future Postgres swap a config change).
 - **TDD first:** a `StorageClient` conformance test suite (put/latest snapshot, upsert-on-`rec_key`, `recordOccurrence`, append/latest identity, tombstone set). This is the *same suite* §F/6a says Postgres must later pass — write it engine-agnostic now.
 
-**A2 · ID-lite resolver [live crawler + Gemini; web-search stub]**
-- `domain/identity.ts` (types: IdentityVersion, the signal-family tally, two-axis bands) + `mastra/tools/resolve-identity.ts`. **Modify `mastra/tools/identify-app.ts`** to feed its resolved signals into the resolver (spec §G), rather than resolve-identity re-fetching them.
-- Deterministic day-one signals: developer + other apps, bundle-id reverse-DNS, permission/privacy labels, IAP names, marketing-domain match (crawler **[live]**), review-vocabulary. Pure-code matching, no vision (that's ID-full at P2).
+**A2 · ID-lite resolver [live crawler + Gemini; web-search stub] — ✅ built**
+- `domain/identity.ts` (types: IdentityVersion, the signal-family tally, two-axis bands) + `identity/{signals,domains,resolve}.ts` + `mastra/tools/resolve-identity.ts`. **As-built note (deviation accepted):** rather than modifying `identify-app.ts`, the workflow's `identify-app` *step* resolves identity from the single iTunes-core fetch it already makes — so the resolver is **fed** the signals and never re-fetches (the §G intent), without touching the `identify-app` tool. Functionally equivalent.
+- Deterministic day-one signals that fire today: developer, bundle-id reverse-DNS, marketing-domain match, review-vocabulary. Pure-code matching, no vision (that's ID-full at P2). **Deferred (deviation #3):** permission/privacy labels and IAP names aren't in the iTunes Lookup response, so those families are modelled but report `not observed` (honest absence) until a crawler-backed source is wired — they're corroboration, not load-bearing for the §F gates.
 - Confidence: weighted tally → band per spec §E (observed=2, fetched=2, cross-store=1, review-inferred=1, world-knowledge=0; on-store-only capped at medium *after* the tally). Two axes (category/niche), conflict→low.
 - **Web-search corroboration tier [stub]:** `sources/websearch/` SourceProvider with a `NoopWebSearch` that returns `searched-and-empty`. Real Exa/Tavily client is a drop-in when the key lands. Until then ID-lite simply starts lower on the ladder — which the spec already models.
-- Human escalation reuses the existing `confirm-app` suspend step (widened prompt). Writes `aso_identity_versions` stage=`lite`.
-- **TDD first (§F ID-lite):** Rivian fixture → cross-domain → **escalate**; TikTok/Spotify → **zero asks**; on-store-only → band **≤ medium**; identity row written.
+- Human escalation: see **A5** (the widened `confirm-app` gate + human-confirmed override). Writes `aso_identity_versions` stage=`lite`.
+- **TDD first (§F ID-lite):** Rivian fixture → cross-domain → **escalate**; TikTok/Spotify → **zero asks**; on-store-only → band **≤ medium**; identity row written. *(All green.)*
 
 **A3 · Wire into the workflow + dedup [live]**
 - `audit-workflow.ts`: resolve identity **before** `score-listing`; inject the identity fact sheet into the scoring prompt the same way deterministic signals are; read prior history pre-score (`scoring/score.ts`).
 - `memory/dedup.ts`: `rec_key = hash(dimension, intent, target_field, value_key)`; `value_key` normalization pinned (casefold + NFC + trim + linter plural rule). Upsert on `rec_key`.
 - **TDD first (§F P1):** audit the same app twice → no duplicate ledger row for a re-raise, **yet two distinct `add_keyword` recs for the same field survive as two rows** (assert both directions); contradiction guard fires on a reversed rec; rubric-weight replay recomputes a stored draft with **zero LLM calls** (assert call count = 0).
 
-**A4 · P1 uplifts [live]**
+**A4 · P1 uplifts [live] — ✅ built**
 - Applied-detection (status=`applied` = *match, not cause*), change-diff, contradiction guard, snapshot + rubric-replay, clickable evidence trail (`EvidenceRef`, spec §D — frozen into snapshot; `evidence_json` updates on upsert, history reconstructable via `aso_rec_occurrences`).
-- **DoD:** §F ID-lite **and** §F P1 green; second audit references the first, marks applied, never repeats.
+- **DoD:** §F ID-lite **and** §F P1 green; second audit references the first, marks applied, never repeats. *(All green; verified hermetically and via a live end-to-end audit on Gemini.)*
+
+**A5 · Human-escalation gate + human-confirmed override [live] — ✅ built**
+The interactive half of the spec's identity-escalation logic (the A2 line above only handled the *non-engagement* fallback — suppress identity-rewriting recs + stamp "unconfirmed"). A5 makes the **ask** real and lights up the **override** path.
+- `identity/human-confirm.ts` (pure): `applyHumanDecision` (confirm / correct / pick → a `human_confirmed` identity, sticky, `escalate` cleared, recorded as the categorical `source=human_confirmed` tier, never a fake 100%); `resolveWithHistory` (respects a stored human-confirmed identity — **re-asked only when the signals it rested on materially change *and* the fresh answer flips domain**, per spec ID); `signalsMateriallyChanged`.
+- **Widened `confirm-app` suspend step:** `identify-app` now resolves ID-lite from its existing iTunes-core fetch and the step suspends with `{ summary, identity, identityNeedsConfirm }`; resume accepts `{ confirmed, identityDecision? }`. The `score-listing` step reads the decision via `getStepResult` and applies it; an `human_confirmed` identity **allows** the identity-rewriting recs that an unconfirmed one suppresses. One human round-trip — no second suspend — reusing the existing machinery.
+- **Routes:** `/audit/identify` surfaces `identity` + `identityNeedsConfirm`; `/audit/run` accepts an `identityDecision` and threads it into the resume.
+- **Tests:** human-confirm logic (confirm/correct, reuse-vs-re-ask, flip detection) hermetic; `human_confirmed` persistence + rec-allowance in the memory suite; a **live workflow smoke** drives the real suspend → resume(decision) → report path.
 
 ---
 

@@ -32,6 +32,7 @@ const CONFIDENT: ResolvedIdentity = {
   divergence: 'none',
   escalate: false,
   tally: [],
+  source: 'resolved',
 };
 
 function rec(over: Partial<ReportRec>): ReportRec {
@@ -114,6 +115,28 @@ describe('persistAudit — the memory loop', () => {
       const ledger = unwrap(await h.client.ledger('1', 'us'));
       // The reposition_identity rec was withheld.
       expect(ledger.find((r) => r.intent === 'reposition_identity')).toBeUndefined();
+    } finally {
+      h.close();
+    }
+  });
+
+  it('a human-confirmed identity persists as human_confirmed and keeps its reposition rec', async () => {
+    const h = await fresh();
+    try {
+      // Cross-domain, but the human confirmed it → escalate cleared, source set.
+      const confirmed: ResolvedIdentity = {
+        ...CONFIDENT, category: 'EV companion', divergence: 'cross_domain', escalate: false, source: 'human_confirmed',
+      };
+      const l = listingWith({});
+      await persistAudit(h.client, {
+        ...persistArgs(l, report([rec({ dimension: 'competitive', category: 'strategic', title: 'Reposition around EVs', after: null })]), '2026-06-01T00:00:00.000Z'),
+        resolved: confirmed,
+      });
+      const idRow = unwrap(await h.client.latestIdentity('1', 'us'));
+      expect(idRow?.source).toBe('human_confirmed');
+      const ledger = unwrap(await h.client.ledger('1', 'us'));
+      // Identity is confirmed, so the identity-rewriting rec is allowed through.
+      expect(ledger.find((r) => r.intent === 'reposition_identity')).toBeDefined();
     } finally {
       h.close();
     }
