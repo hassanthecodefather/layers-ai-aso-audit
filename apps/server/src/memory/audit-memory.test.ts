@@ -141,6 +141,33 @@ describe('persistAudit — the memory loop', () => {
       h.close();
     }
   });
+
+  it('honours a dismissal — a re-raised dismissed rec is flagged, not silently re-opened', async () => {
+    const h = await fresh();
+    try {
+      const l = listingWith({ subtitle: null });
+      // Audit 1: raise the rec.
+      await persistAudit(h.client, persistArgs(l, report([rec({})]), '2026-06-01T00:00:00.000Z'));
+      let ledger = unwrap(await h.client.ledger('1', 'us'));
+      expect(ledger).toHaveLength(1);
+      // The operator dismisses it.
+      await h.client.upsertRecommendation({ ...ledger[0]!, status: 'dismissed' });
+
+      // Audit 2: the model re-proposes the exact same suggestion (same rec_key).
+      const memo = await persistAudit(
+        h.client,
+        persistArgs(l, report([rec({})]), '2026-06-20T00:00:00.000Z'),
+      );
+
+      ledger = unwrap(await h.client.ledger('1', 'us'));
+      expect(ledger).toHaveLength(1);
+      expect(ledger[0]!.status).toBe('dismissed'); // ← NOT re-opened to 'proposed'
+      // ...and the re-raise is surfaced as a contradiction, never silently dropped.
+      expect(memo.contradictions.length).toBeGreaterThan(0);
+    } finally {
+      h.close();
+    }
+  });
 });
 
 describe('detectApplied + changeDiff units', () => {

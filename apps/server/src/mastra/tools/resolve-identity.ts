@@ -73,19 +73,37 @@ function getClassifierAgent(): Agent {
   return classifierAgent;
 }
 
+/** The "couldn't classify" fallback — a provisional, low-corroboration identity. */
+const UNKNOWN_CLASSIFICATION: IdentityClassification = {
+  functionCategory: 'Unknown',
+  functionNiche: null,
+  functionTerms: [],
+};
+
+/**
+ * Parse a model response into a classification, failing safe on ANY malformed
+ * output. `extractJsonObject` only brace-matches, so the substring can still be
+ * invalid JSON (trailing commas, single quotes, unquoted keys) — the parse must
+ * be guarded or the whole identify step throws instead of degrading gracefully.
+ */
+export function parseClassificationText(text: string): IdentityClassification {
+  const json = extractJsonObject(text);
+  if (!json) return UNKNOWN_CLASSIFICATION;
+  let value: unknown;
+  try {
+    value = JSON.parse(json);
+  } catch {
+    return UNKNOWN_CLASSIFICATION;
+  }
+  const parsed = ClassificationSchema.safeParse(value);
+  return parsed.success ? parsed.data : UNKNOWN_CLASSIFICATION;
+}
+
 /** The production classifier: one Gemini generation over the fact sheet. */
 export const geminiClassifier: IdentityClassifier = async (factSheet) => {
   const agent = getClassifierAgent();
   const result = await agent.generate(factSheet);
-  const text = typeof result.text === 'string' ? result.text : '';
-  const json = extractJsonObject(text);
-  const parsed = json ? ClassificationSchema.safeParse(JSON.parse(json)) : null;
-  if (!parsed?.success) {
-    // Fail safe to "couldn't classify" — a low-corroboration provisional
-    // identity, never a confident wrong guess.
-    return { functionCategory: 'Unknown', functionNiche: null, functionTerms: [] };
-  }
-  return parsed.data;
+  return parseClassificationText(typeof result.text === 'string' ? result.text : '');
 };
 
 /** Resolve ID-lite identity for a listing (signals + classify + tally→band). */

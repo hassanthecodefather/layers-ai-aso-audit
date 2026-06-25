@@ -35,13 +35,38 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
 
 ## Tests (the source of truth)
 
-- **88 hermetic tests pass** (`npm test`). Covers: StorageClient conformance,
+- **95 hermetic tests pass** (`npm test`). Covers: StorageClient conformance,
   ID-lite §F gates, P1 §F gates (dedup, contradiction, zero-LLM replay),
-  human-confirm reuse/re-ask, memory loop end-to-end.
+  human-confirm reuse/re-ask, memory loop end-to-end, classifier fail-safe
+  parsing, dismissal-is-honoured, and the Mastra `getStepResult`-across-resume
+  contract A5 relies on.
 - **Live smokes (gated on a Gemini key, skipped by default):**
   - `scoring/audit-smoke.test.ts` — full audit + identity + persist on real Gemini.
   - `mastra/workflow-smoke.test.ts` — real workflow suspend → resume(decision) → report.
   - Run: `dotenv -e ../../.env -- npx vitest run <path>` (Node ≥ 20.12 — see Gotchas).
+
+## Code review (high-effort pass, 2026-06-25)
+
+Fixed + tested: dismissed recs no longer silently re-open on re-raise; the
+identity classifier fails safe instead of throwing on malformed JSON; the
+`getStepResult`-across-resume assumption is now guarded (it holds).
+
+Still open (tracked, not yet fixed — fold into a Phase A follow-up or Phase B):
+- **value_key from LLM prose** — `rec_key` for multi-instance intents derives
+  from the model's free-text `after`/`title`, so rewording the same suggestion
+  can mint a new key (weakens "never repeats" + the contradiction guard). Real
+  fix: add `intent` + `valueKey` to the `AuditDraft` recommendation schema and
+  have the model emit them (also fixes most of applied-detection below).
+- **applied-detection coverage** — `listingField()` only maps title/subtitle/
+  description, so keywordField/icon/screenshots/reviews recs never flip to
+  `applied`.
+- **stale divergence in prompt** — a human-confirmed cross-domain identity still
+  triggers the "do not rewrite positioning" warning in `buildPriorContext`
+  (gate on `escalate`/`source`, not `divergence`).
+- **reachability/error labelling** — the identify-step LLM call has no
+  `reachable()` guard, so a down model surfaces as a 422 "bad URL".
+- **efficiency** — `buildAuditPrompt` built twice per audit; `persistAudit`
+  re-reads snapshot/ledger already fetched in the score step.
 
 ## Known gaps / deviations (conscious, not bugs)
 

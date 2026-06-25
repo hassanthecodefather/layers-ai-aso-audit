@@ -5,6 +5,7 @@ import {
   resolveAppIdentity,
   toIdentityVersion,
   buildFactSheet,
+  parseClassificationText,
 } from './resolve-identity';
 import { extractIdentitySignals } from '../../identity/signals';
 import type { IdentityClassifier } from './resolve-identity';
@@ -49,5 +50,34 @@ describe('resolveAppIdentity + toIdentityVersion (ID-lite)', () => {
     expect(sheet).toContain('Bundle id org segment: rivian');
     expect(sheet).toContain('Marketing domain: rivian');
     expect(sheet).toContain('Declared store category: Travel');
+  });
+});
+
+describe('parseClassificationText (fails safe, never throws)', () => {
+  it('parses a clean JSON classification', () => {
+    const out = parseClassificationText('{"functionCategory":"Music streaming","functionNiche":"music","functionTerms":["song"]}');
+    expect(out.functionCategory).toBe('Music streaming');
+    expect(out.functionTerms).toEqual(['song']);
+  });
+
+  it('parses JSON embedded in prose / code fences', () => {
+    const out = parseClassificationText('Here you go:\n```json\n{"functionCategory":"X","functionNiche":null,"functionTerms":[]}\n```');
+    expect(out.functionCategory).toBe('X');
+  });
+
+  it('returns Unknown (does not throw) on a brace-balanced but invalid JSON body', () => {
+    // Trailing comma + single quotes — exactly what extractJsonObject brace-matches
+    // but JSON.parse rejects. The pre-fix code threw here, crashing the identify step.
+    const out = parseClassificationText("{'functionCategory': 'X', 'functionTerms': [],}");
+    expect(out.functionCategory).toBe('Unknown');
+    expect(out.functionTerms).toEqual([]);
+  });
+
+  it('returns Unknown when there is no JSON object at all', () => {
+    expect(parseClassificationText('the model refused to answer').functionCategory).toBe('Unknown');
+  });
+
+  it('returns Unknown when JSON is valid but the wrong shape', () => {
+    expect(parseClassificationText('{"foo":1}').functionCategory).toBe('Unknown');
   });
 });

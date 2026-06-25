@@ -256,6 +256,14 @@ export async function persistAudit(
     if (conflict) {
       contradictions.push({ candidate: rec.title, conflictsWith: conflict.title });
     }
+    // Re-raising the *exact* rec a human already dismissed must NOT silently
+    // re-open it (the upsert's `status = excluded.status` would flip
+    // dismissed→proposed). Honour the dismissal: record that it recurred this
+    // audit (against the live dismissed row) and leave its status untouched.
+    if (conflict && conflict.recKey === rec.recKey && conflict.status === 'dismissed') {
+      await storage.recordOccurrence(conflict.id, snapshotId, true);
+      continue;
+    }
     await storage.upsertRecommendation(rec);
     await storage.recordOccurrence(rec.id, snapshotId, false);
   }
