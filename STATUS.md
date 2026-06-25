@@ -35,11 +35,13 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
 
 ## Tests (the source of truth)
 
-- **96 hermetic tests pass** (`npm test`). Covers: StorageClient conformance,
+- **97 hermetic tests pass** (`npm test`). Covers: StorageClient conformance,
   ID-lite §F gates, P1 §F gates (dedup, contradiction, zero-LLM replay),
   human-confirm reuse/re-ask, memory loop end-to-end, classifier fail-safe
   parsing, dismissal-is-honoured, **reworded re-raise collapses to one row**,
-  and the Mastra `getStepResult`-across-resume contract A5 relies on.
+  **reworded re-raise of a dismissed rec is still caught** (referent stability
+  makes dismissals sticky across rewordings), and the Mastra
+  `getStepResult`-across-resume contract A5 relies on.
 - **Live smokes (gated on a Gemini key, skipped by default):**
   - `scoring/audit-smoke.test.ts` — full audit + identity + persist on real Gemini.
   - `mastra/workflow-smoke.test.ts` — real workflow suspend → resume(decision) → report.

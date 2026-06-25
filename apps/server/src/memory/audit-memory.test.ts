@@ -194,6 +194,38 @@ describe('persistAudit — the memory loop', () => {
       h.close();
     }
   });
+
+  it('a reworded re-raise of a dismissed rec is still caught — referent stability makes the dismissal sticky', async () => {
+    const h = await fresh();
+    try {
+      const l = listingWith({ subtitle: null });
+      // Audit 1: raise "add tracker", operator dismisses it.
+      await persistAudit(h.client, persistArgs(l, report([rec({})]), '2026-06-01T00:00:00.000Z'));
+      let ledger = unwrap(await h.client.ledger('1', 'us'));
+      await h.client.upsertRecommendation({ ...ledger[0]!, status: 'dismissed' });
+
+      // Audit 2: model rewords the same suggestion (same referent: keyword "tracker")
+      // but uses completely different title and after-text prose.
+      // Pre-fix: different prose → different rec_key → dismissal bypassed, re-opened.
+      // Post-fix: rec_key = hash(dim, intent, targetField, "tracker") → same key
+      //           → contradiction guard fires → dismissal honoured.
+      const reworded = rec({
+        title: 'Include the word tracker in your subtitle copy',
+        after: 'Tracker - Budget Planner',
+      });
+      const memo = await persistAudit(
+        h.client,
+        persistArgs(l, report([reworded]), '2026-06-20T00:00:00.000Z'),
+      );
+
+      ledger = unwrap(await h.client.ledger('1', 'us'));
+      expect(ledger).toHaveLength(1);
+      expect(ledger[0]!.status).toBe('dismissed'); // ← dismissal sticky across rewordings
+      expect(memo.contradictions.length).toBeGreaterThan(0); // ← surfaced, not silently dropped
+    } finally {
+      h.close();
+    }
+  });
 });
 
 describe('detectApplied + changeDiff units', () => {
