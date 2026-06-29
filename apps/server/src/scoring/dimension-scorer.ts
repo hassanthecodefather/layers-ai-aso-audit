@@ -11,7 +11,7 @@ import type { VisionResult } from '../vision/types';
  * predate the change. Without this, old snapshots would serve stale scores
  * for dimensions whose scoring formula changed between Phase A and B.
  */
-export const SCORER_VERSION = 'phase-b-v1';
+export const SCORER_VERSION = 'phase-b-v2';
 
 /**
  * Returns the subset of listing/signal fields that each dimension depends on.

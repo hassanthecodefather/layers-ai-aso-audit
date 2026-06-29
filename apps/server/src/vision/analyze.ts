@@ -47,13 +47,20 @@ export async function runVision(
     competitorFirstFrameUrls,
   });
 
+  // Gate 'observed' on vision actually producing critiques. If the JSON parse
+  // failed (backward-scan returned {}, critiques empty), the score is a
+  // placeholder — label it 'inferred' so the prompt doesn't suppress the
+  // limitation and doesn't claim evidence that doesn't exist.
+  const visionSucceeded = screenshotRaw.critiques.length > 0;
+  const screenshotConfidence: Confidence = visionSucceeded && client.isLive ? 'observed' : 'inferred';
+
   // Map raw critiques to typed critiques with confidence labels
   const critiques = screenshotRaw.critiques.map((c, idx) => ({
     url: screenshotUrls[idx] ?? '',
     slot: c.slot,
-    valuePropClarity: { value: c.valuePropClarity, confidence: resultConfidence },
-    readability: { value: c.readability, confidence: resultConfidence },
-    cohesion: { value: c.cohesion, confidence: resultConfidence },
+    valuePropClarity: { value: c.valuePropClarity, confidence: screenshotConfidence },
+    readability: { value: c.readability, confidence: screenshotConfidence },
+    cohesion: { value: c.cohesion, confidence: screenshotConfidence },
   }));
 
   // Apply slot-utilization cap: Gemini only sees the screenshots that exist, so
@@ -67,10 +74,10 @@ export async function runVision(
     critiques,
     competitorComparison: {
       value: screenshotRaw.competitorComparison,
-      confidence: resultConfidence,
+      confidence: screenshotConfidence,
     },
     coarseScore,
-    confidence: resultConfidence,
+    confidence: screenshotConfidence,
     modelId: MODEL_ID,
   };
 

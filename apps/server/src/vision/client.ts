@@ -237,17 +237,22 @@ Analyze the app icon for ASO quality. Return JSON:
 
   /** Fetch a remote image and return it as a base64 data URL. */
   async #fetchAsDataUrl(url: string): Promise<string> {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ASO-Audit/1.0)' },
-    });
-    if (!res.ok) {
-      console.warn(`[vision] failed to fetch image ${url} (${res.status}); Gemini will receive original URL`);
+    try {
+      const res = await fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ASO-Audit/1.0)' },
+      });
+      if (!res.ok) {
+        console.warn(`[vision] failed to fetch image ${url} (${res.status}); Gemini will receive original URL`);
+        return url;
+      }
+      const contentType = res.headers.get('content-type') ?? 'image/jpeg';
+      const buffer = await res.arrayBuffer();
+      const base64 = Buffer.from(buffer).toString('base64');
+      return `data:${contentType};base64,${base64}`;
+    } catch (err) {
+      console.warn(`[vision] network error fetching image ${url}: ${String(err)}; Gemini will receive original URL`);
       return url;
     }
-    const contentType = res.headers.get('content-type') ?? 'image/jpeg';
-    const buffer = await res.arrayBuffer();
-    const base64 = Buffer.from(buffer).toString('base64');
-    return `data:${contentType};base64,${base64}`;
   }
 
   async #call(body: unknown): Promise<string> {

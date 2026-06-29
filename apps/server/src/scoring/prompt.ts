@@ -149,9 +149,12 @@ function scoringConstraints(signals: ListingSignals, visionResult?: VisionResult
 
   // screenshots: vision-assessed score when vision ran; slot-count fallback otherwise.
   const sc = signals.screenshots.slotsUsedOf10;
-  if (visionResult) {
+  if (visionResult && visionResult.screenshotSetVerdict.critiques.length > 0) {
     const vs = visionResult.screenshotSetVerdict.coarseScore;
     lines.push(`• screenshots  → ${vs}  (vision-assessed; ${sc} of 10 slots used — use ALL per-slot critiques from the Vision analysis section as separate evidence items, one per slot)`);
+  } else if (visionResult) {
+    // Vision ran but JSON parse failed — no real critique data; fall back to slot count.
+    lines.push(`• screenshots  → ${sc}  (vision parse failed; slotsUsedOf10 = ${sc} of 10 available)`);
   } else {
     lines.push(`• screenshots  → ${sc}  (slotsUsedOf10 = ${sc} of 10 available)`);
   }
@@ -220,9 +223,14 @@ function scoringConstraints(signals: ListingSignals, visionResult?: VisionResult
 function visionFacts(v: VisionResult): string {
   const lines: string[] = [
     '## Vision analysis — Gemini examined your screenshots and icon',
-    'IMPORTANT: Do NOT list "Screenshot Content" or "Icon Visuals" as limitations — Gemini has already assessed these. Use the analysis below as evidence in your findings.',
   ];
   const sv = v.screenshotSetVerdict;
+
+  // Only suppress the limitation when Gemini actually produced critiques.
+  // If parse failed (critiques empty), the limitation is real and must surface.
+  if (sv.critiques.length > 0) {
+    lines.push('IMPORTANT: Do NOT list "Screenshot Content" or "Icon Visuals" as limitations — Gemini has already assessed these. Use the analysis below as evidence in your findings.');
+  }
 
   lines.push(`Screenshots overall: ${sv.coarseScore}/10 (${sv.confidence})`);
 
