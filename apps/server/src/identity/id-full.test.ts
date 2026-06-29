@@ -87,6 +87,26 @@ const litePriorNormal: ResolvedIdentity = {
   source: 'resolved',
 };
 
+/** A resolved ID-lite identity escalated with cross_domain divergence. */
+const litePriorEscalatedCrossDomain: ResolvedIdentity = {
+  category: 'Electric vehicle companion',
+  categoryBand: 'high',
+  niche: null,
+  nicheBand: 'low',
+  divergence: 'cross_domain',
+  escalate: true,  // escalated due to structural divergence
+  tally: [
+    {
+      family: 'developer',
+      value: 'Rivian Automotive',
+      sourceTier: 'observed_on_store',
+      agrees: true,
+      fetchedAt: '2024-01-01T00:00:00.000Z',
+    },
+  ],
+  source: 'resolved',
+};
+
 /** Canned creative-match result: everything checks out. */
 const creativeMatchOk: CreativeMatchResult = {
   creativeMatchesFunction: true,
@@ -162,6 +182,7 @@ describe('runIdFull', () => {
     const result = await runIdFull(stubListing, litePriorNormal, client, 1, now);
 
     expect(result.visionEscalation).toBe(true);
+    expect(result.identityVersion.escalate).toBe(true);
   });
 
   it('P2-4: creative match on previously-escalated identity → de-escalation (escalate=false)', async () => {
@@ -174,5 +195,17 @@ describe('runIdFull', () => {
     expect(result.identityVersion.escalate).toBe(false);
     // nicheBand should be updated to vision's reading
     expect(result.identityVersion.nicheBand).toBe('high');
+  });
+
+  it('cross_domain divergence prevents de-escalation even when creative matches', async () => {
+    // litePrior: escalate=true, divergence='cross_domain'
+    // stub returns: creativeMatchesFunction=true
+    // expected: identityVersion.escalate === true (guard blocked de-escalation)
+    //           visionEscalation === false (creative matched, no new escalation)
+    const client = new StubIdentityVisionClient(creativeMatchOk);
+    const result = await runIdFull(stubListing, litePriorEscalatedCrossDomain, client, 1, now);
+
+    expect(result.identityVersion.escalate).toBe(true);
+    expect(result.visionEscalation).toBe(false);
   });
 });
