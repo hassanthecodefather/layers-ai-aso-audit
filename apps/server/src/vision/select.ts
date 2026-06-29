@@ -14,6 +14,7 @@
 import type { AppListing } from '../domain/listing';
 import type { ListingSignals } from '../scoring/signals';
 import type { ListingSnapshot } from '../domain/snapshot';
+import { VisionResultSchema } from './types';
 import type { VisionResult } from './types';
 
 /**
@@ -30,9 +31,13 @@ export function selectVisionResult(
 ): VisionResult | null {
   if (!priorSnapshot) return null;
 
-  // Check if prior snapshot has a vision result stored
-  const priorVisionResult = priorSnapshot.visionResult as VisionResult | undefined | null;
-  if (!priorVisionResult) return null;
+  // Validate the stored vision result against the schema — catches corrupt or
+  // schema-drifted rows (z.unknown().optional() in snapshot schema means any
+  // JSON can be stored; we validate on the way out, consistent with how recs
+  // and identity rows are handled in libsql-storage-client.ts).
+  const parsed = VisionResultSchema.safeParse(priorSnapshot.visionResult);
+  if (!parsed.success) return null;
+  const priorVisionResult: VisionResult = parsed.data as VisionResult;
 
   const prior = priorSnapshot.listing;
 

@@ -246,10 +246,13 @@ export class LibSqlStorageClient implements StorageClient {
     appId: string,
     country: string,
   ): Promise<Result<IdentityVersion | null>> {
+    // Prefer stage='full' over stage='lite' — a full row written by B2 should
+    // remain the head across subsequent re-audits that only append lite rows.
+    // If two full rows exist the most recent wins; same for two lite rows.
     const r = await this.#run(
       `SELECT * FROM aso_identity_versions
         WHERE app_id = ? AND country = ?
-        ORDER BY version DESC LIMIT 1`,
+        ORDER BY CASE WHEN stage = 'full' THEN 0 ELSE 1 END, version DESC LIMIT 1`,
       [appId, country],
     );
     if (!r.ok) return err(r.error);

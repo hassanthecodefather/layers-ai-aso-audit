@@ -184,9 +184,12 @@ export class NoOpIdentityVisionClient implements IdentityVisionClient {
     _firstScreenshotUrl: string | null,
     _functionCategory: string,
   ): Promise<CreativeMatchResult> {
+    // Return conservative values: creativeMatchesFunction=false prevents spurious
+    // de-escalation of a real "ask a human" flag when no API key is configured.
+    // confidence='inferred' because no pixels were examined.
     return {
-      creativeMatchesFunction: true,
-      confidence: 'observed',
+      creativeMatchesFunction: false,
+      confidence: 'inferred',
       resolvedNiche: null,
       nicheBand: 'medium',
       audience: { description: 'General users', segments: [] },

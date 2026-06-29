@@ -3,11 +3,12 @@
  *
  * Runs screenshot analysis + icon analysis via the VisionClient, then
  * assembles the typed VisionResult with correct confidence labels:
- *  - screenshotSetVerdict.confidence = 'observed' (vision ran)
- *  - iconVerdict.pHashDistance.confidence = 'observed' (computed from pixels)
- *  - iconVerdict.confusable.confidence = 'inferred' (vision judgment)
+ *  - screenshotSetVerdict.confidence = 'observed' (live client) | 'inferred' (no-op)
+ *  - iconVerdict.pHashDistance.confidence = 'observed' (live + real comparisons) | 'inferred'
+ *  - iconVerdict.confusable.confidence = 'inferred' (always — vision judgment)
  */
 
+import type { Confidence } from '../domain/audit';
 import type { AppListing } from '../domain/listing';
 import type { VisionClient } from './client';
 import type { VisionResult, ScreenshotSetVerdict, IconVerdict } from './types';
@@ -28,6 +29,9 @@ export async function runVision(
   client: VisionClient,
   imageFetcher: ImageFetcher = defaultImageFetcher,
 ): Promise<VisionResult> {
+  // 'observed' only when a live API client ran; 'inferred' for no-op fallback.
+  const resultConfidence: Confidence = client.isLive ? 'observed' : 'inferred';
+
   // Take up to 10 iPhone screenshot URLs
   const screenshotUrls = listing.screenshotUrls.slice(0, 10);
 
@@ -47,19 +51,19 @@ export async function runVision(
   const critiques = screenshotRaw.critiques.map((c, idx) => ({
     url: screenshotUrls[idx] ?? '',
     slot: c.slot,
-    valuePropClarity: { value: c.valuePropClarity, confidence: 'observed' as const },
-    readability: { value: c.readability, confidence: 'observed' as const },
-    cohesion: { value: c.cohesion, confidence: 'observed' as const },
+    valuePropClarity: { value: c.valuePropClarity, confidence: resultConfidence },
+    readability: { value: c.readability, confidence: resultConfidence },
+    cohesion: { value: c.cohesion, confidence: resultConfidence },
   }));
 
   const screenshotSetVerdict: ScreenshotSetVerdict = {
     critiques,
     competitorComparison: {
       value: screenshotRaw.competitorComparison,
-      confidence: 'observed', // Vision ran = observed
+      confidence: resultConfidence,
     },
     coarseScore: screenshotRaw.suggestedCoarseScore, // Already 0|5|10 from client
-    confidence: 'observed', // Always 'observed' once vision ran
+    confidence: resultConfidence,
     modelId: MODEL_ID,
   };
 
@@ -103,17 +107,17 @@ export async function runVision(
     });
 
     iconVerdict = {
-      // pHashDistance: 'observed' when real competitor icons were compared;
-      // 'inferred' when competitorIconUrls is empty and we return the placeholder 64.
+      // pHashDistance: 'observed' only when real competitor icons were compared
+      // AND a live client ran; 'inferred' when URLs are empty (placeholder 64)
+      // or when the no-op client ran.
       pHashDistance: {
         value: minPHashDistance,
-        confidence: competitorIconUrls.length > 0 ? 'observed' : 'inferred',
+        confidence: competitorIconUrls.length > 0 && client.isLive ? 'observed' : 'inferred',
       },
-      // confusable is a vision model judgment → 'inferred'
+      // confusable/categoryCohesion are vision model judgments → always 'inferred'
       confusable: { value: iconRaw.confusable, confidence: 'inferred' },
-      // categoryCohesion is also a vision judgment → 'inferred'
       categoryCohesion: { value: iconRaw.categoryCohesion, confidence: 'inferred' },
-      confidence: 'observed', // Always 'observed' once vision ran
+      confidence: resultConfidence,
       modelId: MODEL_ID,
     };
   }

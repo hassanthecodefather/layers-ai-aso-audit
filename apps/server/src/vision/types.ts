@@ -1,3 +1,5 @@
+import { z } from 'zod';
+import { ConfidenceSchema } from '../domain/audit';
 import type { Confidence } from '../domain/audit';
 
 export interface Labelled<T> {
@@ -36,3 +38,26 @@ export interface VisionResult {
   screenshotSetVerdict: ScreenshotSetVerdict;
   iconVerdict: IconVerdict | null; // null if no icon URL
 }
+
+// Runtime schema for validating stored VisionResult JSON (select.ts, libsql reads).
+// Uses passthrough() on sub-objects so new fields added in future phases don't
+// cause validation failures on rows written before the schema was extended.
+const LabelledStringSchema = z.object({ value: z.string(), confidence: ConfidenceSchema }).passthrough();
+const LabelledNumberSchema = z.object({ value: z.number(), confidence: ConfidenceSchema }).passthrough();
+
+export const VisionResultSchema = z.object({
+  screenshotSetVerdict: z.object({
+    critiques: z.array(z.unknown()),
+    competitorComparison: LabelledStringSchema,
+    coarseScore: z.number(),
+    confidence: ConfidenceSchema,
+    modelId: z.string(),
+  }).passthrough(),
+  iconVerdict: z.object({
+    pHashDistance: LabelledNumberSchema,
+    confusable: LabelledStringSchema,
+    categoryCohesion: LabelledStringSchema,
+    confidence: ConfidenceSchema,
+    modelId: z.string(),
+  }).passthrough().nullable(),
+});

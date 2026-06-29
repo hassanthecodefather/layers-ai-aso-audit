@@ -43,6 +43,8 @@ export interface ScreenshotSetRawResult {
 }
 
 export interface VisionClient {
+  /** True for real API clients (Gemini); false for stubs/no-op. Used in analyze.ts to label confidence correctly. */
+  readonly isLive: boolean;
   analyzeScreenshots(input: ScreenshotAnalysisInput): Promise<ScreenshotRawResult>;
   analyzeIcon(input: IconAnalysisInput): Promise<IconRawResult>;
   analyzeScreenshotSet(urls: string[]): Promise<ScreenshotSetRawResult>;
@@ -57,6 +59,7 @@ export interface VisionClient {
  * Response format: JSON object
  */
 export class GeminiVisionClient implements VisionClient {
+  readonly isLive = true;
   readonly #apiKey: string;
   readonly #modelId: string;
   readonly #endpoint = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
@@ -265,6 +268,7 @@ Analyze the app icon for ASO quality. Return JSON:
  * Stub vision client for tests. Returns canned results and tracks callCount.
  */
 export class StubVisionClient implements VisionClient {
+  readonly isLive = true;
   callCount = 0;
   readonly #screenshots: ScreenshotRawResult;
   readonly #icon: IconRawResult;
@@ -308,6 +312,7 @@ export class StubVisionClient implements VisionClient {
  * Returns minimal results that keep all existing tests passing.
  */
 export class NoOpVisionClient implements VisionClient {
+  readonly isLive = false;
   async analyzeScreenshots(_input: ScreenshotAnalysisInput): Promise<ScreenshotRawResult> {
     return {
       critiques: [],
