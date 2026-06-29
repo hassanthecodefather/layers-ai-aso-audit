@@ -151,7 +151,7 @@ function scoringConstraints(signals: ListingSignals, visionResult?: VisionResult
   const sc = signals.screenshots.slotsUsedOf10;
   if (visionResult) {
     const vs = visionResult.screenshotSetVerdict.coarseScore;
-    lines.push(`• screenshots  → ${vs}  (vision-assessed; ${sc} of 10 slots used — reference the Vision analysis section for evidence)`);
+    lines.push(`• screenshots  → ${vs}  (vision-assessed; ${sc} of 10 slots used — use ALL per-slot critiques from the Vision analysis section as separate evidence items, one per slot)`);
   } else {
     lines.push(`• screenshots  → ${sc}  (slotsUsedOf10 = ${sc} of 10 available)`);
   }
