@@ -242,6 +242,16 @@ export class LibSqlStorageClient implements StorageClient {
     return r.ok ? ok(undefined) : err(r.error);
   }
 
+  async maxIdentityVersion(appId: string, country: string): Promise<Result<number>> {
+    const r = await this.#run(
+      `SELECT COALESCE(MAX(version), -1) AS max_version
+         FROM aso_identity_versions WHERE app_id = ? AND country = ?`,
+      [appId, country],
+    );
+    if (!r.ok) return err(r.error);
+    return ok(Number(r.value[0]?.max_version ?? -1));
+  }
+
   async latestIdentity(
     appId: string,
     country: string,

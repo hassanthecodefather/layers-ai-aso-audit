@@ -293,6 +293,35 @@ export function storageClientConformance(
       }
     });
 
+    it('latestIdentity prefers the full row even when a newer lite row exists', async () => {
+      const h = await makeClient();
+      try {
+        unwrap(await h.client.appendIdentity(identity({ id: 'v0', version: 0 })));
+        unwrap(await h.client.appendIdentity(identity({ id: 'v1', version: 1, stage: 'full', category: 'Navigation' })));
+        unwrap(await h.client.appendIdentity(identity({ id: 'v2', version: 2, stage: 'lite', category: 'Updated' })));
+        const got = unwrap(await h.client.latestIdentity('app1', 'us'));
+        // v2 is newest by version but full row (v1) should win.
+        expect(got?.stage).toBe('full');
+        expect(got?.version).toBe(1);
+        expect(got?.category).toBe('Navigation');
+      } finally {
+        h.close();
+      }
+    });
+
+    it('maxIdentityVersion returns the true MAX regardless of stage', async () => {
+      const h = await makeClient();
+      try {
+        expect(unwrap(await h.client.maxIdentityVersion('app1', 'us'))).toBe(-1); // empty
+        unwrap(await h.client.appendIdentity(identity({ id: 'v0', version: 0 })));
+        unwrap(await h.client.appendIdentity(identity({ id: 'v1', version: 1, stage: 'full' })));
+        unwrap(await h.client.appendIdentity(identity({ id: 'v2', version: 2, stage: 'lite' })));
+        expect(unwrap(await h.client.maxIdentityVersion('app1', 'us'))).toBe(2);
+      } finally {
+        h.close();
+      }
+    });
+
     it('latestIdentity returns null when none exists', async () => {
       const h = await makeClient();
       try {

@@ -225,8 +225,11 @@ export async function persistAudit(
     priorLedger = priorLedgerR.ok ? priorLedgerR.value : [];
   }
 
-  const priorIdentityR = await storage.latestIdentity(appId, country);
-  const priorVersion = priorIdentityR.ok && priorIdentityR.value ? priorIdentityR.value.version : -1;
+  // Use the true MAX version (not latestIdentity which prefers full rows) to
+  // ensure monotonic version numbers even when the full-preferred read returns
+  // an older full row as the semantic head.
+  const maxVersionR = await storage.maxIdentityVersion(appId, country);
+  const priorVersion = maxVersionR.ok ? maxVersionR.value : -1;
 
   // 1. Write the immutable snapshot first — evidence chips freeze to its id.
   const snapshotId = newId('snap');

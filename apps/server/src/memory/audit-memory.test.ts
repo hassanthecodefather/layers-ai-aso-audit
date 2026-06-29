@@ -6,6 +6,7 @@ import { loadFixtureListing } from '../identity/__fixtures__/load';
 import type { AppListing } from '../domain/listing';
 import type { AuditReport, Recommendation as ReportRec } from '../domain/audit';
 import type { ResolvedIdentity } from '../identity/resolve';
+import type { IdentityVersion } from '../domain/identity';
 
 /**
  * §F P1 end-to-end (no model in the loop): "audit the same app twice — the
@@ -329,5 +330,53 @@ describe('buildPriorContext — escalate gate (Fix 2)', () => {
     };
     const ctx = buildPriorContext({ ...baseInput, identity });
     expect(ctx).not.toMatch(/do not rewrite.*positioning/i);
+  });
+});
+
+describe('identity version monotonicity — Fix 3 regression', () => {
+  // Three consecutive unchanged re-audits must not produce duplicate version
+  // numbers, and latestIdentity must still return the stage='full' row written
+  // by B2 as the semantic head.
+  it('no duplicate versions after three re-audits; latestIdentity stays full', async () => {
+    const h = await fresh();
+    try {
+      const l = listingWith({});
+
+      // Audit 1: persistAudit writes lite v0.
+      const memo1 = await persistAudit(h.client, persistArgs(l, report([]), '2026-06-01T00:00:00.000Z'));
+      expect(memo1.identityVersion).toBe(0);
+
+      // B2 simulation: append full v1 (as the workflow does when visionWasFresh=true).
+      const fullRow: IdentityVersion = {
+        id: 'full-v1', appId: '1', country: 'us',
+        version: memo1.identityVersion + 1, stage: 'full',
+        category: 'Productivity to-do list', categoryBand: 'high',
+        niche: 'to-do list', nicheBand: 'high',
+        audience: { description: 'Task managers', segments: ['professionals'] },
+        tally: [], divergence: 'none', escalate: false, source: 'resolved',
+        createdAt: '2026-06-01T00:01:00.000Z',
+      };
+      unwrap(await h.client.appendIdentity(fullRow));
+
+      // Audit 2 (images unchanged, visionWasFresh=false → B2 skipped).
+      const memo2 = await persistAudit(h.client, persistArgs(l, report([]), '2026-06-15T00:00:00.000Z'));
+      expect(memo2.identityVersion).toBe(2); // must advance past full v1
+
+      // Audit 3 (unchanged again).
+      const memo3 = await persistAudit(h.client, persistArgs(l, report([]), '2026-06-20T00:00:00.000Z'));
+      expect(memo3.identityVersion).toBe(3); // must advance past lite v2
+
+      // No duplicates: all four written versions are distinct.
+      const versions = [0, 1, 2, 3];
+      expect(new Set(versions).size).toBe(versions.length);
+
+      // latestIdentity returns the full row (v1), not the most-recent lite (v3).
+      const latest = unwrap(await h.client.latestIdentity('1', 'us'));
+      expect(latest?.stage).toBe('full');
+      expect(latest?.version).toBe(1);
+      expect(latest?.audience).toMatchObject({ description: 'Task managers' });
+    } finally {
+      h.close();
+    }
   });
 });
