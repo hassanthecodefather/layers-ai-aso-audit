@@ -109,7 +109,6 @@ Scoring: 0=poor, 5=acceptable, 10=excellent. Be conservative; reserve 10 for gen
     };
 
     const raw = await this.#call(body);
-    console.log(`[vision:debug] analyzeScreenshots raw (${raw.length} chars)`);
     const parsed = this.#parseJson(raw) as {
       critiques?: Array<{ slot: number; valuePropClarity: string; readability: string; cohesion: string }>;
       competitorComparison?: string;
