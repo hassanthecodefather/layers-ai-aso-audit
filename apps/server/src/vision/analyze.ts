@@ -32,10 +32,10 @@ export async function runVision(
   const screenshotUrls = listing.screenshotUrls.slice(0, 10);
 
   // Take up to 3 competitor first-frame URLs for benchmarking
-  const competitorFirstFrameUrls = listing.competitors
-    .slice(0, 3)
-    .map((c) => c.appId) // In a real scenario, we'd fetch competitor screenshot URLs
-    .filter(Boolean);
+  // Competitor screenshot URLs are not available in AppListing.Competitor — the
+  // schema carries screenshotCount but not the URLs themselves. Pass empty for
+  // now; B3/Phase D can enrich this when a competitor-detail fetch is added.
+  const competitorFirstFrameUrls: string[] = [];
 
   // ── Screenshot analysis ──────────────────────────────────────────────────
   const screenshotRaw = await client.analyzeScreenshots({
@@ -74,11 +74,10 @@ export async function runVision(
     const iconHash = await computeDHash(iconBytes);
 
     // Compute pHash distance against competitors (minimum across competitors)
-    // For simplicity in B1, we compare against the icon URL itself if no competitor icons
-    // In practice, competitor icon URLs would be fetched from their listings
-    const competitorIconUrls = listing.competitors
-      .slice(0, 3)
-      .flatMap((c) => (c.appId ? [`https://example.com/competitor-icon-${c.appId}.png`] : []));
+    // Competitor icon URLs are not available in AppListing.Competitor — the
+    // schema carries appId and name but not icon URLs. Pass empty for now;
+    // B3/Phase D can enrich this when a competitor-detail fetch is added.
+    const competitorIconUrls: string[] = [];
 
     let minPHashDistance = 64; // Maximum Hamming distance if no competitors
 
