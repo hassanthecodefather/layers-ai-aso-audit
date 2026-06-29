@@ -26,5 +26,11 @@ export const ListingSnapshotSchema = z.object({
   /** Hash of the scoring prompt. */
   promptHash: z.string(),
   modelId: z.string(),
+  /**
+   * Vision analysis result from B1 (screenshot + icon quality from Gemini).
+   * Optional for backward compatibility with Phase A snapshots.
+   * Stored as an opaque JSON blob — validated by the vision module on use.
+   */
+  visionResult: z.unknown().optional(),
 });
 export type ListingSnapshot = z.infer<typeof ListingSnapshotSchema>;

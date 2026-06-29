@@ -23,6 +23,7 @@ import {
   IdentityDecisionSchema,
 } from '../../identity/human-confirm';
 import { buildPriorContext, persistAudit } from '../../memory/audit-memory';
+import { getVisionClient, runVision, selectVisionResult } from '../../vision';
 
 /**
  * The ASO audit workflow.
@@ -234,6 +235,16 @@ const scoreStep = createStep({
       .slice(0, 16);
 
     const priorSnap = priorSnapR.ok ? priorSnapR.value : null;
+
+    // ── B1: vision analysis (before draft generation, so vision scores are
+    //    available for assembleReport). getVisionClient() returns a no-op stub
+    //    when no API key is set — existing hermetic tests are unaffected.
+    // selectVisionResult checks if screenshot/icon URLs match the prior snapshot
+    // and returns the cached result if so (zero additional LLM calls).
+    const visionClient = getVisionClient();
+    const visionResult =
+      selectVisionResult(listing, signals, priorSnap) ??
+      (await runVision(listing, visionClient));
     // `rubricVersion` is the scoring fingerprint — rubric weights + SCORER_VERSION
     // (scoring/version.ts) — so a weight retune OR a scorer-code bump changes it and
     // invalidates this whole-snapshot cache even when the listing/identity match.
@@ -294,7 +305,7 @@ const scoreStep = createStep({
         };
       }
 
-      report = assembleReport(toSummary(listing), draft, signals);
+      report = assembleReport(toSummary(listing), draft, signals, visionResult);
       usedModelId = llm.modelId;
     }
 
@@ -309,6 +320,7 @@ const scoreStep = createStep({
       promptHash,
       modelId: usedModelId,
       now,
+      visionResult, // B1: persist vision result for future reuse
     });
 
     // Surface what memory observed, honestly, in the report's limitations.

@@ -39,8 +39,8 @@ export class LibSqlStorageClient implements StorageClient {
     const r = await this.#run(
       `INSERT INTO aso_listing_snapshots
         (id, app_id, country, fetched_at, listing_json, signals_json,
-         report_json, rubric_version, prompt_hash, model_id)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`,
+         report_json, rubric_version, prompt_hash, model_id, vision_result_json)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
       [
         s.id,
         s.appId,
@@ -52,6 +52,7 @@ export class LibSqlStorageClient implements StorageClient {
         s.rubricVersion,
         s.promptHash,
         s.modelId,
+        JSON.stringify(s.visionResult ?? null),
       ],
     );
     return r.ok ? ok(undefined) : err(r.error);
@@ -74,6 +75,11 @@ export class LibSqlStorageClient implements StorageClient {
   }
 
   #parseSnapshot(row: Row): Result<ListingSnapshot> {
+    // vision_result_json may be absent in older rows (before Phase B1 migration)
+    const visionResultRaw = row.vision_result_json != null
+      ? JSON.parse(String(row.vision_result_json))
+      : undefined;
+
     const parsed = ListingSnapshotSchema.safeParse({
       id: row.id,
       appId: row.app_id,
@@ -85,6 +91,7 @@ export class LibSqlStorageClient implements StorageClient {
       rubricVersion: row.rubric_version,
       promptHash: row.prompt_hash,
       modelId: row.model_id,
+      visionResult: visionResultRaw ?? undefined,
     });
     return parsed.success
       ? ok(parsed.data)

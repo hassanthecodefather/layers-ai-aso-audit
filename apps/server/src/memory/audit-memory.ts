@@ -167,6 +167,8 @@ export interface PersistInput {
   promptHash: string;
   modelId: string;
   now: string;
+  /** B1: vision result to persist with the snapshot. Optional for backward compat. */
+  visionResult?: unknown;
 }
 
 /** Result of persisting an audit — surfaces what memory did, for the report. */
@@ -211,6 +213,7 @@ export async function persistAudit(
     rubricVersion: input.rubricVersion,
     promptHash: input.promptHash,
     modelId: input.modelId,
+    visionResult: input.visionResult,
   };
   await storage.putSnapshot(snapshot);
 

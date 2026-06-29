@@ -12,6 +12,7 @@ import { rubricFor } from './rubric';
 import type { ListingSignals } from './signals';
 import { deriveConfidence, codeScore, coarseOrdinalScore } from './dimension-scorer';
 import { replayOverallScore } from './replay';
+import type { VisionResult } from '../vision/types';
 
 /**
  * Turn the LLM's `AuditDraft` into a finished `AuditReport`.
@@ -38,6 +39,7 @@ export function assembleReport(
   app: AppSummary,
   draft: AuditDraft,
   signals?: ListingSignals,
+  visionResult?: VisionResult,
 ): AuditReport {
   const byId = new Map<DimensionId, DimensionScore>();
   for (const d of draft.dimensions) byId.set(d.id, d);
@@ -59,8 +61,8 @@ export function assembleReport(
   // values — these are deterministic and must not come from the model.
   if (signals) {
     for (const d of raw) {
-      d.confidence = deriveConfidence(d.id, signals);
-      const coded = codeScore(d.id, signals);
+      d.confidence = deriveConfidence(d.id, signals, visionResult);
+      const coded = codeScore(d.id, signals, visionResult);
       if (coded !== null) {
         d.score = coded;
       } else {
