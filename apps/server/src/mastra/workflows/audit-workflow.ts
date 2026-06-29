@@ -226,27 +226,14 @@ const scoreStep = createStep({
     // and reused for hashing / persistence below.
     const signals = computeSignals(listing);
 
-    // ── A6: reuse-not-recompute ──────────────────────────────────────────────
-    // Hash the exact prompt string BEFORE calling the LLM. If the prior
-    // snapshot was produced from the identical prompt (same listing + signals +
-    // identity), calling the model again can only introduce noise — skip it and
-    // return the cached report. This eliminates the 46→30 score swing on
-    // re-audits of unchanged listings and avoids unnecessary Gemini cost.
-    // B4: build the prompt once here so we can pass it to produceAuditDraft,
-    // avoiding a second buildAuditPrompt call inside that function.
-    const builtPrompt = buildAuditPrompt(listing, signals, priorContext);
-    const promptHash = createHash('sha256')
-      .update(builtPrompt)
-      .digest('hex')
-      .slice(0, 16);
-
     const priorSnap = priorSnapR.ok ? priorSnapR.value : null;
 
-    // ── B1: vision analysis (before draft generation, so vision scores are
-    //    available for assembleReport). getVisionClient() returns a no-op stub
-    //    when no API key is set — existing hermetic tests are unaffected.
-    // selectVisionResult checks if screenshot/icon URLs match the prior snapshot
-    // and returns the cached result if so (zero additional LLM calls).
+    // ── B1: vision analysis — runs BEFORE prompt construction so the vision
+    //    facts (per-slot critiques, icon assessment) can be included in the
+    //    prompt and the LLM can cite them in findings and evidence.
+    //    getVisionClient() returns a no-op stub when no API key is set.
+    //    selectVisionResult returns the cached result when screenshot/icon URLs
+    //    are unchanged (zero additional LLM calls).
     const visionClient = getVisionClient();
     const priorVisionResult = selectVisionResult(listing, signals, priorSnap);
     const visionResult = priorVisionResult ?? (await runVision(listing, visionClient));
@@ -255,6 +242,18 @@ const scoreStep = createStep({
     // if images are unchanged, the prior vision-grounded identity and uplift
     // findings remain valid, and re-running would make unnecessary LLM calls.
     const visionWasFresh = priorVisionResult === null;
+
+    // ── A6: reuse-not-recompute ──────────────────────────────────────────────
+    // Hash the exact prompt string BEFORE calling the LLM. Vision is now part
+    // of the prompt so a vision change (new images) correctly invalidates the
+    // cached report. B4: build once and pass to produceAuditDraft to avoid a
+    // second buildAuditPrompt call inside that function.
+    const builtPrompt = buildAuditPrompt(listing, signals, priorContext, visionResult);
+    const promptHash = createHash('sha256')
+      .update(builtPrompt)
+      .digest('hex')
+      .slice(0, 16);
+
     // `rubricVersion` is the scoring fingerprint — rubric weights + SCORER_VERSION
     // (scoring/version.ts) — so a weight retune OR a scorer-code bump changes it and
     // invalidates this whole-snapshot cache even when the listing/identity match.

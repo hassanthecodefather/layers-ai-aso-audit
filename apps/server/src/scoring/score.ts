@@ -5,6 +5,7 @@ import { computeSignals, type ListingSignals } from './signals';
 import { buildAuditPrompt, buildRepairPrompt } from './prompt';
 import { extractJsonObject } from './extract';
 import { normalizeRecommendations } from './candidates';
+import type { VisionResult } from '../vision/types';
 
 /**
  * The structured-output strategy: generate → validate → repair.
@@ -70,9 +71,10 @@ export async function produceAuditDraft(
   listing: AppListing,
   signals: ListingSignals,
   priorContext?: string,
-  prebuiltPrompt?: string,   // B4: pass the prompt built for hashing
+  prebuiltPrompt?: string,     // B4: pass the prompt built for hashing
+  visionResult?: VisionResult, // fallback only — prebuiltPrompt already includes vision
 ): Promise<AuditDraft> {
-  const prompt = prebuiltPrompt ?? buildAuditPrompt(listing, signals, priorContext);
+  const prompt = prebuiltPrompt ?? buildAuditPrompt(listing, signals, priorContext, visionResult);
 
   let attempt = parseDraft(await generate(agent, prompt));
   if (attempt.draft) return normalizeRecommendations(attempt.draft, signals);

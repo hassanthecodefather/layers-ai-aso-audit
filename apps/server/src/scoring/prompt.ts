@@ -1,5 +1,6 @@
 import type { AppListing } from '../domain/listing';
 import type { ListingSignals } from './signals';
+import type { VisionResult } from '../vision/types';
 import { RUBRIC } from './rubric';
 import { codeScore } from './dimension-scorer';
 
@@ -136,7 +137,7 @@ two add_keyword suggestions for the subtitle must have different referent.value 
  * three coarse anchors the code enforces, so quantization never contradicts
  * the narrative.
  */
-function scoringConstraints(signals: ListingSignals): string {
+function scoringConstraints(signals: ListingSignals, visionResult?: VisionResult): string {
   const lines: string[] = [
     '## Scoring constraints — these values are computed in code and override yours',
     '',
@@ -146,9 +147,14 @@ function scoringConstraints(signals: ListingSignals): string {
     '',
   ];
 
-  // screenshots: always slots-based
+  // screenshots: vision-assessed score when vision ran; slot-count fallback otherwise.
   const sc = signals.screenshots.slotsUsedOf10;
-  lines.push(`• screenshots  → ${sc}  (slotsUsedOf10 = ${sc} of 10 available)`);
+  if (visionResult) {
+    const vs = visionResult.screenshotSetVerdict.coarseScore;
+    lines.push(`• screenshots  → ${vs}  (vision-assessed; ${sc} of 10 slots used — reference the Vision analysis section for evidence)`);
+  } else {
+    lines.push(`• screenshots  → ${sc}  (slotsUsedOf10 = ${sc} of 10 available)`);
+  }
 
   // previewVideo: delegate to codeScore — single source of truth
   const pvScore = codeScore('previewVideo', signals);
@@ -207,11 +213,48 @@ function scoringConstraints(signals: ListingSignals): string {
   return lines.join('\n');
 }
 
+/**
+ * Format the vision result into a human-readable section the LLM can cite
+ * as evidence in findings. Called only when vision ran.
+ */
+function visionFacts(v: VisionResult): string {
+  const lines: string[] = ['## Vision analysis — Gemini examined your screenshots and icon'];
+  const sv = v.screenshotSetVerdict;
+
+  lines.push(`Screenshots overall: ${sv.coarseScore}/10 (${sv.confidence})`);
+
+  if (sv.critiques.length > 0) {
+    lines.push('Per-slot critique:');
+    for (const c of sv.critiques) {
+      lines.push(
+        `  Slot ${c.slot}: value-prop clarity — ${c.valuePropClarity.value}; ` +
+          `readability — ${c.readability.value}; cohesion — ${c.cohesion.value}`,
+      );
+    }
+  }
+
+  if (sv.competitorComparison.value) {
+    lines.push(`Competitor comparison: ${sv.competitorComparison.value}`);
+  }
+
+  if (v.iconVerdict) {
+    const iv = v.iconVerdict;
+    lines.push(
+      `Icon: category cohesion — ${iv.categoryCohesion.value}; ` +
+        `confusability — ${iv.confusable.value}; ` +
+        `pHash distance to nearest competitor — ${iv.pHashDistance.value} (${iv.pHashDistance.confidence})`,
+    );
+  }
+
+  return lines.join('\n');
+}
+
 /** The full per-listing audit prompt. */
 export function buildAuditPrompt(
   listing: AppListing,
   signals: ListingSignals,
   priorContext?: string,
+  visionResult?: VisionResult,
 ): string {
   return [
     `Audit this App Store listing: "${listing.name}" by ${listing.developer}.`,
@@ -227,8 +270,9 @@ export function buildAuditPrompt(
     '## Signals fact sheet — AUTHORITATIVE, use these numbers verbatim',
     JSON.stringify(signals, null, 2),
     '',
-    scoringConstraints(signals),
+    scoringConstraints(signals, visionResult),
     '',
+    ...(visionResult ? [visionFacts(visionResult), ''] : []),
     '## Category competitors',
     competitors(listing),
     '',
