@@ -5,7 +5,7 @@ contracts live elsewhere: [`specification.md`](specification.md) is the *what*,
 [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) is the *how-to-build*. This
 file is the *where-we-are* — read it first, trust the tests over the prose.
 
-_Last updated: 2026-06-29 · spec v1.3.1 · **Phase B complete + reviewed**_
+_Last updated: 2026-06-30 · spec v1.3.1 · **Phase C complete**_
 
 Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferred (by design)
 
@@ -16,13 +16,24 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
 | **0** | Groundwork: Gemini-only, migration runner | ✅ | suite green + live audit on Gemini |
 | **A** | ID-lite identity + P1 persistent memory | ✅ | §F ID-lite **and** §F P1 green; reworded re-raise collapses to one row (typed referent); 2nd audit references 1st, marks applied, never repeats. **A6 score determinism complete** (191 tests) |
 | **B** | P2 image analysis + ID-full | ✅ | §F P2 green (vision confidence, zero-LLM reuse, pHash observed, promote-panel non-panoramic-only); ID-full stage=`full` augments identity without mutating ID-lite fields. **209 tests.** |
-| **C** | P3 keyword research (160-char linter) | ⬜ | — |
+| **C** | P3 keyword research (160-char linter) | ✅ | tsc clean · 262 tests · linter deterministic · stub honest · gap analysis inferred |
 | **D** | P4 deep review analysis | ⬜ | — |
 | **E** | P5 cost & courtesy control | ⬜ | — |
 | **F** | Net-new uplifts (storefront sweep, export, …) | ⬜ | — |
 | **P6+** | Multi-tenant, ASC, write-path, North Star | ⏸ | planned at their tier, not now |
 
-## Phase B — detail (current frontier)
+## Phase C — detail (current frontier)
+
+| Task | Status | Lives in |
+|---|---|---|
+| C1 · 160-char keyword linter + CJK/RTL detection | ✅ | `apps/server/src/keywords/linter.ts`; `keywords/linter.test.ts` (28 tests) |
+| C2 · Keyword candidate generation + gap analysis | ✅ | `apps/server/src/keywords/candidates.ts`; `keywords/asa-client.ts`; `keywords/candidates.test.ts` (15 tests) |
+
+**C1 notes:** Pure deterministic linter — no model call. Tokenises title + subtitle, reports cross-field duplicates, plural redundancies, and wasted words using the same `normalizeValueKey` as the dedup layer. CJK/RTL detection: >20% non-Latin codepoints in title → `scriptSupported: false`, all mechanics suppressed. Budget: title(30) + subtitle(30) + keyword-field(100) = 160 chars. Wired into `signals.ts` as `keywordLinter: LinterResult`; injected into prompt via `keywordLinterFacts()` in `prompt.ts`.
+
+**C2 notes:** `generateCandidates()` is a pure async function — no model call. Extracts tokens from description and competitor names using the same plural-normalisation as the linter. Gap analysis: `yours_only` / `theirs_only` / `shared` vs competitor titles (all `inferred`). ASA volume delegates to `AsaClient` seam; `StubAsaClient` returns `{ available: false, label: 'popularity unavailable' }` — never fabricates zeros. Wired into `audit-workflow.ts`; `formatCandidatesForPrompt()` injects gap section into the audit prompt.
+
+## Phase B — detail
 
 | Task | Status | Lives in |
 |---|---|---|
@@ -58,7 +69,7 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
 
 ## Tests (the source of truth)
 
-- **209 hermetic tests pass** (`npm test`). Covers (Phase A): StorageClient conformance,
+- **262 hermetic tests pass** (`npm test`). Covers (Phase A): StorageClient conformance,
   ID-lite §F gates, P1 §F gates (dedup, contradiction, zero-LLM replay),
   human-confirm reuse/re-ask, memory loop end-to-end, classifier fail-safe
   parsing, dismissal-is-honoured, **reworded re-raise collapses to one row**,
@@ -71,6 +82,11 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
   non-panoramic-only, duplicate flag, pure `computeDeviceMatrix`, PPO exceeded;
   B4 carry-over fixes — `add_preview_video` applied detection, `buildPriorContext`
   escalate-gate (3 cases), efficiency changes.
+  **Phase C additions:** keyword linter (28 tests) — script detection, budget reporting,
+  determinism, wasted words, cross-field duplicates, plural redundancy, reclaimableChars;
+  keyword candidates + gap analysis (15 tests) — stub path honest "popularity unavailable",
+  dedup via same `normalizeValueKey` as linter, gap categories `yours_only`/`theirs_only`/`shared`,
+  all gap rows `confidence: 'inferred'`, `formatCandidatesForPrompt` coverage.
 - **Live smokes (gated on a Gemini key, skipped by default):**
   - `scoring/audit-smoke.test.ts` — full audit + identity + persist on real Gemini.
   - `mastra/workflow-smoke.test.ts` — real workflow suspend → resume(decision) → report.
@@ -114,8 +130,7 @@ Phase A carry-overs: **all closed in B4** (applied-detection extended, escalate 
 
 ## Next up
 
-- **Phase B is complete (B0–B4 ✅, 209 tests).** Phase C next: the 160-char keyword linter (pure, no key needed) + ASA popularity client stub.
-- **Phase C (P3 keyword research)** — start with `keywords/linter.ts` (deterministic, no key), then `keywords/asa-client.ts` stub behind the SourceProvider seam. The linter's TDD gate: same input → byte-identical output, no model call; competitor keyword findings labelled `inferred`.
+- **Phase C is complete (C1–C2 ✅, 262 tests).** Phase D next: P4 deep review analysis.
 - **Competitor icon/screenshot URLs** — deferred to Phase D when a competitor-detail fetch is added. `analyze.ts` currently passes empty arrays; update when URLs are available.
 
 ## Key-arrival follow-ups (drop-in, one file each)

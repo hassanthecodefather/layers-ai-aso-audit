@@ -2,6 +2,8 @@ import type { AppListing } from '../domain/listing';
 import type { ListingSignals } from './signals';
 import type { VisionResult } from '../vision/types';
 import type { LinterResult } from '../keywords/linter';
+import type { CandidateResult } from '../keywords/candidates';
+import { formatCandidatesForPrompt } from '../keywords/candidates';
 import { RUBRIC } from './rubric';
 import { codeScore, visionUsable } from './dimension-scorer';
 
@@ -328,6 +330,7 @@ export function buildAuditPrompt(
   signals: ListingSignals,
   priorContext?: string,
   visionResult?: VisionResult,
+  candidateResult?: CandidateResult,
 ): string {
   return [
     `Audit this App Store listing: "${listing.name}" by ${listing.developer}.`,
@@ -348,6 +351,7 @@ export function buildAuditPrompt(
     ...(visionResult ? [visionFacts(visionResult), ''] : []),
     keywordLinterFacts(signals.keywordLinter),
     '',
+    ...(candidateResult ? [formatCandidatesForPrompt(candidateResult), ''] : []),
     '## Category competitors',
     competitors(listing),
     '',

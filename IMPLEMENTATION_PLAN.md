@@ -151,17 +151,24 @@ The interactive half of the spec's identity-escalation logic (the A2 line above 
 
 ---
 
-## Phase C · P3 Keyword Research
+## Phase C · P3 Keyword Research — 🚧 partial (C1 + C3 built; C2 seam-only)
 
-**C1 · The 160-char linter [pure] — build fully, no key needed.**
-- `keywords/linter.ts` — deterministic title(30)+subtitle(30)+keyword-field(100) mechanics: cross-field token dedupe, plural-redundant flag (same plural rule `value_key` uses), wasted-word catch; per-term reclaimable-character ledger. Keyword field unobservable → findings labelled `inferred`.
-- **TDD first (§F P3):** same input → byte-identical output, **no model call**; competitor keyword findings labelled `inferred`.
+**C1 · The 160-char linter [pure] — ✅ built (no key needed).**
+- ✅ `keywords/linter.ts` — pure, deterministic title(30)+subtitle(30)+keyword-field(100) mechanics: cross-field token dedupe, **plural-redundant flag reusing `normalizeValueKey`** (lockstep with `value_key` — the linter's plural rule and dedup can't disagree), wasted-word catch; per-term reclaimable-character ledger. Wired into `ListingSignals.keywordLinter` and injected into `buildAuditPrompt` via `keywordLinterFacts`. Keyword-field findings always labelled `inferred` (the 100-char field is never observable). Feeds the *prompt* only — no code score — so no `SCORER_VERSION` bump (the new prompt facts change `promptHash`, which correctly invalidates whole-snapshot reuse for pre-C snapshots).
+- ✅ **§F P3 pinned:** pure function (no model call), deterministic output; keyword-field findings labelled `inferred`.
 
-**C2 · ASA popularity client [stub] — no ASA key yet.**
-- `keywords/asa-client.ts` behind the SourceProvider seam; `StubAsaClient` returns `unavailable` (not zero). Candidate generation + gap analysis run on the linter + (stubbed) volume; volume-dependent ranking labelled "popularity unavailable" until the key lands. Real OAuth2 client (scope `searchadsorg`, JWT `client_secret`) is the drop-in follow-up.
+**C3 · Script-aware fallback — ✅ built (inside the linter).** CJK/RTL codepoint check — `> 20%` non-Latin title chars → `scriptSupported: false`, **all mechanics suppressed**, prompt labelled "script not yet supported." Tests cover Latin / CJK / Arabic / Hebrew.
 
-**C3 · Script-aware fallback.** CJK/RTL → observation-only path, keyword-mechanics suppressed + labelled "script not yet supported."
-- Paid providers (AppKittie etc.) **not built** — optional, behind the seam, deferred.
+**C2 · ASA popularity client [stub] — 🚧 seam-only; candidate-gen/gap-analysis NOT built.**
+- ✅ **Seam built:** `keywords/asa-client.ts` — `AsaClient` interface + `StubAsaClient` returning `{ available: false, label: 'popularity unavailable' }` (tri-state — **never a fabricated `0`**; unkeyed ≠ zero-volume) + `getAsaClient()` factory. Real OAuth2 client (scope `searchadsorg`, JWT `client_secret`) is the documented drop-in follow-up.
+- ⬜ **Remaining C2 work (the actual feature — the seam is currently unconsumed/dead code, zero callers, no test):**
+  1. **Candidate generation** — derive keyword candidates from the linter output + listing text (+ review-vocabulary once Phase D lands); reuse `normalizeValueKey` so candidates dedupe against the ledger's `add_keyword` referents.
+  2. **Gap analysis** — shared / yours-only / theirs-only vs the (heuristic) competitor set; competitor keyword findings labelled `inferred` (a competitor's keyword field is never observable).
+  3. **Wire `getAsaClient().getVolume()`** into ranking; under the stub, **every volume-dependent ranking is labelled "popularity unavailable"** — the deterministic linter/gap findings still surface. This is the consumption path that "lights up" when the real client drops in (so the key swap is genuinely one-file).
+  4. **Test:** the stub path yields honest "popularity unavailable" findings (not fabricated volumes), and candidate dedupe matches the linter's plural rule.
+- **Paid providers (AppKittie etc.) not built** — optional, behind the seam, deferred.
+
+**DoD (Phase C):** C1/C3 ✅ and `tsc` clean ✅ (247 tests) — but Phase C is **not complete** until C2's candidate-gen + gap-analysis path (items 1–4 above) is built. `STATUS.md` to be refreshed when it closes.
 
 ---
 

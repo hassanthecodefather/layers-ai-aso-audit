@@ -27,6 +27,8 @@ import { getVisionClient, runVision, selectVisionResult } from '../../vision';
 import { runIdFull } from '../../identity/id-full';
 import { getIdentityVisionClient } from '../../identity/identity-vision-client';
 import { runSecondaryUplifts } from '../../vision/secondary-uplifts';
+import { generateCandidates } from '../../keywords/candidates';
+import { getAsaClient } from '../../keywords/asa-client';
 
 /**
  * The ASO audit workflow.
@@ -248,7 +250,15 @@ const scoreStep = createStep({
     // of the prompt so a vision change (new images) correctly invalidates the
     // cached report. B4: build once and pass to produceAuditDraft to avoid a
     // second buildAuditPrompt call inside that function.
-    const builtPrompt = buildAuditPrompt(listing, signals, priorContext, visionResult);
+    // C2: keyword candidate generation + gap analysis. Runs concurrently with
+    // prompt construction; the ASA stub resolves immediately so no latency added.
+    const candidateResult = await generateCandidates(
+      listing,
+      signals.keywordLinter,
+      getAsaClient(),
+    );
+
+    const builtPrompt = buildAuditPrompt(listing, signals, priorContext, visionResult, candidateResult);
     const promptHash = createHash('sha256')
       .update(builtPrompt)
       .digest('hex')
