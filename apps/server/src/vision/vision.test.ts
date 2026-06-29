@@ -8,6 +8,7 @@ import { describe, it, expect } from 'vitest';
 import type { VisionResult } from './types';
 import type { AppListing } from '../domain/listing';
 import type { ListingSignals } from '../scoring/signals';
+import { runLinter } from '../keywords/linter';
 import type { ListingSnapshot } from '../domain/snapshot';
 
 // ── §F P2 Test 1: Confidence-labelled critique ────────────────────────────────
@@ -238,6 +239,7 @@ function makeSignals(screenshotCount: number): ListingSignals {
       daysSinceLastUpdate: 180,
     },
     competitive: { competitorCount: 0 },
+    keywordLinter: runLinter({ title: 'Test App', subtitle: null, keywordField: null }),
   };
 }
 

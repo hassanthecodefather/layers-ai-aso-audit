@@ -11,6 +11,7 @@ import {
   visionUsable,
 } from './dimension-scorer';
 import type { VisionResult } from '../vision/types';
+import { runLinter } from '../keywords/linter';
 
 // ── VisionResult builders ────────────────────────────────────────────────────
 
@@ -126,6 +127,7 @@ function makeSignals(overrides: Partial<ListingSignals> = {}): ListingSignals {
       daysSinceLastUpdate: 180,
     },
     competitive: { competitorCount: 0 },
+    keywordLinter: runLinter({ title: 'Test App', subtitle: null, keywordField: null }),
     ...overrides,
   };
 }
