@@ -101,7 +101,9 @@ Be conservative. Only score 10 if genuinely excellent across all 4 rubric checks
         },
       ],
       temperature: 0,
-      max_tokens: 800,
+      // 2000 tokens: 7 screenshots × ~200 tokens per critique + comparison + score.
+      // 800 was too tight and caused mid-JSON truncation on real listings.
+      max_tokens: 2000,
       response_format: { type: 'json_object' },
     };
 
@@ -159,7 +161,7 @@ strongestSlotForPromotion: Which slot (1-indexed) would benefit most from being 
         },
       ],
       temperature: 0,
-      max_tokens: 800,
+      max_tokens: 1500,
       response_format: { type: 'json_object' },
     };
 
@@ -256,10 +258,21 @@ Analyze the app icon for ASO quality. Return JSON:
   }
 
   #parseJson(raw: string): unknown {
+    // Direct parse first (fast path).
     try {
       return JSON.parse(raw);
     } catch {
-      throw new Error(`Gemini vision API returned invalid JSON: ${raw.slice(0, 200)}`);
+      // Gemini sometimes truncates mid-JSON when the response hits a token limit.
+      // Try to recover the largest valid object prefix before giving up.
+      for (let i = raw.length - 1; i > 0; i--) {
+        if (raw[i] === '}') {
+          try { return JSON.parse(raw.slice(0, i + 1)); } catch { /* keep scanning */ }
+        }
+      }
+      // Log and return empty object so the caller's ?? defaults kick in
+      // rather than crashing the whole audit step.
+      console.error(`[vision] Gemini returned unparseable JSON (${raw.length} chars); falling back to empty result. Preview: ${raw.slice(0, 120)}`);
+      return {};
     }
   }
 }
