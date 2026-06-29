@@ -240,7 +240,12 @@ const scoreStep = createStep({
       .slice(0, 16);
 
     const priorSnap = priorSnapR.ok ? priorSnapR.value : null;
-    const listingUnchanged = priorSnap !== null && priorSnap.promptHash === promptHash;
+    // A rubric weight retune or a scorer-code bump (SCORER_VERSION) invalidates
+    // the whole-snapshot cache even when the listing/identity are identical.
+    const listingUnchanged =
+      priorSnap !== null &&
+      priorSnap.promptHash === promptHash &&
+      priorSnap.rubricVersion === RUBRIC_VERSION;
 
     let report;
     let usedModelId: string;

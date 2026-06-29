@@ -5,6 +5,14 @@ import { DIMENSION_IDS } from '../domain/audit';
 import type { ListingSignals } from './signals';
 
 /**
+ * Bump when codeScore or coarseOrdinalScore logic changes so that the
+ * per-dimension reuse cache is invalidated for all stored snapshots that
+ * predate the change. Without this, old snapshots would serve stale scores
+ * for dimensions whose scoring formula changed between Phase A and B.
+ */
+export const SCORER_VERSION = 'phase-a-v1';
+
+/**
  * Returns the subset of listing/signal fields that each dimension depends on.
  * Used for per-dimension change detection: if the hash of these inputs matches
  * the prior run, the dimension score can be reused without calling the model.
@@ -85,6 +93,7 @@ export function dimensionInputHash(
   signals: ListingSignals,
 ): string {
   return createHash('sha256')
+    .update(SCORER_VERSION + ':')
     .update(JSON.stringify(dimensionInputs(id, listing, signals)))
     .digest('hex')
     .slice(0, 16);

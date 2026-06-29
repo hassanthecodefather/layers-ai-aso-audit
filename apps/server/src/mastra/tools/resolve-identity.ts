@@ -88,15 +88,23 @@ const UNKNOWN_CLASSIFICATION: IdentityClassification = {
  */
 export function parseClassificationText(text: string): IdentityClassification {
   const json = extractJsonObject(text);
-  if (!json) return UNKNOWN_CLASSIFICATION;
+  if (!json) {
+    console.warn('[identity-classifier] no JSON object found in response — falling back to UNKNOWN');
+    return UNKNOWN_CLASSIFICATION;
+  }
   let value: unknown;
   try {
     value = JSON.parse(json);
-  } catch {
+  } catch (e) {
+    console.warn('[identity-classifier] JSON.parse failed:', e, '— raw excerpt:', json.slice(0, 200));
     return UNKNOWN_CLASSIFICATION;
   }
   const parsed = ClassificationSchema.safeParse(value);
-  return parsed.success ? parsed.data : UNKNOWN_CLASSIFICATION;
+  if (!parsed.success) {
+    console.warn('[identity-classifier] schema validation failed:', parsed.error.message);
+    return UNKNOWN_CLASSIFICATION;
+  }
+  return parsed.data;
 }
 
 /** The production classifier: one Gemini generation over the fact sheet. */

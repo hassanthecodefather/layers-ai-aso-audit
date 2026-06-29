@@ -60,6 +60,7 @@ function makeListing(overrides: Partial<AppListing> = {}): AppListing {
     screenshotUrls: ['s1', 's2', 's3', 's4', 's5', 's6'],
     ipadScreenshotUrls: [],
     hasPreviewVideo: false,
+    crawledScreenshotCount: 0,
     averageRating: 4.5,
     ratingCount: 12000,
     currentVersionRating: 4.3,

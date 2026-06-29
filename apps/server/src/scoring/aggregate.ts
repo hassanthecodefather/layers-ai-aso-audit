@@ -11,6 +11,7 @@ import type { AppSummary } from '../domain/listing';
 import { rubricFor } from './rubric';
 import type { ListingSignals } from './signals';
 import { deriveConfidence, codeScore, coarseOrdinalScore } from './dimension-scorer';
+import { replayOverallScore } from './replay';
 
 /**
  * Turn the LLM's `AuditDraft` into a finished `AuditReport`.
@@ -91,11 +92,9 @@ export function assembleReport(
     };
   });
 
-  const overallScore = clamp(
-    Math.round(dimensions.reduce((sum, d) => sum + d.weightedPoints, 0)),
-    0,
-    100,
-  );
+  // Delegate to the canonical normalization in replay.ts — single definition of
+  // the weighted-average formula used by both live assembly and rubric-weight replay.
+  const overallScore = replayOverallScore(dimensions, (id) => rubricFor(id).weight);
 
   const inCategory = (c: Recommendation['category']): Recommendation[] =>
     draft.recommendations.filter((r) => r.category === c);

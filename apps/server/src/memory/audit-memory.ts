@@ -7,6 +7,7 @@ import {
   type LedgerRecommendation,
   type ProofRegime,
   type EvidenceRef,
+  type IntentTag,
 } from '../domain/recommendation';
 import type { StorageClient } from './storage-client';
 import { computeRecKey, valueKeyFor, findContradiction } from './dedup';
@@ -232,6 +233,11 @@ export async function persistAudit(
   // 4. Upsert this run's recommendations, flagging contradictions.
   const contradictions: PersistResult['contradictions'] = [];
   const identityUnconfirmed = resolved.escalate;
+  // Map recKey → stored id so occurrence recording always targets the canonical
+  // row. upsertRecommendation uses ON CONFLICT — the winner keeps the original
+  // id, not the freshly-minted one in rec. Without this map, a re-raised rec
+  // would log its occurrence against an id that doesn't exist in aso_recommendations.
+  const priorIdByRecKey = new Map(priorLedger.map((r) => [r.recKey, r.id]));
   for (const reportRec of report.quickWins.concat(report.highImpact, report.strategic)) {
     const rec = toLedgerRec(reportRec, { appId, country, snapshotId, now });
     // Suppress identity-rewriting recs when the identity is unconfirmed (spec ID).
@@ -254,7 +260,8 @@ export async function persistAudit(
       continue;
     }
     await storage.upsertRecommendation(rec);
-    await storage.recordOccurrence(rec.id, snapshotId, false);
+    // Use the stored row's id — on re-raises the original row survives ON CONFLICT.
+    await storage.recordOccurrence(priorIdByRecKey.get(rec.recKey) ?? rec.id, snapshotId, false);
   }
 
   return {

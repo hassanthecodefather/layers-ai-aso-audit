@@ -48,8 +48,9 @@ suite('Phase 0 smoke: full audit on Gemini', () => {
     if (!listing.ok) return;
 
     // 3. Score it with Gemini and assemble the report — the real pipeline.
-    const draft = await produceAuditDraft(asoAuditor, listing.value);
-    const report = assembleReport(toSummary(listing.value), draft);
+    const signals = computeSignals(listing.value);
+    const draft = await produceAuditDraft(asoAuditor, listing.value, signals);
+    const report = assembleReport(toSummary(listing.value), draft, signals);
 
     // 4. The report is well-formed and scored.
     const parsed = AuditReportSchema.safeParse(report);

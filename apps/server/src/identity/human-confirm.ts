@@ -130,7 +130,7 @@ export async function resolveWithHistory(
   // is material; a minor signal change that stays in the same domain is not).
   const flipped = domainOf(fresh.category) !== domainOf(prior.category);
   if (!flipped) {
-    return { ...fresh, category: prior.category, niche: prior.niche, categoryBand: 'high', escalate: false, source: 'human_confirmed' };
+    return { ...fresh, category: prior.category, niche: prior.niche, categoryBand: 'high', nicheBand: prior.niche ? 'high' : null, escalate: false, source: 'human_confirmed' };
   }
   return { ...fresh, escalate: true };
 }
