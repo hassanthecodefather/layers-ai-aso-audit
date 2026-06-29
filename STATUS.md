@@ -5,7 +5,7 @@ contracts live elsewhere: [`specification.md`](specification.md) is the *what*,
 [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) is the *how-to-build*. This
 file is the *where-we-are* — read it first, trust the tests over the prose.
 
-_Last updated: 2026-06-29 · spec v1.3.1_
+_Last updated: 2026-06-29 · spec v1.3.1 · **Phase B complete**_
 
 Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferred (by design)
 
@@ -15,14 +15,34 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
 |---|---|---|---|
 | **0** | Groundwork: Gemini-only, migration runner | ✅ | suite green + live audit on Gemini |
 | **A** | ID-lite identity + P1 persistent memory | ✅ | §F ID-lite **and** §F P1 green; reworded re-raise collapses to one row (typed referent); 2nd audit references 1st, marks applied, never repeats. **A6 score determinism complete** (191 tests) |
-| **B** | P2 image analysis + ID-full | ⬜ | — |
+| **B** | P2 image analysis + ID-full | ✅ | §F P2 green (vision confidence, zero-LLM reuse, pHash observed, promote-panel non-panoramic-only); ID-full stage=`full` augments identity without mutating ID-lite fields. **209 tests.** |
 | **C** | P3 keyword research (160-char linter) | ⬜ | — |
 | **D** | P4 deep review analysis | ⬜ | — |
 | **E** | P5 cost & courtesy control | ⬜ | — |
 | **F** | Net-new uplifts (storefront sweep, export, …) | ⬜ | — |
 | **P6+** | Multi-tenant, ASC, write-path, North Star | ⏸ | planned at their tier, not now |
 
-## Phase A — detail (current frontier)
+## Phase B — detail (current frontier)
+
+| Task | Status | Lives in |
+|---|---|---|
+| B0 · Reconciliation §G #1 — rubric.ts:83 OCR wording | ✅ | `apps/server/src/scoring/rubric.ts` |
+| B1 · Vision pass — Gemini vision over screenshots + icon | ✅ | `apps/server/src/vision/{types,client,phash,analyze,select}.ts`; `scoring/dimension-scorer.ts`; `domain/snapshot.ts`; `memory/libsql-storage-client.ts`; `memory/migrate.ts` |
+| B2 · ID-full — vision-grounded identity, stage=`full` | ✅ | `apps/server/src/identity/{id-full,identity-vision-client}.ts`; `mastra/workflows/audit-workflow.ts` |
+| B3 · P2 secondary uplifts — screenshot intelligence, cross-device matrix, PPO ≤3 | ✅ | `apps/server/src/vision/secondary-uplifts.ts`; `vision/client.ts` extended |
+| B4 · Phase-A carry-over fixes — applied-detect (previewVideo), escalate gate, reachability guard, efficiency | ✅ | `memory/audit-memory.ts`; `scoring/score.ts`; `mastra/tools/resolve-identity.ts`; `mastra/workflows/audit-workflow.ts` |
+
+**B1 notes:** `SCORER_VERSION` bumped to `'phase-b-v1'` (invalidates Phase A cached scores). Screenshots/icon confidence upgrades to `observed` when vision ran; `codeScore('screenshots')` returns vision coarse-ordinal {0,5,10}. `selectVisionResult` is a pure function — if screenshot/icon URLs match the prior snapshot's, returns stored VisionResult with zero LLM calls. `jimp` added for pHash computation (pure JS). Competitor icon/screenshot URLs are not available in `AppListing.Competitor` — competitor image comparison deferred to Phase D. `getVisionClient()` returns a no-op stub when no API key is set (all hermetic tests unaffected).
+
+**B2 notes:** `runIdFull()` is a pure function — copies `category`, `categoryBand`, `tally`, `divergence`, `source` verbatim from ID-lite; vision adds `audience` and may raise `nicheBand`. De-escalation only fires when `litePrior.escalate && litePrior.divergence !== 'cross_domain' && creativeMatchesFunction`. `getIdentityVisionClient()` returns a no-op stub without API key.
+
+**B4 fixes (carry-overs now closed):**
+- `add_preview_video` recs now auto-detected as `applied` when `hasPreviewVideo` flips to true.
+- `buildPriorContext` "do not rewrite positioning" note now gates on `escalate && source !== 'human_confirmed'` (not bare `divergence === 'cross_domain'`).
+- Identify-step LLM call now has a `reachable()` guard (matches score-listing pattern).
+- `buildAuditPrompt` built once per audit; `persistAudit` uses pre-fetched snapshot/ledger when provided.
+
+## Phase A — detail
 
 | Task | Status | Lives in |
 |---|---|---|
@@ -38,17 +58,19 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
 
 ## Tests (the source of truth)
 
-- **191 hermetic tests pass** (`npm test`). Covers: StorageClient conformance,
+- **209 hermetic tests pass** (`npm test`). Covers (Phase A): StorageClient conformance,
   ID-lite §F gates, P1 §F gates (dedup, contradiction, zero-LLM replay),
   human-confirm reuse/re-ask, memory loop end-to-end, classifier fail-safe
   parsing, dismissal-is-honoured, **reworded re-raise collapses to one row**,
-  **reworded re-raise of a dismissed rec is still caught** (referent stability
-  makes dismissals sticky across rewordings), the Mastra
-  `getStepResult`-across-resume contract A5 relies on, and **A6 score
-  stability** (`a6-score-stability.test.ts`, `dimension-scorer.test.ts`):
-  code-derived confidence/scores override the model, single-field edit moves
-  only that dimension, deterministic-dimension scores are pure functions of
-  signals.
+  the Mastra `getStepResult`-across-resume contract, and A6 score stability.
+  **Phase B additions:** §F P2 vision tests (`vision/vision.test.ts`) — confidence
+  labels, zero-LLM reuse via `selectVisionResult`, pHash observed/confusability
+  inferred; §F P2 ID-full tests (`identity/id-full.test.ts`) — stage=`full`,
+  audience populated, creative mismatch escalation, de-escalation with cross_domain
+  guard; P2 secondary uplifts (`vision/secondary-uplifts.test.ts`) — promote-panel
+  non-panoramic-only, duplicate flag, pure `computeDeviceMatrix`, PPO exceeded;
+  B4 carry-over fixes — `add_preview_video` applied detection, `buildPriorContext`
+  escalate-gate (3 cases), efficiency changes.
 - **Live smokes (gated on a Gemini key, skipped by default):**
   - `scoring/audit-smoke.test.ts` — full audit + identity + persist on real Gemini.
   - `mastra/workflow-smoke.test.ts` — real workflow suspend → resume(decision) → report.
@@ -69,17 +91,7 @@ whole-snapshot fingerprint via `scoring/version.ts`, pinned by `version.test.ts`
 replay/aggregate share one formula; classifier logs on parse failure.
 **All A7 residuals closed.**
 
-Still open (tracked, not yet fixed — fold into Phase B):
-- **applied-detection coverage** — `listingField()` only maps title/subtitle/
-  description, so keywordField/icon/screenshots/reviews recs never flip to
-  `applied`.
-- **stale divergence in prompt** — a human-confirmed cross-domain identity still
-  triggers the "do not rewrite positioning" warning in `buildPriorContext`
-  (gate on `escalate`/`source`, not `divergence`).
-- **reachability/error labelling** — the identify-step LLM call has no
-  `reachable()` guard, so a down model surfaces as a 422 "bad URL".
-- **efficiency** — `buildAuditPrompt` built twice per audit; `persistAudit`
-  re-reads snapshot/ledger already fetched in the score step.
+Phase A carry-overs: **all closed in B4** (applied-detection extended, escalate gate fixed, reachability guard added, efficiency improved).
 
 ## Known gaps / deviations (conscious, not bugs)
 
@@ -100,10 +112,9 @@ Still open (tracked, not yet fixed — fold into Phase B):
 
 ## Next up
 
-- **Phase A is complete (A0–A6 ✅).** When starting Phase B, remember **B1 must supersede A6's screenshot/preview Phase-A placeholder scores** and upgrade their confidence `inferred → observed` once vision actually assesses quality.
-- **Phase B (P2 + ID-full)** — start with reconciliation §G #1 (`rubric.ts:83`
-  OCR wording), then the Gemini vision pass, then ID-full augmenting the identity
-  row to stage=`full` without mutating ID-lite's deterministic fields.
+- **Phase B is complete (B0–B4 ✅, 209 tests).** Phase C next: the 160-char keyword linter (pure, no key needed) + ASA popularity client stub.
+- **Phase C (P3 keyword research)** — start with `keywords/linter.ts` (deterministic, no key), then `keywords/asa-client.ts` stub behind the SourceProvider seam. The linter's TDD gate: same input → byte-identical output, no model call; competitor keyword findings labelled `inferred`.
+- **Competitor icon/screenshot URLs** — deferred to Phase D when a competitor-detail fetch is added. `analyze.ts` currently passes empty arrays; update when URLs are available.
 
 ## Key-arrival follow-ups (drop-in, one file each)
 
