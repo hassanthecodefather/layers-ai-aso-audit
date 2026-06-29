@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { openDb, runMigrations } from './migrate';
 import { LibSqlStorageClient } from './libsql-storage-client';
-import { persistAudit, toLedgerRec, detectApplied, changeDiff } from './audit-memory';
+import { persistAudit, toLedgerRec, detectApplied, changeDiff, buildPriorContext } from './audit-memory';
 import { loadFixtureListing } from '../identity/__fixtures__/load';
 import type { AppListing } from '../domain/listing';
 import type { AuditReport, Recommendation as ReportRec } from '../domain/audit';
@@ -267,5 +267,67 @@ describe('detectApplied + changeDiff units', () => {
 
   it('changeDiff reports first-audit and score movement', () => {
     expect(changeDiff(null, { report: { overallScore: 50 } } as any)[0]).toMatch(/First audit/);
+  });
+});
+
+describe('detectApplied — non-text (Fix 1)', () => {
+  it('marks add_preview_video applied when new listing has a preview video', () => {
+    const previewRec = toLedgerRec(
+      rec({ dimension: 'previewVideo', intent: 'add_preview_video', referent: { kind: 'none' }, after: null }),
+      { appId: '1', country: 'us', snapshotId: 's1', now: 't0' },
+    );
+    const flipped = detectApplied([previewRec], listingWith({ hasPreviewVideo: true }), 't1');
+    expect(flipped).toHaveLength(1);
+    expect(flipped[0]!.status).toBe('applied');
+    expect(flipped[0]!.appliedAt).toBe('t1');
+  });
+
+  it('does NOT mark add_preview_video applied when new listing has no preview video', () => {
+    const previewRec = toLedgerRec(
+      rec({ dimension: 'previewVideo', intent: 'add_preview_video', referent: { kind: 'none' }, after: null }),
+      { appId: '1', country: 'us', snapshotId: 's1', now: 't0' },
+    );
+    const flipped = detectApplied([previewRec], listingWith({ hasPreviewVideo: false }), 't1');
+    expect(flipped).toHaveLength(0);
+  });
+});
+
+describe('buildPriorContext — escalate gate (Fix 2)', () => {
+  const baseInput = {
+    priorSnapshot: null,
+    identityFactSheet: 'fact sheet',
+  };
+
+  it('shows the warning note when escalate=true and source=resolved', () => {
+    const identity: ResolvedIdentity = {
+      ...CONFIDENT,
+      escalate: true,
+      divergence: 'cross_domain',
+      source: 'resolved',
+    };
+    const ctx = buildPriorContext({ ...baseInput, identity });
+    expect(ctx).toMatch(/do not rewrite.*positioning/i);
+  });
+
+  it('does NOT show the warning note when escalate=true but source=human_confirmed', () => {
+    const identity: ResolvedIdentity = {
+      ...CONFIDENT,
+      escalate: true,
+      divergence: 'cross_domain',
+      source: 'human_confirmed',
+    };
+    const ctx = buildPriorContext({ ...baseInput, identity });
+    expect(ctx).not.toMatch(/do not rewrite.*positioning/i);
+  });
+
+  it('does NOT show the warning note when escalate=false even if divergence=cross_domain (old bug)', () => {
+    const identity: ResolvedIdentity = {
+      ...CONFIDENT,
+      escalate: false,
+      divergence: 'cross_domain',
+      source: 'resolved',
+    };
+    const ctx = buildPriorContext({ ...baseInput, identity });
+    expect(ctx).not.toMatch(/do not rewrite.*positioning/i);
   });
 });

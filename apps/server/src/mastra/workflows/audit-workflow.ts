@@ -232,8 +232,11 @@ const scoreStep = createStep({
     // identity), calling the model again can only introduce noise — skip it and
     // return the cached report. This eliminates the 46→30 score swing on
     // re-audits of unchanged listings and avoids unnecessary Gemini cost.
+    // B4: build the prompt once here so we can pass it to produceAuditDraft,
+    // avoiding a second buildAuditPrompt call inside that function.
+    const builtPrompt = buildAuditPrompt(listing, signals, priorContext);
     const promptHash = createHash('sha256')
-      .update(buildAuditPrompt(listing, signals, priorContext))
+      .update(builtPrompt)
       .digest('hex')
       .slice(0, 16);
 
@@ -268,7 +271,7 @@ const scoreStep = createStep({
       // 0-100 total are pure, deterministic code in `assembleReport`.
       let draft;
       try {
-        draft = await produceAuditDraft(agent, listing, signals, priorContext);
+        draft = await produceAuditDraft(agent, listing, signals, priorContext, builtPrompt);
       } catch (e) {
         throw new Error(
           `The auditor model (${llm.modelId}) failed: ` +
@@ -324,6 +327,9 @@ const scoreStep = createStep({
       modelId: usedModelId,
       now,
       visionResult, // B1: persist vision result for future reuse
+      // B4: pass pre-fetched values to avoid duplicate storage reads in persistAudit.
+      priorSnapshot: priorSnap,
+      priorLedger: priorLedgerR.ok ? priorLedgerR.value : [],
     });
 
     // ── B2: ID-full — vision-grounded identity augmentation ────────────────

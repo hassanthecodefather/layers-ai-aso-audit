@@ -105,7 +105,18 @@ export function detectApplied(
 ): LedgerRecommendation[] {
   const flipped: LedgerRecommendation[] = [];
   for (const rec of prior) {
-    if (rec.status !== 'proposed' || !rec.afterText) continue;
+    if (rec.status !== 'proposed') continue;
+
+    // Non-text applied detection (no afterText — check observable state change).
+    // Only for intents whose result is deterministic: a video either exists or doesn't.
+    if (rec.intent === 'add_preview_video' && newListing.hasPreviewVideo) {
+      flipped.push({ ...rec, status: 'applied', appliedAt: now });
+      continue;
+    }
+    // For screenshots/icon: not auto-detectable (creative changes need vision diff).
+    // Skip — the user will confirm manually or the rec re-appears on the next audit.
+
+    if (!rec.afterText) continue;
     const field = listingField(newListing, rec.targetField);
     if (field && field.toLowerCase().includes(rec.afterText.toLowerCase())) {
       flipped.push({ ...rec, status: 'applied', appliedAt: now });
@@ -146,7 +157,7 @@ export function buildPriorContext(input: {
   lines.push('### Resolved identity (function-grounded)');
   lines.push(`Category: ${identity.category} (confidence: ${identity.categoryBand})`);
   if (identity.niche) lines.push(`Niche: ${identity.niche} (confidence: ${identity.nicheBand})`);
-  if (identity.divergence === 'cross_domain') {
+  if (identity.escalate && identity.source !== 'human_confirmed') {
     lines.push(
       `⚠ The store category and the app's true function diverge (cross-domain). Identity is unconfirmed — do not rewrite the listing's core positioning.`,
     );
@@ -169,6 +180,10 @@ export interface PersistInput {
   now: string;
   /** B1: vision result to persist with the snapshot. Optional for backward compat. */
   visionResult?: unknown;
+  /** B4: Pre-fetched prior snapshot (avoids a duplicate storage read). */
+  priorSnapshot?: ListingSnapshot | null;
+  /** B4: Pre-fetched prior ledger (avoids a duplicate storage read). */
+  priorLedger?: LedgerRecommendation[];
 }
 
 /** Result of persisting an audit — surfaces what memory did, for the report. */
@@ -193,10 +208,23 @@ export async function persistAudit(
   const appId = listing.appId;
   const country = listing.country;
 
-  const priorSnapshotR = await storage.latestSnapshot(appId, country);
-  const priorSnapshot = priorSnapshotR.ok ? priorSnapshotR.value : null;
-  const priorLedgerR = await storage.ledger(appId, country);
-  const priorLedger = priorLedgerR.ok ? priorLedgerR.value : [];
+  // B4: use pre-fetched values if provided (avoids duplicate storage reads).
+  let priorSnapshot: ListingSnapshot | null;
+  if (input.priorSnapshot !== undefined) {
+    priorSnapshot = input.priorSnapshot;
+  } else {
+    const priorSnapshotR = await storage.latestSnapshot(appId, country);
+    priorSnapshot = priorSnapshotR.ok ? priorSnapshotR.value : null;
+  }
+
+  let priorLedger: LedgerRecommendation[];
+  if (input.priorLedger !== undefined) {
+    priorLedger = input.priorLedger;
+  } else {
+    const priorLedgerR = await storage.ledger(appId, country);
+    priorLedger = priorLedgerR.ok ? priorLedgerR.value : [];
+  }
+
   const priorIdentityR = await storage.latestIdentity(appId, country);
   const priorVersion = priorIdentityR.ok && priorIdentityR.value ? priorIdentityR.value.version : -1;
 

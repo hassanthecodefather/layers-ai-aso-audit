@@ -109,6 +109,13 @@ export function parseClassificationText(text: string): IdentityClassification {
 
 /** The production classifier: one Gemini generation over the fact sheet. */
 export const geminiClassifier: IdentityClassifier = async (factSheet) => {
+  const llm = getLlmProvider();
+  if (!(await llm.reachable())) {
+    throw new Error(
+      `Couldn't reach Gemini at ${llm.endpoint} during identity resolution. ` +
+      'Check that LLM_API_KEY is set in .env and the network is up.',
+    );
+  }
   const agent = getClassifierAgent();
   const result = await agent.generate(factSheet, { modelSettings: { temperature: 0 } });
   return parseClassificationText(typeof result.text === 'string' ? result.text : '');

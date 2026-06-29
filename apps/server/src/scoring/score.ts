@@ -70,8 +70,9 @@ export async function produceAuditDraft(
   listing: AppListing,
   signals: ListingSignals,
   priorContext?: string,
+  prebuiltPrompt?: string,   // B4: pass the prompt built for hashing
 ): Promise<AuditDraft> {
-  const prompt = buildAuditPrompt(listing, signals, priorContext);
+  const prompt = prebuiltPrompt ?? buildAuditPrompt(listing, signals, priorContext);
 
   let attempt = parseDraft(await generate(agent, prompt));
   if (attempt.draft) return normalizeRecommendations(attempt.draft, signals);
