@@ -60,6 +60,14 @@ Fixed + tested: dismissed recs no longer silently re-open on re-raise; the
 identity classifier fails safe instead of throwing on malformed JSON; the
 `getStepResult`-across-resume assumption is now guarded (it holds).
 
+**A7 post-review batch (applied & committed):** IntentTag import (build was red —
+`tsc` is now clean **except** the pre-existing `routes.ts` Hono skew); orphaned
+rec-occurrences (now record against the stored row id); human-confirmed
+`nicheBand`; reuse staleness (`SCORER_VERSION` + `rubricVersion`); replay/aggregate
+share one formula; classifier logs on parse failure. Residuals (see plan A7):
+no regression test yet for the occurrences fix; `tsc`-as-gate blocked by
+`routes.ts`; `SCORER_VERSION` not yet in the whole-snapshot guard.
+
 Still open (tracked, not yet fixed — fold into Phase B):
 - **applied-detection coverage** — `listingField()` only maps title/subtitle/
   description, so keywordField/icon/screenshots/reviews recs never flip to
