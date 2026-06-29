@@ -8,7 +8,32 @@ import {
   coarseOrdinalScore,
   dimensionInputHash,
   allDimensionHashes,
+  visionUsable,
 } from './dimension-scorer';
+import type { VisionResult } from '../vision/types';
+
+// ── VisionResult builders ────────────────────────────────────────────────────
+
+function makeVisionResult(critiques: VisionResult['screenshotSetVerdict']['critiques']): VisionResult {
+  return {
+    screenshotSetVerdict: {
+      critiques,
+      competitorComparison: { value: '', confidence: 'observed' },
+      coarseScore: 5,
+      confidence: 'observed',
+      modelId: 'gemini-2.5-flash',
+    },
+    iconVerdict: null,
+  };
+}
+
+const REAL_CRITIQUE: VisionResult['screenshotSetVerdict']['critiques'][number] = {
+  url: 'https://example.com/ss1.png',
+  slot: 1,
+  valuePropClarity: { value: 'Clear', confidence: 'observed' },
+  readability: { value: 'Good', confidence: 'observed' },
+  cohesion: { value: 'Strong', confidence: 'observed' },
+};
 
 // ── Minimal listing builder ──────────────────────────────────────────────────
 
@@ -172,9 +197,19 @@ describe('deriveConfidence — conversion', () => {
   });
 });
 
-describe('deriveConfidence — screenshots (Phase A: slot count observed, quality needs vision/P2)', () => {
-  it('screenshots → "inferred"', () => {
+describe('deriveConfidence — screenshots', () => {
+  it('returns "inferred" when no vision result', () => {
     expect(deriveConfidence('screenshots', makeSignals())).toBe('inferred');
+  });
+
+  it('returns "observed" when vision produced real critiques', () => {
+    const v = makeVisionResult([REAL_CRITIQUE]);
+    expect(deriveConfidence('screenshots', makeSignals(), v)).toBe('observed');
+  });
+
+  it('returns "inferred" when vision result has empty critiques (parse failure)', () => {
+    const v = makeVisionResult([]);
+    expect(deriveConfidence('screenshots', makeSignals(), v)).toBe('inferred');
   });
 });
 
@@ -213,14 +248,28 @@ describe('codeScore — previewVideo', () => {
 });
 
 describe('codeScore — screenshots', () => {
-  it('returns slotsUsedOf10 = 6', () => {
+  it('returns slotsUsedOf10 = 6 when no vision result', () => {
     const signals = makeSignals({ screenshots: { iphoneCount: 6, ipadCount: 0, slotsUsedOf10: 6 } });
     expect(codeScore('screenshots', signals)).toBe(6);
   });
 
-  it('returns slotsUsedOf10 = 10', () => {
+  it('returns slotsUsedOf10 = 10 when no vision result', () => {
     const signals = makeSignals({ screenshots: { iphoneCount: 10, ipadCount: 4, slotsUsedOf10: 10 } });
     expect(codeScore('screenshots', signals)).toBe(10);
+  });
+
+  it('returns vision coarseScore when critiques are present', () => {
+    const signals = makeSignals({ screenshots: { iphoneCount: 7, ipadCount: 0, slotsUsedOf10: 7 } });
+    const v = makeVisionResult([REAL_CRITIQUE]);
+    v.screenshotSetVerdict.coarseScore = 5;
+    expect(codeScore('screenshots', signals, v)).toBe(5);
+  });
+
+  it('falls back to slotsUsedOf10 when vision critiques are empty (parse failure)', () => {
+    const signals = makeSignals({ screenshots: { iphoneCount: 7, ipadCount: 0, slotsUsedOf10: 7 } });
+    const v = makeVisionResult([]);           // parse failure → empty critiques
+    v.screenshotSetVerdict.coarseScore = 5;   // fabricated default that must NOT be returned
+    expect(codeScore('screenshots', signals, v)).toBe(7);
   });
 });
 
@@ -352,6 +401,22 @@ describe('coarseOrdinalScore — other dimensions return null', () => {
   it('icon → null', () => { expect(coarseOrdinalScore('icon', 7, makeSignals())).toBeNull(); });
   it('conversion → null', () => { expect(coarseOrdinalScore('conversion', 7, makeSignals())).toBeNull(); });
   it('competitive → null', () => { expect(coarseOrdinalScore('competitive', 7, makeSignals())).toBeNull(); });
+});
+
+// ── visionUsable ─────────────────────────────────────────────────────────────
+
+describe('visionUsable', () => {
+  it('returns false when visionResult is undefined', () => {
+    expect(visionUsable(undefined)).toBe(false);
+  });
+
+  it('returns false when critiques array is empty (parse failure)', () => {
+    expect(visionUsable(makeVisionResult([]))).toBe(false);
+  });
+
+  it('returns true when critiques are present', () => {
+    expect(visionUsable(makeVisionResult([REAL_CRITIQUE]))).toBe(true);
+  });
 });
 
 // ── dimensionInputHash ────────────────────────────────────────────────────────

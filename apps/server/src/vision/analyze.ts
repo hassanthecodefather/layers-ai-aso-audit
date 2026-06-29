@@ -47,12 +47,13 @@ export async function runVision(
     competitorFirstFrameUrls,
   });
 
-  // Gate 'observed' on vision actually producing critiques. If the JSON parse
-  // failed (backward-scan returned {}, critiques empty), the score is a
-  // placeholder — label it 'inferred' so the prompt doesn't suppress the
-  // limitation and doesn't claim evidence that doesn't exist.
-  const visionSucceeded = screenshotRaw.critiques.length > 0;
-  const screenshotConfidence: Confidence = visionSucceeded && client.isLive ? 'observed' : 'inferred';
+  // Gate 'observed' on vision actually producing critiques.
+  // A parse failure (backward-scan returning {}) leaves critiques empty —
+  // labelling that 'observed' would fabricate a confident score with no evidence.
+  // The downstream visionUsable() guard in deriveConfidence/codeScore checks the
+  // same invariant once this VisionResult is assembled.
+  const screenshotConfidence: Confidence =
+    screenshotRaw.critiques.length > 0 && client.isLive ? 'observed' : 'inferred';
 
   // Map raw critiques to typed critiques with confidence labels
   const critiques = screenshotRaw.critiques.map((c, idx) => ({

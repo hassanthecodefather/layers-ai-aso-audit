@@ -2,7 +2,7 @@ import type { AppListing } from '../domain/listing';
 import type { ListingSignals } from './signals';
 import type { VisionResult } from '../vision/types';
 import { RUBRIC } from './rubric';
-import { codeScore } from './dimension-scorer';
+import { codeScore, visionUsable } from './dimension-scorer';
 
 /**
  * Prompt construction for the audit.
@@ -149,7 +149,7 @@ function scoringConstraints(signals: ListingSignals, visionResult?: VisionResult
 
   // screenshots: vision-assessed score when vision ran; slot-count fallback otherwise.
   const sc = signals.screenshots.slotsUsedOf10;
-  if (visionResult && visionResult.screenshotSetVerdict.critiques.length > 0) {
+  if (visionUsable(visionResult)) {
     const vs = visionResult.screenshotSetVerdict.coarseScore;
     lines.push(`• screenshots  → ${vs}  (vision-assessed; ${sc} of 10 slots used — use ALL per-slot critiques from the Vision analysis section as separate evidence items, one per slot)`);
   } else if (visionResult) {
@@ -228,7 +228,7 @@ function visionFacts(v: VisionResult): string {
 
   // Only suppress the limitation when Gemini actually produced critiques.
   // If parse failed (critiques empty), the limitation is real and must surface.
-  if (sv.critiques.length > 0) {
+  if (visionUsable(v)) {
     lines.push('IMPORTANT: Do NOT list "Screenshot Content" or "Icon Visuals" as limitations — Gemini has already assessed these. Use the analysis below as evidence in your findings.');
   }
 

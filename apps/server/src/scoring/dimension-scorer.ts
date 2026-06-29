@@ -14,6 +14,18 @@ import type { VisionResult } from '../vision/types';
 export const SCORER_VERSION = 'phase-b-v2';
 
 /**
+ * True when a VisionResult contains real Gemini-produced critiques.
+ *
+ * A parse failure (backward-scan recovery returning {}) leaves critiques
+ * empty even though the client is live. This guard is the single shared
+ * source of truth used by deriveConfidence, codeScore, and the two prompt
+ * sites — all four must change together whenever the definition changes.
+ */
+export function visionUsable(v: VisionResult | undefined): v is VisionResult {
+  return !!v && v.screenshotSetVerdict.critiques.length > 0;
+}
+
+/**
  * Returns the subset of listing/signal fields that each dimension depends on.
  * Used for per-dimension change detection: if the hash of these inputs matches
  * the prior run, the dimension score can be reused without calling the model.
@@ -134,9 +146,9 @@ export function deriveConfidence(
       return signals.previewVideo.observable ? 'inferred' : 'unavailable';
 
     case 'screenshots':
-      // B1: if vision ran, confidence upgrades to 'observed'.
-      // Phase-A placeholder: 'inferred' until B1 vision result is available.
-      return visionResult ? 'observed' : 'inferred';
+      // 'observed' only when Gemini produced real critiques. A parse failure
+      // (empty critiques) must not fabricate an observed confidence.
+      return visionUsable(visionResult) ? 'observed' : 'inferred';
 
     case 'keywordField':
       // The iOS keyword field is never public — always inferred.
@@ -180,9 +192,9 @@ export function codeScore(
       return signals.previewVideo.present ? 8 : 0;
 
     case 'screenshots':
-      // B1: if vision ran, use the quality-aware coarse score (0|5|10).
-      // Phase-A placeholder: slot utilisation only (0–10 = slots used of 10).
-      if (visionResult) {
+      // B1: real critiques present → use vision quality score.
+      // Parse failure (empty critiques) → honest slot-count fallback.
+      if (visionUsable(visionResult)) {
         return visionResult.screenshotSetVerdict.coarseScore;
       }
       return signals.screenshots.slotsUsedOf10;
