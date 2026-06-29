@@ -79,19 +79,15 @@ export class GeminiVisionClient implements VisionClient {
       })),
     );
 
-    const prompt = `Analyze these App Store screenshots for ASO quality. Return JSON:
+    const prompt = `Analyze these App Store screenshots for ASO quality. Return JSON only — no prose.
+IMPORTANT: Keep each critique field to ONE short phrase (max 10 words). Brevity is required.
 {
-  "critiques": [{ "slot": 1, "valuePropClarity": "...", "readability": "...", "cohesion": "..." }, ...],
-  "competitorComparison": "...",
+  "critiques": [{ "slot": 1, "valuePropClarity": "one phrase", "readability": "one phrase", "cohesion": "one phrase" }, ...],
+  "competitorComparison": "one sentence",
   "suggestedCoarseScore": 0|5|10
 }
 
-Scoring guide:
-- 0: Major issues (no value prop, unreadable text, incoherent design)
-- 5: Acceptable (clear enough, minor issues)
-- 10: Excellent (compelling value prop in first frame, legible text, cohesive design)
-
-Be conservative. Only score 10 if genuinely excellent across all 4 rubric checks.`;
+Scoring: 0=poor, 5=acceptable, 10=excellent. Be conservative; reserve 10 for genuinely excellent.`;
 
     const body = {
       model: this.#modelId,
@@ -105,13 +101,15 @@ Be conservative. Only score 10 if genuinely excellent across all 4 rubric checks
         },
       ],
       temperature: 0,
-      // 2000 tokens: 7 screenshots × ~200 tokens per critique + comparison + score.
-      // 800 was too tight and caused mid-JSON truncation on real listings.
-      max_tokens: 2000,
+      // 8000 tokens: Gemini 2.5 Flash uses thinking tokens before output begins,
+      // leaving fewer than expected for JSON. 8000 ensures the full critiques
+      // array fits even with thinking budget consumed.
+      max_tokens: 8000,
       response_format: { type: 'json_object' },
     };
 
     const raw = await this.#call(body);
+    console.log(`[vision:debug] analyzeScreenshots raw (${raw.length} chars)`);
     const parsed = this.#parseJson(raw) as {
       critiques?: Array<{ slot: number; valuePropClarity: string; readability: string; cohesion: string }>;
       competitorComparison?: string;
