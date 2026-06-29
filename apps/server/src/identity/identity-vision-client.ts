@@ -69,7 +69,9 @@ Guidelines:
         },
       ],
       temperature: 0,
-      max_tokens: 400,
+      // 800 tokens: the identity JSON is small (~150 tokens), but gemini-2.5-flash
+      // thinking tokens eat into the budget before output begins. 400 was too tight.
+      max_tokens: 800,
       response_format: { type: 'json_object' },
     };
 
@@ -104,17 +106,21 @@ Guidelines:
     return content;
   }
 
-  #parse(raw: string): CreativeMatchResult {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      throw new Error(
-        `Gemini identity vision API returned invalid JSON: ${raw.slice(0, 200)}`,
-      );
+  #tryParseJson(raw: string): unknown {
+    try { return JSON.parse(raw); } catch { /* fall through */ }
+    for (let i = raw.length - 1; i > 0; i--) {
+      if (raw[i] === '}') {
+        try { return JSON.parse(raw.slice(0, i + 1)); } catch { /* keep scanning */ }
+      }
     }
+    console.error(`[identity-vision] Gemini returned unparseable JSON (${raw.length} chars); using safe defaults. Preview: ${raw.slice(0, 120)}`);
+    return null;
+  }
 
-    const p = parsed as Record<string, unknown>;
+  #parse(raw: string): CreativeMatchResult {
+    let parsed: unknown = this.#tryParseJson(raw);
+
+    const p = (parsed ?? {}) as Record<string, unknown>;
 
     const nicheBandRaw = p['nicheBand'];
     const nicheBand: CreativeMatchResult['nicheBand'] =
