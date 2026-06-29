@@ -19,6 +19,9 @@ import type { VisionResult } from './types';
 /**
  * Returns the prior VisionResult if the screenshot + icon inputs haven't
  * changed since the prior snapshot, or null if vision must re-run.
+ *
+ * Note: `_currentSignals` is accepted but intentionally unused — reserved for
+ * future signal-keyed reuse (e.g. keying on locale or version signals).
  */
 export function selectVisionResult(
   current: AppListing,

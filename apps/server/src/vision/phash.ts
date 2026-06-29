@@ -1,9 +1,19 @@
 /**
- * pHash computation using jimp.
+ * Perceptual image fingerprinting using jimp.
  *
- * Implements a difference hash (dhash): resize image to 9×8 grayscale,
- * compare adjacent pixels left-to-right in each row → 64-bit hash.
- * Returns a 16-char hex string.
+ * NOTE ON NAMING: This file and module are referred to as "pHash" throughout
+ * the codebase (public APIs: `computeDHash`, `dHashDistance`), but the
+ * algorithm implemented is a **difference hash (dHash)** — not a classic
+ * perceptual hash (pHash). The two are related but distinct:
+ *   - dHash: compare adjacent pixels row-wise → gradient-based fingerprint
+ *   - pHash: DCT-based frequency fingerprint
+ * We use dHash because it is fast, simple, and sufficient for comparing App
+ * Store icons for near-duplicate detection. The public API names (`computeDHash`,
+ * `dHashDistance`) are accurate; only the module-level "pHash" label is a
+ * historical misnomer retained for backwards compatibility.
+ *
+ * Implementation: resize image to 9×8 grayscale, compare adjacent pixels
+ * left-to-right in each row → 64-bit hash. Returns a 16-char hex string.
  *
  * If jimp fails to decode an image (e.g. unsupported format or truncated bytes),
  * falls back to a simple SHA-256-derived fingerprint labeled as

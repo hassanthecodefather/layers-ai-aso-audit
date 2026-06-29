@@ -12,7 +12,7 @@ import type { ListingSnapshot } from '../domain/snapshot';
 
 // ── §F P2 Test 1: Confidence-labelled critique ────────────────────────────────
 describe('runVision — confidence labels', () => {
-  it('screenshotSetVerdict.confidence is observed, pHashDistance.confidence is observed, confusable.confidence is inferred', async () => {
+  it('screenshotSetVerdict.confidence is observed, pHashDistance.confidence is inferred (no competitors), confusable.confidence is inferred', async () => {
     // Import lazily inside the test so the RED run catches missing modules
     const { runVision } = await import('./analyze');
     const { StubVisionClient } = await import('./client');
@@ -51,7 +51,8 @@ describe('runVision — confidence labels', () => {
     // §F P2 Test 1 assertions
     expect(result.screenshotSetVerdict.confidence).toBe('observed');
     expect(result.iconVerdict).not.toBeNull();
-    expect(result.iconVerdict!.pHashDistance.confidence).toBe('observed');
+    // pHashDistance: 'inferred' because no competitor icon URLs are available — placeholder 64 returned.
+    expect(result.iconVerdict!.pHashDistance.confidence).toBe('inferred');
     expect(result.iconVerdict!.confusable.confidence).toBe('inferred');
   });
 });
@@ -124,9 +125,9 @@ describe('selectVisionResult — reuse logic', () => {
   });
 });
 
-// ── §F P2 Test 3: pHash observed / confusability inferred ────────────────────
+// ── §F P2 Test 3: pHash / confusability confidence labels ────────────────────
 describe('runVision — pHash and confusable confidence labels', () => {
-  it('IconVerdict.pHashDistance.confidence is observed and confusable.confidence is inferred', async () => {
+  it('IconVerdict.pHashDistance.confidence is inferred (no competitors) and confusable.confidence is inferred', async () => {
     const { runVision } = await import('./analyze');
     const { StubVisionClient } = await import('./client');
 
@@ -156,8 +157,9 @@ describe('runVision — pHash and confusable confidence labels', () => {
     const result = await runVision(listing, stubClient, noopFetcher);
 
     expect(result.iconVerdict).not.toBeNull();
-    // pHash is computed from actual pixel data → 'observed'
-    expect(result.iconVerdict!.pHashDistance.confidence).toBe('observed');
+    // pHashDistance: 'inferred' when no competitor icons are available (placeholder 64 returned).
+    // When real competitor icon URLs are present, it would be 'observed' (computed from pixels).
+    expect(result.iconVerdict!.pHashDistance.confidence).toBe('inferred');
     // confusable is a vision model judgment → 'inferred'
     expect(result.iconVerdict!.confusable.confidence).toBe('inferred');
     // categoryCohesion is also a vision judgment → 'inferred'

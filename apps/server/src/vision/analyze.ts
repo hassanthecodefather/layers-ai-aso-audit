@@ -103,8 +103,12 @@ export async function runVision(
     });
 
     iconVerdict = {
-      // pHashDistance is computed from actual pixel data → 'observed'
-      pHashDistance: { value: minPHashDistance, confidence: 'observed' },
+      // pHashDistance: 'observed' when real competitor icons were compared;
+      // 'inferred' when competitorIconUrls is empty and we return the placeholder 64.
+      pHashDistance: {
+        value: minPHashDistance,
+        confidence: competitorIconUrls.length > 0 ? 'observed' : 'inferred',
+      },
       // confusable is a vision model judgment → 'inferred'
       confusable: { value: iconRaw.confusable, confidence: 'inferred' },
       // categoryCohesion is also a vision judgment → 'inferred'

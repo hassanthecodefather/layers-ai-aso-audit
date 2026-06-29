@@ -248,9 +248,13 @@ const scoreStep = createStep({
     // selectVisionResult checks if screenshot/icon URLs match the prior snapshot
     // and returns the cached result if so (zero additional LLM calls).
     const visionClient = getVisionClient();
-    const visionResult =
-      selectVisionResult(listing, signals, priorSnap) ??
-      (await runVision(listing, visionClient));
+    const priorVisionResult = selectVisionResult(listing, signals, priorSnap);
+    const visionResult = priorVisionResult ?? (await runVision(listing, visionClient));
+    // Track whether vision ran fresh (i.e., no cached result was available).
+    // B2 and B3 are gated on this: they only add value when vision ran fresh —
+    // if images are unchanged, the prior vision-grounded identity and uplift
+    // findings remain valid, and re-running would make unnecessary LLM calls.
+    const visionWasFresh = priorVisionResult === null;
     // `rubricVersion` is the scoring fingerprint — rubric weights + SCORER_VERSION
     // (scoring/version.ts) — so a weight retune OR a scorer-code bump changes it and
     // invalidates this whole-snapshot cache even when the listing/identity match.
@@ -336,21 +340,31 @@ const scoreStep = createStep({
     // Run after persistAudit (so memo.identityVersion is available), before
     // notes are finalised. getIdentityVisionClient() returns a no-op stub when
     // no API key is set — all hermetic tests are unaffected.
+    // Gated on visionWasFresh: if images haven't changed, the prior vision-grounded
+    // identity row is still valid — skip the LLM call and the new identity row.
     const identityVisionClient = getIdentityVisionClient();
-    const idFullResult = await runIdFull(
-      listing,
-      resolved,        // the ID-lite identity already resolved at top of step
-      identityVisionClient,
-      memo.identityVersion + 1,  // next version (lite is memo.identityVersion)
-      now,
-    );
-    // Write the new stage='full' version row.
-    await storage.appendIdentity(idFullResult.identityVersion);
+    let idFullResult: Awaited<ReturnType<typeof runIdFull>> | null = null;
+    if (visionWasFresh) {
+      idFullResult = await runIdFull(
+        listing,
+        resolved,        // the ID-lite identity already resolved at top of step
+        identityVisionClient,
+        memo.identityVersion + 1,  // next version (lite is memo.identityVersion)
+        now,
+      );
+      // Write the new stage='full' version row.
+      await storage.appendIdentity(idFullResult.identityVersion);
+    }
 
     // ── B3: secondary uplifts — screenshot intelligence, cross-device matrix, PPO brief ──
     // Run after B2; getVisionClient() already returned above. NoOpVisionClient has
     // safe defaults so hermetic tests are unaffected (no LLM call without API key).
-    const secondaryUplifts = await runSecondaryUplifts(listing, visionClient);
+    // Gated on visionWasFresh: if images haven't changed, the prior uplift findings
+    // remain valid — skip the LLM call.
+    let secondaryUplifts: Awaited<ReturnType<typeof runSecondaryUplifts>> | null = null;
+    if (visionWasFresh) {
+      secondaryUplifts = await runSecondaryUplifts(listing, visionClient);
+    }
 
     // Surface what memory observed, honestly, in the report's limitations.
     const notes: string[] = [];
@@ -375,35 +389,39 @@ const scoreStep = createStep({
       notes.push(`Change since last audit: ${memo.changeDiff.join(' ')}`);
     }
     if (listingUnchanged) {
-      notes.push('Listing unchanged since last audit — scores and recommendations returned from cache (no LLM call).');
+      // Images are also unchanged when the whole snapshot is cached (same
+      // screenshot/icon URLs → visionWasFresh is false), so B2/B3 are also skipped.
+      notes.push('Listing unchanged since last audit — report returned from cache. Vision analysis, ID-full, and secondary uplifts also skipped (images unchanged).');
     }
-    if (idFullResult.visionEscalation) {
+    if (idFullResult?.visionEscalation) {
       notes.push(
         "Creative mismatch: the icon and first screenshot don't clearly match the resolved function category. Consider updating the creative assets.",
       );
     }
 
     // ── B3: surface secondary uplift findings ────────────────────────────────
-    const { screenshotSetAnalysis, deviceMatrix, ppoBrief } = secondaryUplifts;
-    if (screenshotSetAnalysis.hasDuplicateMessages && screenshotSetAnalysis.duplicateSlots.length > 0) {
-      notes.push(
-        `Screenshots [${screenshotSetAnalysis.duplicateSlots.join(', ')}] appear to duplicate the same message — consider differentiating.`,
-      );
-    }
-    if (screenshotSetAnalysis.promoteCandidateSlot !== null) {
-      notes.push(
-        `Consider promoting screenshot ${screenshotSetAnalysis.promoteCandidateSlot} into the first 3 search-visible positions.`,
-      );
-    }
-    if (ppoBrief.exceeded) {
-      notes.push(
-        `Found ${ppoBrief.treatmentCount} distinct creative treatments (max recommended: 3 for independent measurability).`,
-      );
-    }
-    if (deviceMatrix.ipadMissing) {
-      notes.push(
-        `iPad screenshot count (${deviceMatrix.ipad.slotsUsed}) is significantly fewer than iPhone (${deviceMatrix.iphone.slotsUsed}) — consider filling iPad slots.`,
-      );
+    if (secondaryUplifts) {
+      const { screenshotSetAnalysis, deviceMatrix, ppoBrief } = secondaryUplifts;
+      if (screenshotSetAnalysis.hasDuplicateMessages && screenshotSetAnalysis.duplicateSlots.length > 0) {
+        notes.push(
+          `Screenshots [${screenshotSetAnalysis.duplicateSlots.join(', ')}] appear to duplicate the same message — consider differentiating.`,
+        );
+      }
+      if (screenshotSetAnalysis.promoteCandidateSlot !== null) {
+        notes.push(
+          `Consider promoting screenshot ${screenshotSetAnalysis.promoteCandidateSlot} into the first 3 search-visible positions.`,
+        );
+      }
+      if (ppoBrief.exceeded) {
+        notes.push(
+          `Found ${ppoBrief.treatmentCount} distinct creative treatments (max recommended: 3 for independent measurability).`,
+        );
+      }
+      if (deviceMatrix.ipadMissing) {
+        notes.push(
+          `iPad screenshot count (${deviceMatrix.ipad.slotsUsed}) is significantly fewer than iPhone (${deviceMatrix.iphone.slotsUsed}) — consider filling iPad slots.`,
+        );
+      }
     }
 
     return { ...report, limitations: [...report.limitations, ...notes] };

@@ -312,12 +312,16 @@ export class NoOpVisionClient implements VisionClient {
     return {
       critiques: [],
       competitorComparison: '',
+      // Placeholder midpoint (scale: 0 | 5 | 10) — neither good nor bad; used
+      // when no API key is configured so tests pass without a real vision call.
       suggestedCoarseScore: 5,
     };
   }
 
   async analyzeIcon(_input: IconAnalysisInput): Promise<IconRawResult> {
     return {
+      // Placeholder midpoint (scale: 0–64 Hamming distance) — 32 represents
+      // "no comparison done"; used when no API key is configured.
       pHashDistance: 32,
       confusable: 'Unknown — vision not available',
       categoryCohesion: 'Unknown — vision not available',
