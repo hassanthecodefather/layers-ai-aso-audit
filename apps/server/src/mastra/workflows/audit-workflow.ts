@@ -9,7 +9,7 @@ import { produceAuditDraft } from '../../scoring/score';
 import { buildAuditPrompt } from '../../scoring/prompt';
 import { computeSignals } from '../../scoring/signals';
 import { allDimensionHashes } from '../../scoring/dimension-scorer';
-import { RUBRIC } from '../../scoring/rubric';
+import { RUBRIC_VERSION } from '../../scoring/version';
 import { gatherListingTool } from '../tools/gather-listing';
 import { fetchITunesCore, type ITunesCore } from '../../sources/itunes';
 import { getLlmProvider } from '../../llm';
@@ -23,12 +23,6 @@ import {
   IdentityDecisionSchema,
 } from '../../identity/human-confirm';
 import { buildPriorContext, persistAudit } from '../../memory/audit-memory';
-
-/** Stable hash of the rubric weight column — the rubric-replay key (§A). */
-const RUBRIC_VERSION = createHash('sha256')
-  .update(JSON.stringify(RUBRIC.map((d) => [d.id, d.weight])))
-  .digest('hex')
-  .slice(0, 16);
 
 /**
  * The ASO audit workflow.
@@ -240,8 +234,9 @@ const scoreStep = createStep({
       .slice(0, 16);
 
     const priorSnap = priorSnapR.ok ? priorSnapR.value : null;
-    // A rubric weight retune or a scorer-code bump (SCORER_VERSION) invalidates
-    // the whole-snapshot cache even when the listing/identity are identical.
+    // `rubricVersion` is the scoring fingerprint — rubric weights + SCORER_VERSION
+    // (scoring/version.ts) — so a weight retune OR a scorer-code bump changes it and
+    // invalidates this whole-snapshot cache even when the listing/identity match.
     const listingUnchanged =
       priorSnap !== null &&
       priorSnap.promptHash === promptHash &&

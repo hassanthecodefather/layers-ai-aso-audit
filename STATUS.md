@@ -5,7 +5,7 @@ contracts live elsewhere: [`specification.md`](specification.md) is the *what*,
 [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) is the *how-to-build*. This
 file is the *where-we-are* — read it first, trust the tests over the prose.
 
-_Last updated: 2026-06-26 · spec v1.3.1_
+_Last updated: 2026-06-29 · spec v1.3.1_
 
 Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferred (by design)
 
@@ -14,7 +14,7 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
 | Phase | Scope | Status | DoD gate |
 |---|---|---|---|
 | **0** | Groundwork: Gemini-only, migration runner | ✅ | suite green + live audit on Gemini |
-| **A** | ID-lite identity + P1 persistent memory | ✅ | §F ID-lite **and** §F P1 green; reworded re-raise collapses to one row (typed referent); 2nd audit references 1st, marks applied, never repeats. **A6 score determinism complete** (186 tests) |
+| **A** | ID-lite identity + P1 persistent memory | ✅ | §F ID-lite **and** §F P1 green; reworded re-raise collapses to one row (typed referent); 2nd audit references 1st, marks applied, never repeats. **A6 score determinism complete** (191 tests) |
 | **B** | P2 image analysis + ID-full | ⬜ | — |
 | **C** | P3 keyword research (160-char linter) | ⬜ | — |
 | **D** | P4 deep review analysis | ⬜ | — |
@@ -38,7 +38,7 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
 
 ## Tests (the source of truth)
 
-- **186 hermetic tests pass** (`npm test`). Covers: StorageClient conformance,
+- **191 hermetic tests pass** (`npm test`). Covers: StorageClient conformance,
   ID-lite §F gates, P1 §F gates (dedup, contradiction, zero-LLM replay),
   human-confirm reuse/re-ask, memory loop end-to-end, classifier fail-safe
   parsing, dismissal-is-honoured, **reworded re-raise collapses to one row**,
@@ -61,12 +61,13 @@ identity classifier fails safe instead of throwing on malformed JSON; the
 `getStepResult`-across-resume assumption is now guarded (it holds).
 
 **A7 post-review batch (applied & committed):** IntentTag import (build was red —
-`tsc` is now clean **except** the pre-existing `routes.ts` Hono skew); orphaned
-rec-occurrences (now record against the stored row id); human-confirmed
-`nicheBand`; reuse staleness (`SCORER_VERSION` + `rubricVersion`); replay/aggregate
-share one formula; classifier logs on parse failure. Residuals (see plan A7):
-no regression test yet for the occurrences fix; `tsc`-as-gate blocked by
-`routes.ts`; `SCORER_VERSION` not yet in the whole-snapshot guard.
+`tsc` is now fully clean — the `routes.ts` Hono skew was fixed with a scoped
+`c as any`); orphaned rec-occurrences (now record against the stored row id,
+pinned by a regression test); human-confirmed `nicheBand`; reuse staleness
+(`SCORER_VERSION` folded into both the per-dimension hash **and** the
+whole-snapshot fingerprint via `scoring/version.ts`, pinned by `version.test.ts`);
+replay/aggregate share one formula; classifier logs on parse failure.
+**All A7 residuals closed.**
 
 Still open (tracked, not yet fixed — fold into Phase B):
 - **applied-detection coverage** — `listingField()` only maps title/subtitle/
@@ -88,8 +89,9 @@ Still open (tracked, not yet fixed — fold into Phase B):
 - **#1 (resolved)** — identity is resolved in the `identify-app` *step* (from its
   existing iTunes fetch), not by modifying the `identify-app` *tool*. The §G "no
   re-fetch" intent holds; documented as accepted.
-- **Pre-existing** — one typecheck error in `mastra/routes.ts` (a Hono `Context`
-  type-skew on `streamSSE`) predates this work and is untouched. `npm test` is green.
+- **Resolved** — the pre-existing `mastra/routes.ts` Hono `Context` type-skew on
+  `streamSSE` is fixed with a scoped `c as any`; **`tsc --noEmit` is now fully clean**
+  and can gate CI. `npm test` green (191).
 
 ## Gotchas
 

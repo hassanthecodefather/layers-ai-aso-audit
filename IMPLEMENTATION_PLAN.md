@@ -87,6 +87,26 @@ The interactive half of the spec's identity-escalation logic (the A2 line above 
 - **Routes:** `/audit/identify` surfaces `identity` + `identityNeedsConfirm`; `/audit/run` accepts an `identityDecision` and threads it into the resume.
 - **Tests:** human-confirm logic (confirm/correct, reuse-vs-re-ask, flip detection) hermetic; `human_confirmed` persistence + rec-allowance in the memory suite; a **live workflow smoke** drives the real suspend → resume(decision) → report path.
 
+**A6 · Score determinism — honour "deterministic signals solid, LLM scores muted" (spec line 173) [live] — ✅ complete.** *Surfaced by live testing (identical re-runs swung **46 → 30** at temp 0); the §F P1 gates already passed — this closed a P1 secondary-uplift gap by pushing the code/LLM split from the total down to each dimension.*
+- ✅ **Code-derived confidence** for all 10 dims (`dimension-scorer.ts: deriveConfidence`, applied in `aggregate.ts`) — the model can no longer flip a dimension `unavailable` and silently re-weight the score.
+- ✅ **Code-scored deterministic dims** (`codeScore`): screenshots = slots-used-of-10; previewVideo = present→8 / absent→0; ratings = `(allTimeAverage / 5)·10` + ±1 recent-trend nudge (rubric checks 1–2; themes/responses → P4).
+- ✅ **Coarse-ordinal for mixed dims** (title/subtitle, `coarseOrdinalScore`): `utilisation < 20%` floor → 0, else snap to {0, 5, 10}. Idempotent, so the reuse/cache path stays stable. `description` / `icon` / `conversion` / `competitive` stay free 0-10 (reuse re-rolls them only on their own edits).
+- ✅ **Screenshots source = iTunes** (`signals.ts`): `slotsUsedOf10 = screenshotUrls.length || crawledScreenshotCount` (crawler is fallback only when iTunes returns 0). Pinned by two regression tests (`signals.test.ts`) — a `Math.max` revert fails both.
+- ✅ **`inferred` relabel** — screenshots/previewVideo report `inferred` (count/presence observed, quality needs vision); upgraded to `observed` at **B1**.
+- ✅ **Reuse, don't recompute** (`audit-workflow.ts`): whole-snapshot byte-identical ⇒ reuse the report, zero LLM; else a per-dimension splice reuses unchanged dims (input hash carries `SCORER_VERSION`).
+- ✅ **Identity at temp 0** (`resolve-identity.ts`); ✅ **prompt echoes the computed scores** (`scoringConstraints`) so the model's narrative matches the displayed number; ✅ **`buildPriorContext` docstring** corrected (stateless generation).
+- **Beta-calibration caveats (6b golden-set retune, spec §C/§E — not blockers):** coarse-ordinal boundary instability (a 7↔8 model waver flips 5↔10 on title's w20); the `utilisation < 20%` → 0 floor is harsh (a short brand title like "Hulu" scores 0).
+
+**A7 · Post-review correctness fixes (code-review batch) — ✅ applied, committed & verified.** `tsc` is clean (the pre-existing `routes.ts` Hono skew is fixed with a scoped `c as any`), the occurrences regression test is added, suite green.
+- ✅ **IntentTag import** — was a `tsc` TS2304 build break; fixed. With `routes.ts` resolved, **`tsc --noEmit` can now gate CI** (vitest strips types, so it can't replace this).
+- ✅ **Orphaned rec occurrences** — `recordOccurrence` now records against the stored row id (`priorIdByRecKey`), not a freshly-minted one, so re-raised recs no longer log under orphan ids and belief-accumulation counts correctly. **Pinned** by `audit-memory.test.ts` ("re-raised rec logs 2 occurrences under the canonical stored id").
+- ✅ **Human-confirmed `nicheBand`** — `resolveWithHistory`'s no-flip reuse now sets `nicheBand`, mirroring `applyHumanDecision`.
+- ✅ **Replay drift** — `assembleReport` delegates `overallScore` to `replayOverallScore` (one normalization formula for live + replay).
+- ✅ **Classifier logging** — `parseClassificationText` logs on JSON-parse / schema failure (a broken classifier is no longer indistinguishable from a legit "Unknown").
+- ✅ **Reuse staleness (per-dimension)** — `SCORER_VERSION` folded into `dimensionInputHash`; `rubricVersion` checked in `listingUnchanged`.
+- ✅ **Reuse staleness (whole-snapshot) — closed.** `rubricVersion` is now the **scoring fingerprint** = hash(rubric weights + `SCORER_VERSION`) via `scoring/version.ts: scoringVersion`, and `listingUnchanged` checks it — so a `coarseOrdinalScore`/`codeScore` change bumps `SCORER_VERSION` → changes the fingerprint → invalidates the whole-snapshot cache (no stale report). Folded into the existing stamp rather than a new column, so **no DB migration**. Pinned by `scoring/version.test.ts` (scorer-version change ⇒ different fingerprint); the misleading comment is corrected. **All A7 residuals are now closed.**
+- **Reviewed & rejected (not bugs):** "domain-flip buries human confirmation forever" (it's the escalate/re-ask path); "contradiction guard leaves both proposed" (spec §C: flag, don't suppress).
+
 ---
 
 ## Phase B · P2 Image Analysis + ID-full
