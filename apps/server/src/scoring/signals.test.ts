@@ -10,6 +10,8 @@ function makeListing(overrides: Partial<AppListing> = {}): AppListing {
     url: 'https://apps.apple.com/us/app/id1',
     name: 'Test App',
     developer: 'Test Dev',
+    bundleId: null,
+    sellerUrl: null,
     iconUrl: 'https://example.com/icon.png',
     primaryGenre: 'Productivity',
     genres: ['Productivity'],
@@ -23,6 +25,7 @@ function makeListing(overrides: Partial<AppListing> = {}): AppListing {
     screenshotUrls: [],
     ipadScreenshotUrls: [],
     hasPreviewVideo: false,
+    crawledScreenshotCount: 0,
     averageRating: 4.5,
     ratingCount: 1000,
     currentVersionRating: 4.2,
@@ -92,6 +95,31 @@ describe('computeSignals — screenshots', () => {
     );
     expect(s.screenshots.iphoneCount).toBe(12);
     expect(s.screenshots.slotsUsedOf10).toBe(10);
+  });
+
+  it('uses iTunes count even when crawler count is higher (iTunes is authoritative)', () => {
+    // Regression: Math.max was used previously; mdCount overcounts due to iPad
+    // screenshots, preview poster, and related-app icons all sharing the same
+    // mzstatic.com/image/thumb CDN path.
+    const s = computeSignals(
+      makeListing({
+        screenshotUrls: Array(4).fill('x'),
+        crawledScreenshotCount: 9,
+      }),
+    );
+    expect(s.screenshots.iphoneCount).toBe(4);
+    expect(s.screenshots.slotsUsedOf10).toBe(4);
+  });
+
+  it('falls back to crawler count only when iTunes returns none', () => {
+    const s = computeSignals(
+      makeListing({
+        screenshotUrls: [],
+        crawledScreenshotCount: 4,
+      }),
+    );
+    expect(s.screenshots.iphoneCount).toBe(4);
+    expect(s.screenshots.slotsUsedOf10).toBe(4);
   });
 });
 

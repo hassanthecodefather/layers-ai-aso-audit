@@ -29,6 +29,8 @@ function rec(category: Recommendation['category']): Recommendation {
   return {
     category,
     dimension: 'title',
+    intent: 'rebalance_title_subtitle',
+    referent: { kind: 'none' },
     title: 't',
     rationale: 'r',
     evidence: 'e',

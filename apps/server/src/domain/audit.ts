@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { AppSummarySchema } from './listing';
+import { IntentTagSchema, ReferentSchema } from './recommendation';
 
 /**
  * The ten ASO dimensions. The order here is the order they render in the
@@ -48,10 +49,16 @@ export type DimensionScore = z.infer<typeof DimensionScoreSchema>;
  * A single recommendation. `before`/`after` are required for any text change
  * (the task is explicit: "rewrite the title from X to Y because Z") and null
  * for non-text changes like "add a preview video".
+ *
+ * `intent` is a closed enum the model picks from; `referent` is the typed
+ * discriminator that pins the rec's identity for dedup — `value_key` is always
+ * derived from `referent.value` in code, never from the model's prose.
  */
 export const RecommendationSchema = z.object({
   category: z.enum(['quick-win', 'high-impact', 'strategic']),
   dimension: DimensionIdSchema,
+  intent: IntentTagSchema,
+  referent: ReferentSchema,
   title: z.string().describe('The change, stated as an imperative.'),
   rationale: z.string().describe('Why it matters, citing the evidence.'),
   evidence: z.string().describe('The specific data point that prompted this.'),

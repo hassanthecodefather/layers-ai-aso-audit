@@ -63,6 +63,12 @@ export const AppListingSchema = z.object({
   price: z.number().nullable(),
   formattedPrice: z.string().nullable(),
 
+  // Identity-resolution signals the Lookup API already returns (spec ID):
+  // the reverse-DNS bundle id (com.rivian.* → "rivian") and the developer's
+  // marketing/support URL (the citable marketing-domain signal family).
+  bundleId: z.string().nullable().default(null),
+  sellerUrl: z.string().nullable().default(null),
+
   // Text fields. `subtitle` and `promotionalText` exist *only* on the
   // rendered web page — the iTunes API never returns them — so they are
   // null on an iTunes-only run.
@@ -76,6 +82,8 @@ export const AppListingSchema = z.object({
   screenshotUrls: z.array(z.string()),
   ipadScreenshotUrls: z.array(z.string()),
   hasPreviewVideo: z.boolean(),
+  /** Screenshot count from the page crawler; fallback when iTunes returns none (known API gap). */
+  crawledScreenshotCount: z.number().default(0),
 
   // Ratings & reviews.
   averageRating: z.number().nullable(),

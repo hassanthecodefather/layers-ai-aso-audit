@@ -9,8 +9,8 @@ import { ASO_AUDIT_SKILL } from '../skills/aso-audit';
  * that file, not in code. It is deliberately tool-free: the workflow has
  * already gathered every input by the time the agent runs, so the agent's
  * one job is to turn that data into a scored, structured `AuditDraft`. Keeping
- * it tool-free also means it runs on any model, including local ones (e.g.
- * Ollama's Gemma) that don't support function calling.
+ * it tool-free also means it never relies on function calling — only on
+ * structured-text output, which every model supports.
  */
 export const asoAuditor = new Agent({
   id: 'aso-auditor',

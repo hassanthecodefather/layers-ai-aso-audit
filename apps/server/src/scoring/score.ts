@@ -1,15 +1,16 @@
 import type { Agent } from '@mastra/core/agent';
 import { AuditDraftSchema, type AuditDraft } from '../domain/audit';
 import type { AppListing } from '../domain/listing';
-import { computeSignals } from './signals';
+import { computeSignals, type ListingSignals } from './signals';
 import { buildAuditPrompt, buildRepairPrompt } from './prompt';
 import { extractJsonObject } from './extract';
+import { normalizeRecommendations } from './candidates';
 
 /**
  * The structured-output strategy: generate → validate → repair.
  *
  * Rather than trust a provider's `response_format` to enforce the schema
- * (Ollama, for one, does not), we own it: ask for the JSON, extract and
+ * (not every model honours it), we own it: ask for the JSON, extract and
  * validate it, and on a schema miss make exactly one repair call with the
  * validation errors fed back. Provider-agnostic and robust — and the LLM
  * still only supplies judgement; weighting stays in `aggregate.ts`.
@@ -49,28 +50,37 @@ function parseDraft(text: string): ParseAttempt {
 
 /** Run one plain-text generation and return its text. */
 async function generate(agent: Agent, prompt: string): Promise<string> {
-  const result = await agent.generate(prompt);
+  const result = await agent.generate(prompt, { modelSettings: { temperature: 0 } });
   return typeof result.text === 'string' ? result.text : '';
 }
 
 /**
- * Produce a validated `AuditDraft` for a listing — generating, validating,
- * and repairing once if the first response doesn't fit the schema.
+ * Produce a validated, normalized `AuditDraft` for a listing.
+ *
+ * `signals` is accepted explicitly so the caller can pass the same instance
+ * used for hashing / persistence — avoids recomputing and guarantees the
+ * normalization sees the same snapshot the prompt was built from.
+ *
+ * After generation: `normalizeRecommendations` remaps dimensions to their
+ * canonical values and enforces structural existence gates in code, so no
+ * rec_key component is a free model choice.
  */
 export async function produceAuditDraft(
   agent: Agent,
   listing: AppListing,
+  signals: ListingSignals,
+  priorContext?: string,
 ): Promise<AuditDraft> {
-  const prompt = buildAuditPrompt(listing, computeSignals(listing));
+  const prompt = buildAuditPrompt(listing, signals, priorContext);
 
   let attempt = parseDraft(await generate(agent, prompt));
-  if (attempt.draft) return attempt.draft;
+  if (attempt.draft) return normalizeRecommendations(attempt.draft, signals);
 
   // One repair pass — feed the model its own output and the exact errors.
   attempt = parseDraft(
     await generate(agent, buildRepairPrompt(attempt.raw, attempt.error)),
   );
-  if (attempt.draft) return attempt.draft;
+  if (attempt.draft) return normalizeRecommendations(attempt.draft, signals);
 
   throw new Error(
     `the model's output did not match the audit schema (${attempt.error})`,
