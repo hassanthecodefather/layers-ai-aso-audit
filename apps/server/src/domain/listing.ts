@@ -82,6 +82,8 @@ export const AppListingSchema = z.object({
   screenshotUrls: z.array(z.string()),
   ipadScreenshotUrls: z.array(z.string()),
   hasPreviewVideo: z.boolean(),
+  /** Screenshot count from the page crawler; fallback when iTunes returns none (known API gap). */
+  crawledScreenshotCount: z.number().default(0),
 
   // Ratings & reviews.
   averageRating: z.number().nullable(),

@@ -1,6 +1,7 @@
 import type { AppListing } from '../domain/listing';
 import type { ListingSignals } from './signals';
 import { RUBRIC } from './rubric';
+import { codeScore } from './dimension-scorer';
 
 /**
  * Prompt construction for the audit.
@@ -124,6 +125,88 @@ REFERENT RULES — the referent field pins the recommendation's identity for ded
 There is at most ONE recommendation per (dimension, intent, referent) combination. For example,
 two add_keyword suggestions for the subtitle must have different referent.value keywords.`;
 
+
+/**
+ * Build the scoring-constraints note injected after the signals fact sheet.
+ *
+ * Some dimension scores are fully determined by code from the signals — the
+ * model's number is discarded and replaced. Telling the model this prevents
+ * inconsistency between its findings text ("7 slots → solid") and the actual
+ * displayed score. It also tells the model to restrict title/subtitle to the
+ * three coarse anchors the code enforces, so quantization never contradicts
+ * the narrative.
+ */
+function scoringConstraints(signals: ListingSignals): string {
+  const lines: string[] = [
+    '## Scoring constraints — these values are computed in code and override yours',
+    '',
+    'Your `score` field for the dimensions below MUST exactly match the value shown.',
+    'Do not adjust them — they come from the fact sheet, not from judgment.',
+    'Write `findings` and `evidence` that explain *why* the number matters.',
+    '',
+  ];
+
+  // screenshots: always slots-based
+  const sc = signals.screenshots.slotsUsedOf10;
+  lines.push(`• screenshots  → ${sc}  (slotsUsedOf10 = ${sc} of 10 available)`);
+
+  // previewVideo: delegate to codeScore — single source of truth
+  const pvScore = codeScore('previewVideo', signals);
+  if (pvScore !== null) {
+    lines.push(
+      `• previewVideo → ${pvScore}  (${signals.previewVideo.present ? 'present → 8' : 'absent → 0'}; quality checks need vision, deferred to Phase B)`,
+    );
+  } else {
+    lines.push(
+      '• previewVideo → set confidence "unavailable" (page not crawled — presence unknown)',
+    );
+  }
+
+  // ratings: delegate to codeScore — single source of truth
+  const rScore = codeScore('ratings', signals);
+  if (rScore !== null) {
+    const r = signals.ratings;
+    const cv = r.currentVersionAverage;
+    const nudge =
+      cv !== null && r.allTimeAverage !== null && Math.abs(cv - r.allTimeAverage) >= 0.3
+        ? cv > r.allTimeAverage ? 1 : -1
+        : 0;
+    const nudgeNote =
+      nudge > 0 ? ', +1 improving-trend nudge' : nudge < 0 ? ', −1 declining-trend nudge' : '';
+    lines.push(
+      `• ratings      → ${rScore}  (${r.allTimeAverage!.toFixed(2)}★ all-time × 2${nudgeNote})`,
+    );
+  } else {
+    lines.push('• ratings      → score by judgment (no rating data yet)');
+  }
+
+  // title: utilisation floor forces 0; otherwise restrict to {0, 5, 10}
+  const titleUtil = signals.title.utilizationPct;
+  if (titleUtil < 20) {
+    lines.push(`• title        → 0  (utilisation floor: ${titleUtil}% < 20% — near-empty field)`);
+  } else {
+    lines.push('• title        — score ONLY as 0, 5, or 10 (never any other value)');
+  }
+
+  // subtitle: unobservable → unavailable; floor at <20%; otherwise restrict to {0, 5, 10}
+  const sub = signals.subtitle;
+  if (!sub.observable) {
+    lines.push('• subtitle     → set confidence "unavailable" (page not crawled)');
+  } else if (sub.utilizationPct < 20) {
+    lines.push(`• subtitle     → 0  (utilisation floor: ${sub.utilizationPct}% < 20% — near-empty field)`);
+  } else {
+    lines.push('• subtitle     — score ONLY as 0, 5, or 10 (never any other value)');
+  }
+
+  lines.push('');
+  lines.push(
+    'Anchor meanings: 0 = poor (near-empty, keyword-stuffed, or unreadable) · 5 = acceptable (functional but improvable) · 10 = excellent (optimised, natural, distinctive).',
+  );
+  lines.push('Use the same three-level language in your findings so the text matches the score.');
+
+  return lines.join('\n');
+}
+
 /** The full per-listing audit prompt. */
 export function buildAuditPrompt(
   listing: AppListing,
@@ -134,16 +217,17 @@ export function buildAuditPrompt(
     `Audit this App Store listing: "${listing.name}" by ${listing.developer}.`,
     `Store: ${listing.country.toUpperCase()} · ${listing.url}`,
     '',
-    // The resolved identity fact sheet + prior-audit history (P1 memory),
-    // injected the same way the deterministic signals are, so the model
-    // interprets a grounded identity and its own past advice rather than
-    // re-deriving either from the (possibly misleading) listing.
-    ...(priorContext ? ['## Identity & prior-audit memory — AUTHORITATIVE', priorContext, ''] : []),
+    // The resolved identity fact sheet (identity grounding only — no ledger).
+    // Generation is a pure function of (listing + identity); the recommendation
+    // ledger is read after generation in the memory reconciliation layer.
+    ...(priorContext ? ['## Identity context — AUTHORITATIVE', priorContext, ''] : []),
     '## Text fields',
     textFields(listing),
     '',
     '## Signals fact sheet — AUTHORITATIVE, use these numbers verbatim',
     JSON.stringify(signals, null, 2),
+    '',
+    scoringConstraints(signals),
     '',
     '## Category competitors',
     competitors(listing),

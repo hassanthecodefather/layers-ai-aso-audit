@@ -104,22 +104,33 @@ export async function resolveWithHistory(
   prior: IdentityVersion | null,
   opts: { fetchedAt?: string } = {},
 ): Promise<ResolvedIdentity> {
-  if (!prior || prior.source !== 'human_confirmed') {
+  if (!prior) {
     return resolveAppIdentity(listing, classify, opts);
   }
 
   const current = extractIdentitySignals(listing);
+
+  // When the load-bearing signals (developer, bundle org, marketing domain)
+  // are unchanged, re-resolving produces LLM drift rather than new information —
+  // the same inputs will return the same classification ±noise. Reuse the prior
+  // verbatim. This applies to both `lite` and `human_confirmed` sources and is
+  // the key stabiliser for the prompt hash (and therefore the rec-set cache).
   if (!signalsMateriallyChanged(prior, current)) {
-    return identityVersionToResolved(prior); // sticky — no re-ask
+    return identityVersionToResolved(prior);
   }
 
-  // Signals moved — re-resolve and check whether the answer actually flips.
+  // Signals changed — re-resolve fresh.
   const fresh = await resolveAppIdentity(listing, classify, opts);
+
+  if (prior.source !== 'human_confirmed') {
+    return fresh;
+  }
+
+  // Human-confirmed: only re-ask when the domain actually flips (a rebrand
+  // is material; a minor signal change that stays in the same domain is not).
   const flipped = domainOf(fresh.category) !== domainOf(prior.category);
   if (!flipped) {
-    // Same domain → the human's call still holds; keep it, don't re-ask.
     return { ...fresh, category: prior.category, niche: prior.niche, categoryBand: 'high', escalate: false, source: 'human_confirmed' };
   }
-  // A genuine flip → surface it for re-confirmation.
   return { ...fresh, escalate: true };
 }

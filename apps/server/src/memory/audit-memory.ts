@@ -128,18 +128,19 @@ export function changeDiff(prior: ListingSnapshot | null, current: ListingSnapsh
 }
 
 /**
- * Build the prior-audit context string injected into the scoring prompt (spec
- * P1 "reads its own past output first"). Summarises the resolved identity, the
- * live ledger (with status), and the change-diff — so the model can say "you
- * applied this" instead of starting from zero, and never contradicts itself.
+ * Build the prior-audit context string injected into the scoring prompt.
+ * Injects only the resolved identity and the identity fact sheet — NOT the
+ * live ledger or the change-diff. Generation is stateless (a pure function of
+ * listing + identity); the ledger is read after generation, in the memory
+ * reconciliation layer (persistAudit), where applied-detection and
+ * contradiction-guard operate without polluting the model's input.
  */
 export function buildPriorContext(input: {
   identity: ResolvedIdentity;
   priorSnapshot: ListingSnapshot | null;
-  ledger: readonly LedgerRecommendation[];
   identityFactSheet: string;
 }): string {
-  const { identity, ledger } = input;
+  const { identity } = input;
   const lines: string[] = [];
   lines.push('### Resolved identity (function-grounded)');
   lines.push(`Category: ${identity.category} (confidence: ${identity.categoryBand})`);
@@ -152,15 +153,6 @@ export function buildPriorContext(input: {
   lines.push('');
   lines.push('### Identity fact sheet');
   lines.push(input.identityFactSheet);
-  lines.push('');
-  if (ledger.length > 0) {
-    lines.push('### Past recommendations (do NOT repeat applied ones; do NOT reverse without flagging)');
-    for (const r of ledger.slice(0, 30)) {
-      lines.push(`- [${r.status}] (${r.intent}/${r.targetField ?? '—'}) ${r.title}`);
-    }
-  } else {
-    lines.push('### Past recommendations\nNone — this is the first audit.');
-  }
   return lines.join('\n');
 }
 

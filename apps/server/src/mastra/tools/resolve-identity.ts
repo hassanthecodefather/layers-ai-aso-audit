@@ -102,7 +102,7 @@ export function parseClassificationText(text: string): IdentityClassification {
 /** The production classifier: one Gemini generation over the fact sheet. */
 export const geminiClassifier: IdentityClassifier = async (factSheet) => {
   const agent = getClassifierAgent();
-  const result = await agent.generate(factSheet);
+  const result = await agent.generate(factSheet, { modelSettings: { temperature: 0 } });
   return parseClassificationText(typeof result.text === 'string' ? result.text : '');
 };
 

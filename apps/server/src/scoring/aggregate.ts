@@ -9,6 +9,8 @@ import {
 } from '../domain/audit';
 import type { AppSummary } from '../domain/listing';
 import { rubricFor } from './rubric';
+import type { ListingSignals } from './signals';
+import { deriveConfidence, codeScore, coarseOrdinalScore } from './dimension-scorer';
 
 /**
  * Turn the LLM's `AuditDraft` into a finished `AuditReport`.
@@ -34,6 +36,7 @@ const round1 = (n: number): number => Math.round(n * 10) / 10;
 export function assembleReport(
   app: AppSummary,
   draft: AuditDraft,
+  signals?: ListingSignals,
 ): AuditReport {
   const byId = new Map<DimensionId, DimensionScore>();
   for (const d of draft.dimensions) byId.set(d.id, d);
@@ -50,6 +53,23 @@ export function assembleReport(
         evidence: [],
       },
   );
+
+  // When signals are provided, override confidence and score with code-derived
+  // values — these are deterministic and must not come from the model.
+  if (signals) {
+    for (const d of raw) {
+      d.confidence = deriveConfidence(d.id, signals);
+      const coded = codeScore(d.id, signals);
+      if (coded !== null) {
+        d.score = coded;
+      } else {
+        // For mixed dimensions (title/subtitle), quantize the model's free 0-10
+        // to {0, 5, 10}, eliminating ±1-3 run-to-run score drift.
+        const quantized = coarseOrdinalScore(d.id, d.score, signals);
+        if (quantized !== null) d.score = quantized;
+      }
+    }
+  }
 
   const assessableWeight = raw
     .filter((d) => d.confidence !== 'unavailable')

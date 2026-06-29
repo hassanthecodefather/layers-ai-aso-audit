@@ -8,6 +8,7 @@ import { assembleReport } from '../../scoring/aggregate';
 import { produceAuditDraft } from '../../scoring/score';
 import { buildAuditPrompt } from '../../scoring/prompt';
 import { computeSignals } from '../../scoring/signals';
+import { allDimensionHashes } from '../../scoring/dimension-scorer';
 import { RUBRIC } from '../../scoring/rubric';
 import { gatherListingTool } from '../tools/gather-listing';
 import { fetchITunesCore, type ITunesCore } from '../../sources/itunes';
@@ -210,37 +211,94 @@ const scoreStep = createStep({
 
     const identityFactSheet = buildFactSheet(extractIdentitySignals(listing));
 
-    // ── P1: read prior history, build the memory context for the prompt ───
+    // ── P1: read prior history for reconciliation (NOT injected into generation) ─
+    // Generation is a pure function of (listing + identity); the ledger is read
+    // after generation, in the memory reconciliation layer (persistAudit). Injecting
+    // the ledger into the prompt caused the model to diversify away from past recs,
+    // growing the ledger every run instead of stabilising it.
     const priorSnapR = await storage.latestSnapshot(listing.appId, listing.country);
     const priorLedgerR = await storage.ledger(listing.appId, listing.country);
     const priorContext = buildPriorContext({
       identity: resolved,
       priorSnapshot: priorSnapR.ok ? priorSnapR.value : null,
-      ledger: priorLedgerR.ok ? priorLedgerR.value : [],
       identityFactSheet,
     });
 
-    // The agent supplies judgement as a validated draft; weighting and the
-    // 0-100 total are pure, deterministic code in `assembleReport`.
-    let draft;
-    try {
-      draft = await produceAuditDraft(agent, listing, priorContext);
-    } catch (e) {
-      throw new Error(
-        `The auditor model (${llm.modelId}) failed: ` +
-          `${e instanceof Error ? e.message : String(e)}. ` +
-          'A more capable model may be needed.',
-      );
-    }
-
-    const report = assembleReport(toSummary(listing), draft);
-
-    // ── P1: persist snapshot + identity + ledger; apply memory uplifts ────
+    // Signals computed once — passed to generation (for prompt + normalization)
+    // and reused for hashing / persistence below.
     const signals = computeSignals(listing);
+
+    // ── A6: reuse-not-recompute ──────────────────────────────────────────────
+    // Hash the exact prompt string BEFORE calling the LLM. If the prior
+    // snapshot was produced from the identical prompt (same listing + signals +
+    // identity), calling the model again can only introduce noise — skip it and
+    // return the cached report. This eliminates the 46→30 score swing on
+    // re-audits of unchanged listings and avoids unnecessary Gemini cost.
     const promptHash = createHash('sha256')
       .update(buildAuditPrompt(listing, signals, priorContext))
       .digest('hex')
       .slice(0, 16);
+
+    const priorSnap = priorSnapR.ok ? priorSnapR.value : null;
+    const listingUnchanged = priorSnap !== null && priorSnap.promptHash === promptHash;
+
+    let report;
+    let usedModelId: string;
+
+    if (listingUnchanged) {
+      // Nothing changed — reuse the cached report verbatim; no LLM call.
+      report = priorSnap!.report;
+      usedModelId = priorSnap!.modelId;
+    } else {
+      // The agent supplies judgement as a validated draft; weighting and the
+      // 0-100 total are pure, deterministic code in `assembleReport`.
+      let draft;
+      try {
+        draft = await produceAuditDraft(agent, listing, signals, priorContext);
+      } catch (e) {
+        throw new Error(
+          `The auditor model (${llm.modelId}) failed: ` +
+            `${e instanceof Error ? e.message : String(e)}. ` +
+            'A more capable model may be needed.',
+        );
+      }
+
+      // ── A6: per-dimension reuse ─────────────────────────────────────────────
+      // For each dimension whose inputs haven't changed since the prior run,
+      // splice in the prior score + prose instead of keeping the model's fresh
+      // (potentially noisy) output. Only dimensions with changed inputs get new
+      // model scores — this eliminates variance for the unchanged parts.
+      if (priorSnap) {
+        const priorSignals = computeSignals(priorSnap.listing);
+        const currentHashes = allDimensionHashes(listing, signals);
+        const priorHashes = allDimensionHashes(priorSnap.listing, priorSignals);
+        const priorById = new Map(priorSnap.report.dimensions.map((d) => [d.id, d]));
+
+        draft = {
+          ...draft,
+          dimensions: draft.dimensions.map((d) => {
+            if (currentHashes[d.id] === priorHashes[d.id]) {
+              const cached = priorById.get(d.id);
+              if (cached) {
+                return {
+                  id: d.id,
+                  score: cached.score,
+                  confidence: cached.confidence,
+                  findings: cached.findings,
+                  evidence: cached.evidence,
+                };
+              }
+            }
+            return d;
+          }),
+        };
+      }
+
+      report = assembleReport(toSummary(listing), draft, signals);
+      usedModelId = llm.modelId;
+    }
+
+    // ── P1: persist snapshot + identity + ledger; apply memory uplifts ────
     const memo = await persistAudit(storage, {
       listing,
       signals,
@@ -249,7 +307,7 @@ const scoreStep = createStep({
       identityFactSheet,
       rubricVersion: RUBRIC_VERSION,
       promptHash,
-      modelId: llm.modelId,
+      modelId: usedModelId,
       now,
     });
 
@@ -274,6 +332,9 @@ const scoreStep = createStep({
     }
     if (memo.identityVersion > 0 || (priorSnapR.ok && priorSnapR.value)) {
       notes.push(`Change since last audit: ${memo.changeDiff.join(' ')}`);
+    }
+    if (listingUnchanged) {
+      notes.push('Listing unchanged since last audit — scores and recommendations returned from cache (no LLM call).');
     }
 
     return { ...report, limitations: [...report.limitations, ...notes] };

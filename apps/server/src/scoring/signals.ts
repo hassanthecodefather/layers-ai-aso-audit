@@ -160,9 +160,13 @@ export function computeSignals(listing: AppListing): ListingSignals {
       aboveFold: aboveFold(listing.description),
     },
     screenshots: {
-      iphoneCount: listing.screenshotUrls.length,
+      // iTunes is authoritative for screenshot count. The crawler count is a fallback
+      // only when iTunes returns nothing — mzstatic.com CDN URLs in the page markdown
+      // include iPad screenshots, preview posters, and related-app icons, so using
+      // Math.max would overcount and saturate the score at 10 for most apps.
+      iphoneCount: listing.screenshotUrls.length || (listing.crawledScreenshotCount ?? 0),
       ipadCount: listing.ipadScreenshotUrls.length,
-      slotsUsedOf10: Math.min(10, listing.screenshotUrls.length),
+      slotsUsedOf10: Math.min(10, listing.screenshotUrls.length || (listing.crawledScreenshotCount ?? 0)),
     },
     previewVideo: {
       observable: listing.provenance.crawler,

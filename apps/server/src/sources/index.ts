@@ -55,6 +55,7 @@ export async function resolveListing(ref: AppRef): Promise<Result<AppListing>> {
     subtitle: extras?.subtitle ?? null,
     promotionalText: extras?.promotionalText ?? null,
     hasPreviewVideo: extras?.hasPreviewVideo ?? false,
+    crawledScreenshotCount: extras?.screenshotCount ?? 0,
     reviews,
     competitors,
     provenance: {
