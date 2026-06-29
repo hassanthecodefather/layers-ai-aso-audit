@@ -176,7 +176,8 @@ export const auditRoutes = [
       const run =
         pendingRuns.get(runId) ?? (await workflow.createRun({ runId }));
 
-      return streamSSE(c, async (stream) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return streamSSE(c as any, async (stream) => {
         // Serialise writes — stream events and the result arrive on different
         // callstacks, and interleaved SSE frames would corrupt.
         let chain: Promise<unknown> = Promise.resolve();

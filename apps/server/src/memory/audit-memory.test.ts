@@ -226,6 +226,29 @@ describe('persistAudit — the memory loop', () => {
       h.close();
     }
   });
+
+  it('re-raised rec logs 2 occurrences under the canonical stored id — not a fresh-minted one', async () => {
+    // Regression: before the fix, persistAudit called recordOccurrence with a
+    // freshly-minted id. ON CONFLICT in upsertRecommendation keeps the original
+    // row id, so the fresh id never existed in aso_recommendations — occurrence
+    // count stuck at 1 forever. Fix: use priorIdByRecKey to resolve the real id.
+    const db = openDb(':memory:');
+    await runMigrations(db);
+    const client = new LibSqlStorageClient(db);
+    try {
+      const l = listingWith({ subtitle: null });
+      await persistAudit(client, persistArgs(l, report([rec({})]), '2026-06-01T00:00:00.000Z'));
+      await persistAudit(client, persistArgs(l, report([rec({})]), '2026-06-20T00:00:00.000Z'));
+
+      const result = await db.execute('SELECT rec_id FROM aso_rec_occurrences');
+      expect(result.rows).toHaveLength(2);
+      // Both rows must point to the same canonical rec_id (the one from audit 1).
+      const ids = result.rows.map((r) => r[0] as string);
+      expect(new Set(ids).size).toBe(1);
+    } finally {
+      db.close();
+    }
+  });
 });
 
 describe('detectApplied + changeDiff units', () => {
