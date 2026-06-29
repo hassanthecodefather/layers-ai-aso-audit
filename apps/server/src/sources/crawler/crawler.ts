@@ -9,6 +9,8 @@ export interface ListingExtras {
   promotionalText: string | null;
   /** Whether the listing leads with an app preview video. */
   hasPreviewVideo: boolean;
+  /** Number of screenshots visible in the media gallery; 0 if none detected. */
+  screenshotCount: number;
 }
 
 /**

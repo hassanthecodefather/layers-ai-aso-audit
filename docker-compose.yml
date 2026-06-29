@@ -7,10 +7,8 @@
 # Both processes (Mastra server + web UI) run in a single container, so the
 # UI's API proxy stays on localhost — no inter-container networking to set up.
 #
-# The LLM is configured via .env (see .env.example):
-#   • Ollama Cloud — works as-is; the container reaches https://ollama.com.
-#   • A local Ollama server — set LLM_BASE_URL=http://host.docker.internal:11434/v1
-#     in .env so the container can reach Ollama on the host.
+# The LLM is configured via .env (see .env.example).
+# Set GOOGLE_GENERATIVE_AI_API_KEY= your Gemini key.
 
 name: aso-audit-agent
 
@@ -28,3 +26,9 @@ services:
     ports:
       - '5173:5173' # web UI — open this
       - '4111:4111' # Mastra server + Studio
+    environment:
+      # Persist the DB outside the source tree so the volume mount doesn't
+      # clobber the server package.
+      ASO_DB_URL: 'file:/app/data/aso-audit.db'
+    volumes:
+      - ./.docker-data:/app/data
