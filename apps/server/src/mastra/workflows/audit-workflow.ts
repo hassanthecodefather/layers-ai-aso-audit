@@ -26,6 +26,7 @@ import { buildPriorContext, persistAudit } from '../../memory/audit-memory';
 import { getVisionClient, runVision, selectVisionResult } from '../../vision';
 import { runIdFull } from '../../identity/id-full';
 import { getIdentityVisionClient } from '../../identity/identity-vision-client';
+import { runSecondaryUplifts } from '../../vision/secondary-uplifts';
 
 /**
  * The ASO audit workflow.
@@ -340,6 +341,11 @@ const scoreStep = createStep({
     // Write the new stage='full' version row.
     await storage.appendIdentity(idFullResult.identityVersion);
 
+    // ── B3: secondary uplifts — screenshot intelligence, cross-device matrix, PPO brief ──
+    // Run after B2; getVisionClient() already returned above. NoOpVisionClient has
+    // safe defaults so hermetic tests are unaffected (no LLM call without API key).
+    const secondaryUplifts = await runSecondaryUplifts(listing, visionClient);
+
     // Surface what memory observed, honestly, in the report's limitations.
     const notes: string[] = [];
     if (resolved.escalate) {
@@ -368,6 +374,29 @@ const scoreStep = createStep({
     if (idFullResult.visionEscalation) {
       notes.push(
         "Creative mismatch: the icon and first screenshot don't clearly match the resolved function category. Consider updating the creative assets.",
+      );
+    }
+
+    // ── B3: surface secondary uplift findings ────────────────────────────────
+    const { screenshotSetAnalysis, deviceMatrix, ppoBrief } = secondaryUplifts;
+    if (screenshotSetAnalysis.hasDuplicateMessages && screenshotSetAnalysis.duplicateSlots.length > 0) {
+      notes.push(
+        `Screenshots [${screenshotSetAnalysis.duplicateSlots.join(', ')}] appear to duplicate the same message — consider differentiating.`,
+      );
+    }
+    if (screenshotSetAnalysis.promoteCandidateSlot !== null) {
+      notes.push(
+        `Consider promoting screenshot ${screenshotSetAnalysis.promoteCandidateSlot} into the first 3 search-visible positions.`,
+      );
+    }
+    if (ppoBrief.exceeded) {
+      notes.push(
+        `Found ${ppoBrief.treatmentCount} distinct creative treatments (max recommended: 3 for independent measurability).`,
+      );
+    }
+    if (deviceMatrix.ipadMissing) {
+      notes.push(
+        `iPad screenshot count (${deviceMatrix.ipad.slotsUsed}) is significantly fewer than iPhone (${deviceMatrix.iphone.slotsUsed}) — consider filling iPad slots.`,
       );
     }
 
