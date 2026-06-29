@@ -56,13 +56,20 @@ export async function runVision(
     cohesion: { value: c.cohesion, confidence: resultConfidence },
   }));
 
+  // Apply slot-utilization cap: Gemini only sees the screenshots that exist, so
+  // it can return 10 (excellent) even when slots are unused. Cap at 5 when fewer
+  // than 10 slots are used — unused slots are always a missed ASO opportunity.
+  const geminiScore = screenshotRaw.suggestedCoarseScore;
+  const slotCap: 0 | 5 | 10 = screenshotUrls.length >= 10 ? 10 : 5;
+  const coarseScore: 0 | 5 | 10 = geminiScore > slotCap ? slotCap : geminiScore;
+
   const screenshotSetVerdict: ScreenshotSetVerdict = {
     critiques,
     competitorComparison: {
       value: screenshotRaw.competitorComparison,
       confidence: resultConfidence,
     },
-    coarseScore: screenshotRaw.suggestedCoarseScore, // Already 0|5|10 from client
+    coarseScore,
     confidence: resultConfidence,
     modelId: MODEL_ID,
   };
