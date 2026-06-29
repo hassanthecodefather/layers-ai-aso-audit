@@ -218,7 +218,10 @@ function scoringConstraints(signals: ListingSignals, visionResult?: VisionResult
  * as evidence in findings. Called only when vision ran.
  */
 function visionFacts(v: VisionResult): string {
-  const lines: string[] = ['## Vision analysis — Gemini examined your screenshots and icon'];
+  const lines: string[] = [
+    '## Vision analysis — Gemini examined your screenshots and icon',
+    'IMPORTANT: Do NOT list "Screenshot Content" or "Icon Visuals" as limitations — Gemini has already assessed these. Use the analysis below as evidence in your findings.',
+  ];
   const sv = v.screenshotSetVerdict;
 
   lines.push(`Screenshots overall: ${sv.coarseScore}/10 (${sv.confidence})`);
