@@ -24,6 +24,8 @@ import {
 } from '../../identity/human-confirm';
 import { buildPriorContext, persistAudit } from '../../memory/audit-memory';
 import { getVisionClient, runVision, selectVisionResult } from '../../vision';
+import { runIdFull } from '../../identity/id-full';
+import { getIdentityVisionClient } from '../../identity/identity-vision-client';
 
 /**
  * The ASO audit workflow.
@@ -323,6 +325,21 @@ const scoreStep = createStep({
       visionResult, // B1: persist vision result for future reuse
     });
 
+    // ── B2: ID-full — vision-grounded identity augmentation ────────────────
+    // Run after persistAudit (so memo.identityVersion is available), before
+    // notes are finalised. getIdentityVisionClient() returns a no-op stub when
+    // no API key is set — all hermetic tests are unaffected.
+    const identityVisionClient = getIdentityVisionClient();
+    const idFullResult = await runIdFull(
+      listing,
+      resolved,        // the ID-lite identity already resolved at top of step
+      identityVisionClient,
+      memo.identityVersion + 1,  // next version (lite is memo.identityVersion)
+      now,
+    );
+    // Write the new stage='full' version row.
+    await storage.appendIdentity(idFullResult.identityVersion);
+
     // Surface what memory observed, honestly, in the report's limitations.
     const notes: string[] = [];
     if (resolved.escalate) {
@@ -347,6 +364,11 @@ const scoreStep = createStep({
     }
     if (listingUnchanged) {
       notes.push('Listing unchanged since last audit — scores and recommendations returned from cache (no LLM call).');
+    }
+    if (idFullResult.visionEscalation) {
+      notes.push(
+        "Creative mismatch: the icon and first screenshot don't clearly match the resolved function category. Consider updating the creative assets.",
+      );
     }
 
     return { ...report, limitations: [...report.limitations, ...notes] };
