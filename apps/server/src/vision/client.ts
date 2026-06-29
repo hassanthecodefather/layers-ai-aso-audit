@@ -70,10 +70,14 @@ export class GeminiVisionClient implements VisionClient {
   }
 
   async analyzeScreenshots(input: ScreenshotAnalysisInput): Promise<ScreenshotRawResult> {
-    const imageParts = input.screenshotUrls.map((url) => ({
-      type: 'image_url' as const,
-      image_url: { url },
-    }));
+    // Fetch images ourselves: Apple's CDN blocks Gemini's servers, so sending
+    // URLs directly results in empty critiques. Base64 data URLs bypass this.
+    const imageParts = await Promise.all(
+      input.screenshotUrls.map(async (url) => ({
+        type: 'image_url' as const,
+        image_url: { url: await this.#fetchAsDataUrl(url) },
+      })),
+    );
 
     const prompt = `Analyze these App Store screenshots for ASO quality. Return JSON:
 {
@@ -126,10 +130,12 @@ Be conservative. Only score 10 if genuinely excellent across all 4 rubric checks
   }
 
   async analyzeScreenshotSet(urls: string[]): Promise<ScreenshotSetRawResult> {
-    const imageParts = urls.map((url) => ({
-      type: 'image_url' as const,
-      image_url: { url },
-    }));
+    const imageParts = await Promise.all(
+      urls.map(async (url) => ({
+        type: 'image_url' as const,
+        image_url: { url: await this.#fetchAsDataUrl(url) },
+      })),
+    );
 
     const prompt = `Analyze these App Store screenshots as a complete set. Return JSON:
 {
@@ -187,10 +193,12 @@ strongestSlotForPromotion: Which slot (1-indexed) would benefit most from being 
 
   async analyzeIcon(input: IconAnalysisInput): Promise<IconRawResult> {
     const allIconUrls = [input.iconUrl, ...input.competitorIconUrls];
-    const imageParts = allIconUrls.map((url) => ({
-      type: 'image_url' as const,
-      image_url: { url },
-    }));
+    const imageParts = await Promise.all(
+      allIconUrls.map(async (url) => ({
+        type: 'image_url' as const,
+        image_url: { url: await this.#fetchAsDataUrl(url) },
+      })),
+    );
 
     const prompt = `The first image is the app icon. The remaining images (if any) are competitor icons.
 Analyze the app icon for ASO quality. Return JSON:
@@ -228,6 +236,21 @@ Analyze the app icon for ASO quality. Return JSON:
       confusable: parsed.confusable ?? 'Unknown',
       categoryCohesion: parsed.categoryCohesion ?? 'Unknown',
     };
+  }
+
+  /** Fetch a remote image and return it as a base64 data URL. */
+  async #fetchAsDataUrl(url: string): Promise<string> {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ASO-Audit/1.0)' },
+    });
+    if (!res.ok) {
+      console.warn(`[vision] failed to fetch image ${url} (${res.status}); Gemini will receive original URL`);
+      return url;
+    }
+    const contentType = res.headers.get('content-type') ?? 'image/jpeg';
+    const buffer = await res.arrayBuffer();
+    const base64 = Buffer.from(buffer).toString('base64');
+    return `data:${contentType};base64,${base64}`;
   }
 
   async #call(body: unknown): Promise<string> {
