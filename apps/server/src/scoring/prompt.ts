@@ -1,6 +1,7 @@
 import type { AppListing } from '../domain/listing';
 import type { ListingSignals } from './signals';
 import type { VisionResult } from '../vision/types';
+import type { LinterResult } from '../keywords/linter';
 import { RUBRIC } from './rubric';
 import { codeScore, visionUsable } from './dimension-scorer';
 
@@ -260,6 +261,67 @@ function visionFacts(v: VisionResult): string {
   return lines.join('\n');
 }
 
+/**
+ * Format keyword linter findings for the LLM.
+ * Confidence is always `inferred` — the keyword field is never observable.
+ */
+function keywordLinterFacts(linter: LinterResult): string {
+  if (!linter.scriptSupported) {
+    return '## Keyword linter\nScript not yet supported — keyword mechanics suppressed. Score the keyword field by inference only (confidence "inferred").';
+  }
+
+  const lines: string[] = ['## Keyword linter — deterministic, no model call needed'];
+  lines.push(
+    `Title: ${linter.titleUsed}/${30} chars used. ` +
+    `Subtitle: ${linter.subtitleUsed}/${30} chars used. ` +
+    `Keyword field: unobservable (100-char budget inferred).`,
+  );
+
+  if (linter.reclaimableChars > 0) {
+    lines.push(`Reclaimable chars in visible fields: ${linter.reclaimableChars}`);
+  }
+
+  if (linter.estimatedKeywordWaste > 0) {
+    lines.push(
+      `Estimated keyword-field waste: ≤${linter.estimatedKeywordWaste} chars may be wasted ` +
+      `if developer repeated title/subtitle words in keyword field (inferred).`,
+    );
+  }
+
+  const byReason = (reason: LinterResult['flags'][number]['reason']) =>
+    linter.flags.filter((f) => f.reason === reason);
+
+  const dups = byReason('cross_field_duplicate');
+  const plural = byReason('plural_redundant');
+  const wasted = byReason('wasted_word');
+
+  if (dups.length > 0) {
+    lines.push(
+      `Cross-field duplicates (subtitle repeats title coverage): ` +
+      dups.map((f) => `"${f.term}" (${f.field}, −${f.reclaimableChars} chars)`).join(', '),
+    );
+  }
+  if (plural.length > 0) {
+    lines.push(
+      `Plural redundancies (singular+plural of same root): ` +
+      plural.map((f) => `"${f.term}" (${f.field}, −${f.reclaimableChars} chars)`).join(', '),
+    );
+  }
+  if (wasted.length > 0) {
+    lines.push(
+      `Wasted words (generic, no keyword value): ` +
+      wasted.map((f) => `"${f.term}" (${f.field}, −${f.reclaimableChars} chars)`).join(', '),
+    );
+  }
+
+  if (linter.flags.length === 0) {
+    lines.push('No cross-field duplicates, plural redundancies, or wasted words detected.');
+  }
+
+  lines.push('IMPORTANT: keyword field findings are confidence "inferred" (field not publicly observable).');
+  return lines.join('\n');
+}
+
 /** The full per-listing audit prompt. */
 export function buildAuditPrompt(
   listing: AppListing,
@@ -284,6 +346,8 @@ export function buildAuditPrompt(
     scoringConstraints(signals, visionResult),
     '',
     ...(visionResult ? [visionFacts(visionResult), ''] : []),
+    keywordLinterFacts(signals.keywordLinter),
+    '',
     '## Category competitors',
     competitors(listing),
     '',
