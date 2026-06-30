@@ -94,6 +94,9 @@ function snapshot(over: Partial<ListingSnapshot> = {}): ListingSnapshot {
     rubricVersion: over.rubricVersion ?? 'rubric-abc',
     promptHash: over.promptHash ?? 'prompt-xyz',
     modelId: over.modelId ?? 'gemini-2.5-flash',
+    // Optional blobs — passed through explicitly so round-trip tests can set them.
+    visionResult: over.visionResult,
+    candidateResult: over.candidateResult,
   };
 }
 
@@ -206,6 +209,43 @@ export function storageClientConformance(
         unwrap(await h.client.putSnapshot(snapshot({ id: 's-gb', country: 'gb' })));
         expect(unwrap(await h.client.latestSnapshot('app1', 'us'))?.id).toBe('s-us');
         expect(unwrap(await h.client.latestSnapshot('app1', 'gb'))?.id).toBe('s-gb');
+      } finally {
+        h.close();
+      }
+    });
+
+    // ── Snapshot optional blobs (visionResult / candidateResult) ────────────
+    it('round-trips visionResult through put/latest (B1 regression guard)', async () => {
+      const h = await makeClient();
+      try {
+        const vr = { screenshotSetVerdict: { coarseScore: 8, confidence: 'observed', critiques: [], competitorComparison: { value: null } } };
+        unwrap(await h.client.putSnapshot(snapshot({ visionResult: vr })));
+        const got = unwrap(await h.client.latestSnapshot('app1', 'us'));
+        expect(got?.visionResult).toEqual(vr);
+      } finally {
+        h.close();
+      }
+    });
+
+    it('round-trips candidateResult through put/latest (C4 regression guard)', async () => {
+      const h = await makeClient();
+      try {
+        const cr = { candidates: [{ term: 'charging', normalizedKey: 'charging', source: 'description', volumeLabel: 'popularity unavailable', volumeAvailable: false }], gap: [], popularityAvailable: false };
+        unwrap(await h.client.putSnapshot(snapshot({ candidateResult: cr })));
+        const got = unwrap(await h.client.latestSnapshot('app1', 'us'));
+        expect(got?.candidateResult).toEqual(cr);
+      } finally {
+        h.close();
+      }
+    });
+
+    it('leaves visionResult and candidateResult undefined when absent', async () => {
+      const h = await makeClient();
+      try {
+        unwrap(await h.client.putSnapshot(snapshot()));
+        const got = unwrap(await h.client.latestSnapshot('app1', 'us'));
+        expect(got?.visionResult).toBeUndefined();
+        expect(got?.candidateResult).toBeUndefined();
       } finally {
         h.close();
       }
