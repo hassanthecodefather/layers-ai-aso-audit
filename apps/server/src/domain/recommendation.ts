@@ -44,23 +44,10 @@ export const SINGLE_INSTANCE_INTENTS: ReadonlySet<IntentTag> = new Set<IntentTag
   'reposition_identity',
   'improve_icon_legibility',
   'reorder_screenshots',
-  'respond_to_reviews',
+  // respond_to_reviews → multi-instance (Phase D) — removed
   'improve_description_hook',
-  'fix_complaint_theme',
+  // fix_complaint_theme → multi-instance (Phase D) — removed
 ]);
-
-/**
- * The typed referent that pins a multi-instance recommendation's identity.
- * `value_key` is always derived from `referent.value` in code — never from
- * the model's free-text `after`/`title`, so reworded suggestions still
- * collapse to one ledger row.
- */
-export const ReferentSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('keyword'), value: z.string().min(1) }),
-  z.object({ kind: z.literal('country'), value: z.string().min(2).max(2) }),
-  z.object({ kind: z.literal('none') }),
-]);
-export type Referent = z.infer<typeof ReferentSchema>;
 
 /** The canonical complaint-theme taxonomy (spec §C) — `value_key` for `fix_complaint_theme`. */
 export const COMPLAINT_THEMES = [
@@ -82,6 +69,21 @@ export const COMPLAINT_THEMES = [
 ] as const;
 export const ComplaintThemeSchema = z.enum(COMPLAINT_THEMES);
 export type ComplaintTheme = z.infer<typeof ComplaintThemeSchema>;
+
+/**
+ * The typed referent that pins a multi-instance recommendation's identity.
+ * `value_key` is always derived from `referent.value` in code — never from
+ * the model's free-text `after`/`title`, so reworded suggestions still
+ * collapse to one ledger row.
+ */
+export const ReferentSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('keyword'), value: z.string().min(1) }),
+  z.object({ kind: z.literal('country'), value: z.string().min(2).max(2) }),
+  z.object({ kind: z.literal('theme'), bucket: ComplaintThemeSchema, text: z.string() }),
+  z.object({ kind: z.literal('reviewId'), value: z.string() }),
+  z.object({ kind: z.literal('none') }),
+]);
+export type Referent = z.infer<typeof ReferentSchema>;
 
 /** A recommendation's lifecycle status (spec §A). */
 export const RecStatusSchema = z.enum([

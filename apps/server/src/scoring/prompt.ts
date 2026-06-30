@@ -3,6 +3,7 @@ import type { ListingSignals } from './signals';
 import type { VisionResult } from '../vision/types';
 import type { LinterResult } from '../keywords/linter';
 import type { CandidateResult } from '../keywords/candidates';
+import type { ThemeAnalysisResult } from '../reviews/themes';
 import { formatCandidatesForPrompt } from '../keywords/candidates';
 import { RUBRIC } from './rubric';
 import { codeScore, visionUsable } from './dimension-scorer';
@@ -324,6 +325,32 @@ function keywordLinterFacts(linter: LinterResult): string {
   return lines.join('\n');
 }
 
+/**
+ * Format classified complaint themes into a human-readable section for the LLM.
+ * Called when theme analysis ran and produced at least one theme.
+ */
+function themeSection(themeResult: ThemeAnalysisResult | null | undefined): string {
+  if (!themeResult || themeResult.themes.length === 0) return '';
+  const lines = ['## Classified complaint themes'];
+  for (const t of themeResult.themes) {
+    const unresolvedNote = t.isUnresolved ? ' [unclassified]' : '';
+    lines.push(`- ${t.bucket}${unresolvedNote}: ${t.text} (${t.reviewIds.length} reviews)`);
+  }
+  if (themeResult.versionDelta) {
+    const d = themeResult.versionDelta;
+    const arrow = d.delta >= 0 ? '↑' : '↓';
+    lines.push(
+      `\nVersion sentiment: ${d.olderVersion} avg ${d.olderAvgRating.toFixed(1)}★ → ${d.newerVersion} avg ${d.newerAvgRating.toFixed(1)}★ (${arrow}${Math.abs(d.delta).toFixed(2)})`,
+    );
+  }
+  if (themeResult.featureRequests.length > 0) {
+    lines.push(
+      `\nFeature requests (human hand-off, not complaints): ${themeResult.featureRequests.join('; ')}`,
+    );
+  }
+  return lines.join('\n');
+}
+
 /** The full per-listing audit prompt. */
 export function buildAuditPrompt(
   listing: AppListing,
@@ -331,6 +358,7 @@ export function buildAuditPrompt(
   priorContext?: string,
   visionResult?: VisionResult,
   candidateResult?: CandidateResult,
+  themeResult?: ThemeAnalysisResult | null,
 ): string {
   return [
     `Audit this App Store listing: "${listing.name}" by ${listing.developer}.`,
@@ -358,6 +386,7 @@ export function buildAuditPrompt(
     '## Recent review sample',
     reviewSample(listing),
     '',
+    ...(themeSection(themeResult) ? [themeSection(themeResult), ''] : []),
     '## Rubric — score each dimension 0-10 against these checks',
     rubricChecks(),
     '',

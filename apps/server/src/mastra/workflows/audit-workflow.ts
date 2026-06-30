@@ -29,6 +29,7 @@ import { getIdentityVisionClient } from '../../identity/identity-vision-client';
 import { runSecondaryUplifts } from '../../vision/secondary-uplifts';
 import { generateCandidates, selectCandidateResult, suppressCompetitorGapTerms } from '../../keywords/candidates';
 import { getKeywordProvider } from '../../keywords/asa-client';
+import { analyzeThemes } from '../../reviews/themes';
 
 /**
  * The ASO audit workflow.
@@ -269,7 +270,12 @@ const scoreStep = createStep({
         ? suppressCompetitorGapTerms(rawCandidateResult)
         : rawCandidateResult;
 
-    const builtPrompt = buildAuditPrompt(listing, signals, priorContext, visionResult, candidateResult);
+    // D2: theme analysis — runs before prompt so themes appear in ratings section
+    const themeResult = listing.reviews.length > 0
+      ? await analyzeThemes(listing.reviews, llm)
+      : null;
+
+    const builtPrompt = buildAuditPrompt(listing, signals, priorContext, visionResult, candidateResult, themeResult);
     const promptHash = createHash('sha256')
       .update(builtPrompt)
       .digest('hex')
