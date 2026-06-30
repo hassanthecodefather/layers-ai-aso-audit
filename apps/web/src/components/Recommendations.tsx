@@ -56,6 +56,10 @@ export function Recommendations(props: RecommendationsProps) {
 
 function RecommendationCard({ rec }: { rec: Recommendation }) {
   const hasDiff = rec.before != null && rec.after != null;
+  const isKeyword = rec.intent === 'add_keyword' && rec.referent?.kind === 'keyword' && rec.referent.value;
+  const keywords = isKeyword
+    ? rec.referent.value!.split(',').map((k) => k.trim()).filter(Boolean)
+    : [];
 
   return (
     <article className="rounded-xl border border-white/10 bg-white/[0.03] p-3.5">
@@ -63,6 +67,19 @@ function RecommendationCard({ rec }: { rec: Recommendation }) {
       <p className="mt-1 text-xs leading-relaxed text-zinc-400">
         {rec.rationale}
       </p>
+
+      {keywords.length > 0 && (
+        <div className="mt-2.5 flex flex-wrap gap-1.5">
+          {keywords.map((kw) => (
+            <span
+              key={kw}
+              className="rounded-md border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-xs font-medium text-violet-300"
+            >
+              {kw}
+            </span>
+          ))}
+        </div>
+      )}
 
       {hasDiff && (
         <div className="mt-2.5 space-y-1.5">

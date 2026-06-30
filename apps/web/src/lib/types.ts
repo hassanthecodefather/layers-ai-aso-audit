@@ -38,6 +38,8 @@ export type RecommendationCategory = 'quick-win' | 'high-impact' | 'strategic';
 export interface Recommendation {
   category: RecommendationCategory;
   dimension: string;
+  intent: string;
+  referent: { kind: string; value?: string };
   title: string;
   rationale: string;
   evidence: string;
