@@ -5,7 +5,7 @@ contracts live elsewhere: [`specification.md`](specification.md) is the *what*,
 [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) is the *how-to-build*. This
 file is the *where-we-are* — read it first, trust the tests over the prose.
 
-_Last updated: 2026-06-30 · spec v1.3.1 · **Phase C complete (C4 residual closed — candidateResult reuse)**_
+_Last updated: 2026-07-01 · spec v1.3.1 · **Phase D canonical path built; `other`-bucket embedding path open**_
 
 Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferred (by design)
 
@@ -16,13 +16,29 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
 | **0** | Groundwork: Gemini-only, migration runner | ✅ | suite green + live audit on Gemini |
 | **A** | ID-lite identity + P1 persistent memory | ✅ | §F ID-lite **and** §F P1 green; reworded re-raise collapses to one row (typed referent); 2nd audit references 1st, marks applied, never repeats. **A6 score determinism complete** (191 tests) |
 | **B** | P2 image analysis + ID-full | ✅ | §F P2 green (vision confidence, zero-LLM reuse, pHash observed, promote-panel non-panoramic-only); ID-full stage=`full` augments identity without mutating ID-lite fields. **Live-verified on the real Rivian listing** (B5 hardening). |
-| **C** | P3 keyword research (160-char linter) | ✅ | tsc clean · 294 tests · linter deterministic · stub honest · gap analysis inferred · candidateResult reuse (C4 residual closed) |
-| **D** | P4 deep review analysis | ⬜ | — |
+| **C** | P3 keyword research (160-char linter) | ✅ | tsc clean · 319 tests · linter deterministic · stub honest · gap analysis inferred · candidateResult reuse (C4 residual closed) |
+| **D** | P4 deep review analysis | 🚧 | canonical path ✅ (RSS→500, theme taxonomy, multi-instance graduation); **`other`-bucket embedding fallback OPEN** — no embeddings seam; `value_key='other'` is the forbidden merge bug; §F P4 "both paths" not yet green |
 | **E** | P5 cost & courtesy control | ⬜ | — |
 | **F** | Net-new uplifts (storefront sweep, export, …) | ⬜ | — |
 | **P6+** | Multi-tenant, ASC, write-path, North Star | ⏸ | planned at their tier, not now |
 
-## Phase C — detail (current frontier)
+## Phase D — detail (current frontier)
+
+| Task | Status | Lives in |
+|---|---|---|
+| D0 · Review fixtures (sample1 + perturbed sample2) | ✅ | `reviews/__fixtures__/rivian.reviews.sample{1,2}.json` |
+| D1 · Review schema (`id`, `appVersion`) + RSS pagination to ~500 | ✅ | `domain/listing.ts`; `sources/itunes.ts` |
+| D2 · Theme analysis + multi-instance graduation (canonical path) | ✅ | `reviews/themes.ts`; `domain/recommendation.ts` (Referent `theme`/`reviewId`); `memory/dedup.ts`; workflow + prompt |
+| D2 · `other`-bucket embedding fallback | ⬜ **open** | not built — needs an embeddings seam + `resolveThemeKey` |
+| D3 · Function-grounded competitors | ⬜ | gated on decision-#6 egress review (see plan) |
+
+**D2 canonical (done):** `analyzeThemes()` is one LLM pass over the 15-bucket taxonomy + per-version sentiment delta (`taxonomy_version: theme-taxonomy@1`). `fix_complaint_theme`/`respond_to_reviews` graduated to multi-instance: `Referent` gained `theme {bucket,text}` and `reviewId`; `valueKeyFor(theme)` → the **bucket id** (stable for named buckets). Feature requests route to human hand-off (not ledgered).
+
+**D2 `other`-bucket (OPEN — §F P4 + §C gap):** no embeddings seam exists; `themes.ts` only flags `isUnresolved = (bucket === 'other')`. `valueKeyFor` returns the literal `'other'` for an `other` theme — **the merge bug the spec forbids** (distinct novel complaints collapse to one row; a dismissed one can resurface). §F P4's "both paths" is therefore **not green** — the test asserts only `other → isUnresolved`, weaker than the spec's collapse-equivalent / separate-distinct requirement. Close by building `GeminiEmbeddingProvider` + a cosine-≥-0.85 `resolveThemeKey` giving each `other` complaint a stable per-complaint `value_key`, plus the both-paths test. Until then, neutralize the literal-`'other'` key.
+
+**D1 open decision:** `respond_to_reviews` keys on the raw RSS `<id>` without the plan-required **stability verification** across the 25→500 window — if the id isn't stable, response dedup drifts (fallback: author+date+body hash).
+
+## Phase C — detail
 
 | Task | Status | Lives in |
 |---|---|---|
@@ -86,7 +102,7 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
 
 ## Tests (the source of truth)
 
-- **294 hermetic tests pass** (`npm test`). Covers (Phase A): StorageClient conformance,
+- **319 hermetic tests pass** (`npm test`). Covers (Phase A): StorageClient conformance,
   ID-lite §F gates, P1 §F gates (dedup, contradiction, zero-LLM replay),
   human-confirm reuse/re-ask, memory loop end-to-end, classifier fail-safe
   parsing, dismissal-is-honoured, **reworded re-raise collapses to one row**,
@@ -130,7 +146,7 @@ replay/aggregate share one formula; classifier logs on parse failure.
 
 Phase A carry-overs: **all closed in B4** (applied-detection extended, escalate gate fixed, reachability guard added, efficiency improved).
 
-**Post-review fixes (final whole-branch review):** B2/B3 vision calls now gated on `visionWasFresh` — they only run when `selectVisionResult` returned null (images changed), so unchanged re-audits skip B2/B3 calls entirely. `pHashDistance.confidence` is `'inferred'` when competitor icon URLs are empty (placeholder 64 is not an observed measurement). Identity row de-dup is resolved by the same gate. Then the **B5 live-integration hardening** (above) closed the real-vision-path honesty gaps. Suite is now **294 tests** green (3 live smokes skipped).
+**Post-review fixes (final whole-branch review):** B2/B3 vision calls now gated on `visionWasFresh` — they only run when `selectVisionResult` returned null (images changed), so unchanged re-audits skip B2/B3 calls entirely. `pHashDistance.confidence` is `'inferred'` when competitor icon URLs are empty (placeholder 64 is not an observed measurement). Identity row de-dup is resolved by the same gate. Then the **B5 live-integration hardening** (above) closed the real-vision-path honesty gaps. Suite is now **319 tests** green (3 live smokes skipped).
 
 **Snapshot blob round-trip fix (`4393c35` + `845de56`) — corrects the Phase-B/C reuse record.** Both optional snapshot blobs (`visionResult`, `candidateResult`) were silently writing `null` to their columns (pass-through omission in `persistAudit` + `?? null` in the store), so `selectVisionResult` / `selectCandidateResult` always read empty → **vision reuse was dead through all of Phase B** (every re-audit re-called Gemini vision) and candidate reuse was dead in C4. The unit tests missed it (they pass in-memory snapshots, never the DB round-trip). Now both are correctly persisted, and `storageClientConformance` has explicit **put→latest round-trip guards** for each blob (so it can't silently regress, and the guards run against Postgres at 6a).
 
@@ -144,7 +160,7 @@ Phase A carry-overs: **all closed in B4** (applied-detection extended, escalate 
   re-fetch" intent holds; documented as accepted.
 - **Resolved** — the pre-existing `mastra/routes.ts` Hono `Context` type-skew on
   `streamSSE` is fixed with a scoped `c as any`; **`tsc --noEmit` is now fully clean**
-  and can gate CI. `npm test` green (294).
+  and can gate CI. `npm test` green (319).
 
 ## Gotchas
 
@@ -153,7 +169,9 @@ Phase A carry-overs: **all closed in B4** (applied-detection extended, escalate 
 
 ## Next up
 
-- **Phase C is complete (C1–C4 ✅ + C4 residual ✅, 294 tests).** Phase D next: P4 deep review analysis.
+- **Phase C complete (C1–C4 ✅ + C4 residual ✅).** **Phase D canonical path built (319 tests)** — RSS→500, theme taxonomy, multi-instance graduation all green.
+- **To finish Phase D:** build the **embeddings seam** (`GeminiEmbeddingProvider`) + `resolveThemeKey` so the **`other`-bucket** fallback works and §F P4's "both paths" passes (today `value_key='other'` is a live merge bug); resolve the **RSS `<id>` stability** decision for `respond_to_reviews`.
+- **D3 (function-grounded competitors)** remains gated on the decision-#6 egress review.
 - **Phase D prerequisites to stand up first (not yet built):**
   - **Embeddings seam** — D2's `other`-bucket fallback needs Gemini embeddings (cosine ≥ 0.85); no embeddings client/seam exists anywhere yet. Biggest net-new piece.
   - **RSS pagination + stable review id** — `fetchReviews` is hardcoded `page=1`, `limit=25`; D1 needs ~500/country paginated. `ReviewSchema` has no `id`; D2's `respond_to_reviews → reviewId` needs the RSS `<id>` (verify stability) or a content-hash fallback — open decision.
