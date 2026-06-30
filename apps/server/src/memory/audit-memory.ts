@@ -10,7 +10,7 @@ import {
   type IntentTag,
 } from '../domain/recommendation';
 import type { StorageClient } from './storage-client';
-import { computeRecKey, valueKeyFor, findContradiction } from './dedup';
+import { computeRecKey, valueKeyFor, findContradiction, normalizeValueKey } from './dedup';
 import { newId } from './ids';
 import { toIdentityVersion } from '../mastra/tools/resolve-identity';
 
@@ -38,6 +38,39 @@ const DIMENSION_MAP: Record<DimensionId, { targetField: string | null; proofRegi
 
 /** Intents that rewrite the app's *identity* — suppressed when ID is unconfirmed. */
 const IDENTITY_REWRITING: ReadonlySet<IntentTag> = new Set<IntentTag>(['reposition_identity']);
+
+/**
+ * Expand a single `add_keyword` rec whose referent value is a comma-joined
+ * list (e.g. "electric,vehicle") into one rec per keyword.
+ *
+ * The LLM sometimes packs multiple keywords into one referent despite the
+ * single-keyword rule. A comma-joined value produces one `rec_key` for the
+ * whole group, breaking per-keyword dedup and belief-accumulation. This
+ * expansion is the code-side fix: code always derives the key, never trusts
+ * the model.
+ *
+ * Split on comma only — NOT on space. A space-separated phrase like
+ * "electric vehicle" is a legitimate single keyphrase and must stay intact.
+ *
+ * Deduplicates within the split (same normalizedKey → keep first occurrence).
+ * For all other intents, returns a 1-element array unchanged.
+ */
+export function expandAddKeywordRec(rec: ReportRec): ReportRec[] {
+  if (rec.intent !== 'add_keyword' || rec.referent.kind !== 'keyword') return [rec];
+  const raw = rec.referent.value ?? '';
+  const parts = raw.split(',').map((s) => s.trim()).filter(Boolean);
+  if (parts.length <= 1) return [rec];
+
+  const seen = new Set<string>();
+  const expanded: ReportRec[] = [];
+  for (const part of parts) {
+    const key = normalizeValueKey(part);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    expanded.push({ ...rec, referent: { kind: 'keyword', value: part } });
+  }
+  return expanded.length > 0 ? expanded : [rec];
+}
 
 /** Map one report recommendation to a ledger row (rec_key, value_key, evidence). */
 export function toLedgerRec(
@@ -275,7 +308,8 @@ export async function persistAudit(
   // id, not the freshly-minted one in rec. Without this map, a re-raised rec
   // would log its occurrence against an id that doesn't exist in aso_recommendations.
   const priorIdByRecKey = new Map(priorLedger.map((r) => [r.recKey, r.id]));
-  for (const reportRec of report.quickWins.concat(report.highImpact, report.strategic)) {
+  for (const rawReportRec of report.quickWins.concat(report.highImpact, report.strategic)) {
+    for (const reportRec of expandAddKeywordRec(rawReportRec)) {
     const rec = toLedgerRec(reportRec, { appId, country, snapshotId, now });
     // Suppress identity-rewriting recs when the identity is unconfirmed (spec ID).
     if (identityUnconfirmed && IDENTITY_REWRITING.has(rec.intent)) continue;
@@ -299,6 +333,7 @@ export async function persistAudit(
     await storage.upsertRecommendation(rec);
     // Use the stored row's id — on re-raises the original row survives ON CONFLICT.
     await storage.recordOccurrence(priorIdByRecKey.get(rec.recKey) ?? rec.id, snapshotId, false);
+    } // end expandAddKeywordRec inner loop
   }
 
   return {

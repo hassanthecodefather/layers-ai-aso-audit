@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { openDb, runMigrations } from './migrate';
 import { LibSqlStorageClient } from './libsql-storage-client';
-import { persistAudit, toLedgerRec, detectApplied, changeDiff, buildPriorContext } from './audit-memory';
+import { persistAudit, toLedgerRec, detectApplied, changeDiff, buildPriorContext, expandAddKeywordRec } from './audit-memory';
 import { loadFixtureListing } from '../identity/__fixtures__/load';
 import type { AppListing } from '../domain/listing';
 import type { AuditReport, Recommendation as ReportRec } from '../domain/audit';
@@ -375,6 +375,80 @@ describe('identity version monotonicity — Fix 3 regression', () => {
       expect(latest?.stage).toBe('full');
       expect(latest?.version).toBe(1);
       expect(latest?.audience).toMatchObject({ description: 'Task managers' });
+    } finally {
+      h.close();
+    }
+  });
+});
+
+// ── expandAddKeywordRec — C-FU3 multi-keyword split ───────────────────────────
+
+describe('expandAddKeywordRec', () => {
+  it('splits a comma-joined value into one rec per keyword', () => {
+    const r = rec({ referent: { kind: 'keyword', value: 'electric,vehicle' } });
+    const result = expandAddKeywordRec(r);
+    expect(result).toHaveLength(2);
+    expect(result[0]!.referent).toEqual({ kind: 'keyword', value: 'electric' });
+    expect(result[1]!.referent).toEqual({ kind: 'keyword', value: 'vehicle' });
+  });
+
+  it('deduplicates within the split (same normalizedKey)', () => {
+    const r = rec({ referent: { kind: 'keyword', value: 'a,a,b' } });
+    const result = expandAddKeywordRec(r);
+    expect(result).toHaveLength(2);
+  });
+
+  it('a singular and its plural collapse to one row (normalizeValueKey)', () => {
+    // "tracker" and "trackers" share the same normalizedKey after depluralize
+    const r = rec({ referent: { kind: 'keyword', value: 'tracker,trackers' } });
+    const result = expandAddKeywordRec(r);
+    expect(result).toHaveLength(1);
+  });
+
+  it('a space-separated phrase stays as one rec (split on comma only)', () => {
+    const r = rec({ referent: { kind: 'keyword', value: 'electric vehicle' } });
+    const result = expandAddKeywordRec(r);
+    expect(result).toHaveLength(1);
+    expect(result[0]!.referent).toEqual({ kind: 'keyword', value: 'electric vehicle' });
+  });
+
+  it('a single keyword (no comma) returns the original rec unchanged', () => {
+    const r = rec({ referent: { kind: 'keyword', value: 'charging' } });
+    const result = expandAddKeywordRec(r);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toBe(r); // exact same reference
+  });
+
+  it('non-add_keyword intents are returned as-is', () => {
+    const r = rec({ intent: 'add_preview_video', referent: { kind: 'none' } });
+    const result = expandAddKeywordRec(r);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toBe(r);
+  });
+
+  it('each split rec collapses against an existing standalone rec (dedup contract)', async () => {
+    // Persisting "a,b" then standalone "a" must both land on the same rec_key row.
+    const h = await fresh();
+    try {
+      const l = listingWith({});
+
+      // Audit 1: rec with "a,b" referent → splits into two rows ("a", "b").
+      await persistAudit(h.client, persistArgs(l, report([
+        rec({ referent: { kind: 'keyword', value: 'a,b' } }),
+      ]), '2026-06-01T00:00:00.000Z'));
+      const ledger1 = unwrap(await h.client.ledger('1', 'us'));
+      expect(ledger1).toHaveLength(2);
+      const keyA = ledger1.find((r) => r.valueKey === 'a');
+      const keyB = ledger1.find((r) => r.valueKey === 'b');
+      expect(keyA).toBeDefined();
+      expect(keyB).toBeDefined();
+
+      // Audit 2: standalone "a" rec → must upsert onto the existing "a" row (no new row).
+      await persistAudit(h.client, persistArgs(l, report([
+        rec({ referent: { kind: 'keyword', value: 'a' } }),
+      ]), '2026-06-02T00:00:00.000Z'));
+      const ledger2 = unwrap(await h.client.ledger('1', 'us'));
+      expect(ledger2).toHaveLength(2); // still 2, not 3
     } finally {
       h.close();
     }
