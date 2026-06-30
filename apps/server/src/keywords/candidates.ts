@@ -14,7 +14,9 @@
  * popularity + difficulty — the deterministic linter/gap findings always surface.
  */
 
+import { z } from 'zod';
 import type { AppListing } from '../domain/listing';
+import type { ListingSnapshot } from '../domain/snapshot';
 import type { AsaClient } from './asa-client';
 import type { LinterResult } from './linter';
 import { normalizeValueKey } from '../memory/dedup';
@@ -213,6 +215,68 @@ export async function generateCandidates(
   }
 
   return { candidates: dedupedCandidates, gap, popularityAvailable };
+}
+
+// ── Candidate result reuse (mirrors selectVisionResult) ──────────────────────
+
+const KeywordCandidateSchema = z.object({
+  term: z.string(),
+  normalizedKey: z.string(),
+  source: z.enum(['description', 'competitor']),
+  volumeLabel: z.string(),
+  volumeAvailable: z.boolean(),
+  popularity: z.number().optional(),
+  difficulty: z.number().optional(),
+});
+
+const GapRowSchema = z.object({
+  term: z.string(),
+  normalizedKey: z.string(),
+  gapCategory: z.enum(['yours_only', 'theirs_only', 'shared']),
+  confidence: z.literal('inferred'),
+  volumeLabel: z.string(),
+  volumeAvailable: z.boolean(),
+  popularity: z.number().optional(),
+  difficulty: z.number().optional(),
+});
+
+export const CandidateResultSchema = z.object({
+  candidates: z.array(KeywordCandidateSchema),
+  gap: z.array(GapRowSchema),
+  popularityAvailable: z.boolean(),
+});
+
+/**
+ * Returns the prior CandidateResult from the snapshot if the listing text
+ * (name, subtitle, description) and competitor names haven't changed since
+ * the prior snapshot. When reused, generateCandidates and its AppKittie
+ * calls are skipped entirely — mirroring selectVisionResult for vision.
+ *
+ * This is a pure function: no side effects, no IO. Unit-testable directly.
+ */
+export function selectCandidateResult(
+  current: AppListing,
+  priorSnapshot: ListingSnapshot | null,
+): CandidateResult | null {
+  if (!priorSnapshot) return null;
+
+  // Validate stored result against schema — catches corrupt or drifted rows.
+  const parsed = CandidateResultSchema.safeParse(priorSnapshot.candidateResult);
+  if (!parsed.success) return null;
+
+  const prior = priorSnapshot.listing;
+
+  // Compare text fields that feed candidate generation
+  if (current.name !== prior.name) return null;
+  if ((current.subtitle ?? '') !== (prior.subtitle ?? '')) return null;
+  if (current.description !== prior.description) return null;
+
+  // Compare competitor names (sorted — order-independent)
+  const currentComps = current.competitors.map((c) => c.name).sort().join('|');
+  const priorComps = prior.competitors.map((c) => c.name).sort().join('|');
+  if (currentComps !== priorComps) return null;
+
+  return parsed.data as CandidateResult;
 }
 
 // ── Linter-result accessor for integration (no circular dep) ──────────────────

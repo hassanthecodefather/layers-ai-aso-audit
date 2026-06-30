@@ -32,5 +32,10 @@ export const ListingSnapshotSchema = z.object({
    * Stored as an opaque JSON blob — validated by the vision module on use.
    */
   visionResult: z.unknown().optional(),
+  /**
+   * Keyword candidate + gap result from C2/C4. Optional for backward
+   * compatibility with pre-C snapshots. Validated by candidates.ts on use.
+   */
+  candidateResult: z.unknown().optional(),
 });
 export type ListingSnapshot = z.infer<typeof ListingSnapshotSchema>;

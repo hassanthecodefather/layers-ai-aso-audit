@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { generateCandidates, formatCandidatesForPrompt } from './candidates';
+import { generateCandidates, formatCandidatesForPrompt, selectCandidateResult } from './candidates';
+import type { CandidateResult } from './candidates';
 import { StubAsaClient } from './asa-client';
 import { runLinter } from './linter';
 import type { AppListing } from '../domain/listing';
+import type { ListingSnapshot } from '../domain/snapshot';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -45,6 +47,30 @@ function makeListing(overrides: Partial<AppListing> = {}): AppListing {
 
 function makeLinter(title: string, subtitle: string | null = null) {
   return runLinter({ title, subtitle, keywordField: null });
+}
+
+/** Minimal CandidateResult for reuse tests. */
+const STUB_CANDIDATE_RESULT: CandidateResult = {
+  candidates: [{ term: 'electric', normalizedKey: 'electric', source: 'description', volumeLabel: 'popularity unavailable', volumeAvailable: false }],
+  gap: [],
+  popularityAvailable: false,
+};
+
+/** Minimal snapshot carrying the listing and a stored candidateResult. */
+function makeSnapshot(listing: AppListing, candidateResult?: unknown): ListingSnapshot {
+  return {
+    id: 'snap-1',
+    appId: listing.appId,
+    country: listing.country,
+    fetchedAt: '2026-01-01T00:00:00Z',
+    listing,
+    signals: {},
+    report: {} as ListingSnapshot['report'],
+    rubricVersion: 'test-v1',
+    promptHash: 'abc123',
+    modelId: 'gemini',
+    candidateResult,
+  };
 }
 
 // ── Stub path: honest "popularity unavailable" ────────────────────────────────
@@ -278,5 +304,72 @@ describe('formatCandidatesForPrompt', () => {
     const text = formatCandidatesForPrompt(result);
     // "tesla" or "model" should appear in the gap section
     expect(text.toLowerCase()).toMatch(/tesla|model/);
+  });
+});
+
+// ── selectCandidateResult — reuse gate ────────────────────────────────────────
+
+describe('selectCandidateResult', () => {
+  it('returns null when there is no prior snapshot', () => {
+    const listing = makeListing();
+    expect(selectCandidateResult(listing, null)).toBeNull();
+  });
+
+  it('returns null when candidateResult is absent from the snapshot', () => {
+    const listing = makeListing();
+    const snap = makeSnapshot(listing, undefined);
+    expect(selectCandidateResult(listing, snap)).toBeNull();
+  });
+
+  it('returns null when candidateResult in snapshot is invalid (schema drift)', () => {
+    const listing = makeListing();
+    const snap = makeSnapshot(listing, { not: 'a valid candidate result' });
+    expect(selectCandidateResult(listing, snap)).toBeNull();
+  });
+
+  it('returns the stored result when listing text and competitors are unchanged', () => {
+    const listing = makeListing({ description: 'Control your electric vehicle.' });
+    const snap = makeSnapshot(listing, STUB_CANDIDATE_RESULT);
+    const result = selectCandidateResult(listing, snap);
+    expect(result).not.toBeNull();
+    expect(result?.popularityAvailable).toBe(false);
+    expect(result?.candidates).toHaveLength(1);
+  });
+
+  it('returns null when the listing name changes', () => {
+    const listing = makeListing({ name: 'Rivian' });
+    const snap = makeSnapshot(listing, STUB_CANDIDATE_RESULT);
+    const changed = makeListing({ name: 'Rivian EV' });
+    expect(selectCandidateResult(changed, snap)).toBeNull();
+  });
+
+  it('returns null when the description changes', () => {
+    const listing = makeListing({ description: 'Control your electric vehicle.' });
+    const snap = makeSnapshot(listing, STUB_CANDIDATE_RESULT);
+    const changed = makeListing({ description: 'Monitor your EV remotely.' });
+    expect(selectCandidateResult(changed, snap)).toBeNull();
+  });
+
+  it('returns null when the competitor set changes', () => {
+    const listing = makeListing({ competitors: [] });
+    const snap = makeSnapshot(listing, STUB_CANDIDATE_RESULT);
+    const changed = makeListing({
+      competitors: [{
+        appId: '2', name: 'Tesla', developer: 'Tesla', primaryGenre: 'Utilities',
+        averageRating: 4.0, ratingCount: 100, formattedPrice: 'Free',
+        screenshotCount: 5, hasPreviewVideo: false,
+      }],
+    });
+    expect(selectCandidateResult(changed, snap)).toBeNull();
+  });
+
+  it('treats competitor order as irrelevant (sorted comparison)', () => {
+    const comp1 = { appId: '2', name: 'Tesla', developer: 'Tesla', primaryGenre: 'Utilities', averageRating: 4.0, ratingCount: 100, formattedPrice: 'Free', screenshotCount: 5, hasPreviewVideo: false };
+    const comp2 = { appId: '3', name: 'Polestar', developer: 'Polestar', primaryGenre: 'Utilities', averageRating: 4.1, ratingCount: 200, formattedPrice: 'Free', screenshotCount: 6, hasPreviewVideo: false };
+    const listing = makeListing({ competitors: [comp1, comp2] });
+    const snap = makeSnapshot(listing, STUB_CANDIDATE_RESULT);
+    // Reversed order — should still reuse
+    const reversed = makeListing({ competitors: [comp2, comp1] });
+    expect(selectCandidateResult(reversed, snap)).not.toBeNull();
   });
 });

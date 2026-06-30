@@ -27,7 +27,7 @@ import { getVisionClient, runVision, selectVisionResult } from '../../vision';
 import { runIdFull } from '../../identity/id-full';
 import { getIdentityVisionClient } from '../../identity/identity-vision-client';
 import { runSecondaryUplifts } from '../../vision/secondary-uplifts';
-import { generateCandidates } from '../../keywords/candidates';
+import { generateCandidates, selectCandidateResult } from '../../keywords/candidates';
 import { getKeywordProvider } from '../../keywords/asa-client';
 
 /**
@@ -250,13 +250,16 @@ const scoreStep = createStep({
     // of the prompt so a vision change (new images) correctly invalidates the
     // cached report. B4: build once and pass to produceAuditDraft to avoid a
     // second buildAuditPrompt call inside that function.
-    // C2: keyword candidate generation + gap analysis. Runs concurrently with
-    // prompt construction; the ASA stub resolves immediately so no latency added.
-    const candidateResult = await generateCandidates(
-      listing,
-      signals.keywordLinter,
-      getKeywordProvider(),
-    );
+    // C4: keyword candidate generation + gap analysis. selectCandidateResult
+    // returns the stored result (zero AppKittie calls, stable promptHash) when
+    // listing text + competitor set are unchanged — mirroring selectVisionResult.
+    const priorCandidateResult = selectCandidateResult(listing, priorSnap);
+    const candidateResult =
+      priorCandidateResult ?? (await generateCandidates(
+        listing,
+        signals.keywordLinter,
+        getKeywordProvider(),
+      ));
 
     const builtPrompt = buildAuditPrompt(listing, signals, priorContext, visionResult, candidateResult);
     const promptHash = createHash('sha256')
@@ -340,6 +343,7 @@ const scoreStep = createStep({
       modelId: usedModelId,
       now,
       visionResult, // B1: persist vision result for future reuse
+      candidateResult, // C4: persist candidate result for future reuse
       // B4: pass pre-fetched values to avoid duplicate storage reads in persistAudit.
       priorSnapshot: priorSnap,
       priorLedger: priorLedgerR.ok ? priorLedgerR.value : [],
@@ -400,7 +404,7 @@ const scoreStep = createStep({
     if (listingUnchanged) {
       // Images are also unchanged when the whole snapshot is cached (same
       // screenshot/icon URLs → visionWasFresh is false), so B2/B3 are also skipped.
-      notes.push('Listing unchanged since last audit — report returned from cache. Vision analysis, ID-full, and secondary uplifts also skipped (images unchanged).');
+      notes.push('Listing unchanged since last audit — report returned from cache. Vision analysis, ID-full, secondary uplifts, and keyword candidates also skipped (inputs unchanged).');
     }
     if (idFullResult?.visionEscalation) {
       notes.push(

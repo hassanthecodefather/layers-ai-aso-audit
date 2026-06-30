@@ -180,6 +180,8 @@ export interface PersistInput {
   now: string;
   /** B1: vision result to persist with the snapshot. Optional for backward compat. */
   visionResult?: unknown;
+  /** C4: keyword candidate result to persist with the snapshot. Optional for backward compat. */
+  candidateResult?: unknown;
   /** B4: Pre-fetched prior snapshot (avoids a duplicate storage read). */
   priorSnapshot?: ListingSnapshot | null;
   /** B4: Pre-fetched prior ledger (avoids a duplicate storage read). */
@@ -245,6 +247,7 @@ export async function persistAudit(
     promptHash: input.promptHash,
     modelId: input.modelId,
     visionResult: input.visionResult,
+    candidateResult: input.candidateResult,
   };
   await storage.putSnapshot(snapshot);
 
