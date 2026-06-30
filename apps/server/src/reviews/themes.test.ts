@@ -17,8 +17,10 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import type { Review } from '../domain/listing';
+import { AppListingSchema } from '../domain/listing';
 import type { LlmProvider } from '../llm/provider';
-import { analyzeThemes } from './themes';
+import type { ListingSnapshot } from '../domain/snapshot';
+import { analyzeThemes, selectThemeResult } from './themes';
 import { valueKeyFor } from '../memory/dedup';
 import { SINGLE_INSTANCE_INTENTS } from '../domain/recommendation';
 
@@ -307,5 +309,125 @@ describe('analyzeThemes — named bucket sets isUnresolved: false', () => {
     expect(theme?.bucket).toBe('crash_stability');
     expect(theme?.reviewIds).toEqual(['14209690246', '14199210988']);
     expect(result.featureRequests).toEqual(['Offline mode']);
+  });
+});
+
+// ── Test 9: selectThemeResult reuse ─────────────────────────────────────────
+
+const STORED_THEME_RESULT = {
+  themes: [
+    { bucket: 'crash_stability', text: 'App crashes on launch', reviewIds: ['r1', 'r2'], isUnresolved: false },
+  ],
+  versionDelta: null,
+  featureRequests: ['Offline mode'],
+  taxonomyVersion: 'theme-taxonomy@1' as const,
+};
+
+function makeSnapshot(overrides: {
+  reviews?: Review[];
+  themeResult?: unknown;
+}): ListingSnapshot {
+  const reviews = overrides.reviews ?? [];
+  return {
+    id: 'snap-1',
+    appId: 'app1',
+    country: 'us',
+    fetchedAt: '2026-06-24T00:00:00.000Z',
+    listing: AppListingSchema.parse({
+      appId: 'app1',
+      country: 'us',
+      url: 'https://apps.apple.com/us/app/id1',
+      name: 'Test App',
+      developer: 'Dev',
+      iconUrl: null,
+      primaryGenre: 'Productivity',
+      genres: ['Productivity'],
+      price: 0,
+      formattedPrice: 'Free',
+      subtitle: null,
+      promotionalText: null,
+      description: 'desc',
+      releaseNotes: null,
+      version: '1.0',
+      screenshotUrls: [],
+      ipadScreenshotUrls: [],
+      hasPreviewVideo: false,
+      averageRating: 4,
+      ratingCount: 10,
+      currentVersionRating: 4,
+      currentVersionRatingCount: 5,
+      contentRating: '4+',
+      releaseDate: null,
+      currentVersionReleaseDate: null,
+      reviews,
+      competitors: [],
+      provenance: { itunes: true, crawler: false, reviews: false, competitors: false },
+    }),
+    signals: null,
+    report: {
+      app: { appId: 'app1', country: 'us', url: '', name: 'Test App', developer: 'Dev', iconUrl: null, primaryGenre: 'Productivity', averageRating: 4, ratingCount: 10 },
+      generatedAt: '2026-06-24T00:00:00.000Z',
+      headline: '',
+      overallScore: 70,
+      dimensions: [],
+      quickWins: [],
+      highImpact: [],
+      strategic: [],
+      competitorComparison: { summary: '', rows: [] },
+      limitations: [],
+    },
+    rubricVersion: 'v1',
+    promptHash: 'h1',
+    modelId: 'stub',
+    themeResult: overrides.themeResult,
+  };
+}
+
+describe('selectThemeResult — reuse logic', () => {
+  it('returns null when priorSnapshot is null', () => {
+    const reviews: Review[] = [makeReview({ id: 'r1' })];
+    expect(selectThemeResult(reviews, null)).toBeNull();
+  });
+
+  it('returns null when themeResult is absent from snapshot', () => {
+    const snap = makeSnapshot({ reviews: [makeReview({ id: 'r1' })] });
+    const reviews: Review[] = [makeReview({ id: 'r1' })];
+    expect(selectThemeResult(reviews, snap)).toBeNull();
+  });
+
+  it('returns null when themeResult has wrong schema shape', () => {
+    const snap = makeSnapshot({ reviews: [makeReview({ id: 'r1' })], themeResult: { wrong: 'shape' } });
+    const reviews: Review[] = [makeReview({ id: 'r1' })];
+    expect(selectThemeResult(reviews, snap)).toBeNull();
+  });
+
+  it('returns null when review IDs differ from prior snapshot', () => {
+    const snap = makeSnapshot({ reviews: [makeReview({ id: 'r1' })], themeResult: STORED_THEME_RESULT });
+    const reviews: Review[] = [makeReview({ id: 'r2' })]; // different id
+    expect(selectThemeResult(reviews, snap)).toBeNull();
+  });
+
+  it('returns null when current review count differs', () => {
+    const snap = makeSnapshot({ reviews: [makeReview({ id: 'r1' })], themeResult: STORED_THEME_RESULT });
+    const reviews: Review[] = [makeReview({ id: 'r1' }), makeReview({ id: 'r2' })];
+    expect(selectThemeResult(reviews, snap)).toBeNull();
+  });
+
+  it('returns stored result when review IDs match', () => {
+    const snap = makeSnapshot({ reviews: [makeReview({ id: 'r1' }), makeReview({ id: 'r2' })], themeResult: STORED_THEME_RESULT });
+    const reviews: Review[] = [makeReview({ id: 'r1' }), makeReview({ id: 'r2' })];
+    const result = selectThemeResult(reviews, snap);
+    expect(result).not.toBeNull();
+    expect(result?.themes).toHaveLength(1);
+    expect(result?.themes[0]?.bucket).toBe('crash_stability');
+    expect(result?.featureRequests).toEqual(['Offline mode']);
+    expect(result?.taxonomyVersion).toBe('theme-taxonomy@1');
+  });
+
+  it('returns stored result regardless of review order', () => {
+    const snap = makeSnapshot({ reviews: [makeReview({ id: 'r1' }), makeReview({ id: 'r2' })], themeResult: STORED_THEME_RESULT });
+    // Same reviews, different order
+    const reviews: Review[] = [makeReview({ id: 'r2' }), makeReview({ id: 'r1' })];
+    expect(selectThemeResult(reviews, snap)).not.toBeNull();
   });
 });

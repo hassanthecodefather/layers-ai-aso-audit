@@ -117,6 +117,9 @@ export const MIGRATIONS: readonly string[] = [
 
   // ── Phase C4: Keyword Candidates — add candidate_result column ──────────────
   `ALTER TABLE aso_listing_snapshots ADD COLUMN candidate_result_json TEXT`,
+
+  // ── Phase D2: Theme Analysis — add theme_result column ──────────────────────
+  `ALTER TABLE aso_listing_snapshots ADD COLUMN theme_result_json TEXT`,
 ];
 
 /** Open a raw LibSQL client against the given url (defaults to the app DB). */

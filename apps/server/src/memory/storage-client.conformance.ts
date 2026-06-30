@@ -97,6 +97,7 @@ function snapshot(over: Partial<ListingSnapshot> = {}): ListingSnapshot {
     // Optional blobs — passed through explicitly so round-trip tests can set them.
     visionResult: over.visionResult,
     candidateResult: over.candidateResult,
+    themeResult: over.themeResult,
   };
 }
 
@@ -239,13 +240,33 @@ export function storageClientConformance(
       }
     });
 
-    it('leaves visionResult and candidateResult undefined when absent', async () => {
+    it('round-trips themeResult through put/latest (D2 regression guard)', async () => {
+      const h = await makeClient();
+      try {
+        const tr = {
+          themes: [
+            { bucket: 'crash_stability', text: 'App crashes on launch', reviewIds: ['r1', 'r2'], isUnresolved: false },
+          ],
+          versionDelta: { olderVersion: '3.12.0', newerVersion: '3.13.0', olderAvgRating: 2.5, newerAvgRating: 3.8, delta: 1.3 },
+          featureRequests: ['Offline mode'],
+          taxonomyVersion: 'theme-taxonomy@1',
+        };
+        unwrap(await h.client.putSnapshot(snapshot({ themeResult: tr })));
+        const got = unwrap(await h.client.latestSnapshot('app1', 'us'));
+        expect(got?.themeResult).toEqual(tr);
+      } finally {
+        h.close();
+      }
+    });
+
+    it('leaves visionResult, candidateResult, and themeResult undefined when absent', async () => {
       const h = await makeClient();
       try {
         unwrap(await h.client.putSnapshot(snapshot()));
         const got = unwrap(await h.client.latestSnapshot('app1', 'us'));
         expect(got?.visionResult).toBeUndefined();
         expect(got?.candidateResult).toBeUndefined();
+        expect(got?.themeResult).toBeUndefined();
       } finally {
         h.close();
       }

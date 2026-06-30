@@ -40,8 +40,8 @@ export class LibSqlStorageClient implements StorageClient {
       `INSERT INTO aso_listing_snapshots
         (id, app_id, country, fetched_at, listing_json, signals_json,
          report_json, rubric_version, prompt_hash, model_id, vision_result_json,
-         candidate_result_json)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+         candidate_result_json, theme_result_json)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         s.id,
         s.appId,
@@ -55,6 +55,7 @@ export class LibSqlStorageClient implements StorageClient {
         s.modelId,
         JSON.stringify(s.visionResult ?? null),
         JSON.stringify(s.candidateResult ?? null),
+        JSON.stringify(s.themeResult ?? null),
       ],
     );
     return r.ok ? ok(undefined) : err(r.error);
@@ -77,12 +78,15 @@ export class LibSqlStorageClient implements StorageClient {
   }
 
   #parseSnapshot(row: Row): Result<ListingSnapshot> {
-    // vision_result_json / candidate_result_json may be absent in older rows
+    // vision_result_json / candidate_result_json / theme_result_json may be absent in older rows
     const visionResultRaw = row.vision_result_json != null
       ? JSON.parse(String(row.vision_result_json))
       : undefined;
     const candidateResultRaw = row.candidate_result_json != null
       ? JSON.parse(String(row.candidate_result_json))
+      : undefined;
+    const themeResultRaw = row.theme_result_json != null
+      ? JSON.parse(String(row.theme_result_json))
       : undefined;
 
     const parsed = ListingSnapshotSchema.safeParse({
@@ -98,6 +102,7 @@ export class LibSqlStorageClient implements StorageClient {
       modelId: row.model_id,
       visionResult: visionResultRaw ?? undefined,
       candidateResult: candidateResultRaw ?? undefined,
+      themeResult: themeResultRaw ?? undefined,
     });
     return parsed.success
       ? ok(parsed.data)
