@@ -32,7 +32,7 @@ import { getKeywordProvider } from '../../keywords/asa-client';
 import { analyzeThemes } from '../../reviews/themes';
 import { getEmbeddingProvider, resolveOtherThemeKey } from '../../reviews/embedding';
 import { AppKittieClient } from '../../keywords/appkittie-client';
-import { fetchFunctionGroundedCompetitors } from '../../sources/function-competitors';
+import { fetchFunctionGroundedCompetitors, selectFunctionCompetitors, seedKeywords } from '../../sources/function-competitors';
 
 /**
  * The ASO audit workflow.
@@ -215,42 +215,54 @@ const scoreStep = createStep({
 
     const identityFactSheet = buildFactSheet(extractIdentitySignals(listing));
 
-    // ── D3: function-grounded competitor discovery — identity-seeded, not genre-based.
-    // Runs before selectCandidateResult so the reuse check sees the correct competitor set.
-    // Falls back silently when AppKittie is not keyed — listing.competitors stays as-is
-    // (genre-based from resolveListing). Per-audit credit cap: MAX_SEEDS=2 queries.
-    const ref = { appId: listing.appId, country: listing.country };
-    const appKittieKey = process.env['APP_KITTI_API_KEY'];
-    if (appKittieKey) {
-      const functionCompetitors = await fetchFunctionGroundedCompetitors(
-        ref,
-        resolved,
-        new AppKittieClient(appKittieKey),
-        storage,
-      );
-      if (functionCompetitors.length > 0) {
-        listing = { ...listing, competitors: functionCompetitors };
-      }
-    }
-
-    // ── P1: read prior history for reconciliation (NOT injected into generation) ─
+    // ── P1: read prior history before D3 so the reuse check has priorSnap ────
     // Generation is a pure function of (listing + identity); the ledger is read
     // after generation, in the memory reconciliation layer (persistAudit). Injecting
     // the ledger into the prompt caused the model to diversify away from past recs,
     // growing the ledger every run instead of stabilising it.
+    const ref = { appId: listing.appId, country: listing.country };
     const priorSnapR = await storage.latestSnapshot(listing.appId, listing.country);
     const priorLedgerR = await storage.ledger(listing.appId, listing.country);
+    const priorSnap = priorSnapR.ok ? priorSnapR.value : null;
+
     const priorContext = buildPriorContext({
       identity: resolved,
-      priorSnapshot: priorSnapR.ok ? priorSnapR.value : null,
+      priorSnapshot: priorSnap,
       identityFactSheet,
     });
+
+    // ── D3: function-grounded competitor discovery — identity-seeded, not genre-based.
+    // Reuse path (selectFunctionCompetitors): if identity seeds are unchanged since
+    // the prior snapshot, reuse the stored competitors — no AppKittie call.
+    // Live path: AppKittie getTopApps → tombstone filter → batchLookupCompetitors.
+    // Falls back silently when AppKittie is not keyed — listing.competitors stays as-is.
+    // Per-audit credit cap (live path only): MAX_SEEDS=2 queries.
+    const d3Seeds = seedKeywords(resolved);
+    let d3ProvidedCompetitors = false;
+
+    const reusedCompetitors = selectFunctionCompetitors(resolved, priorSnap);
+    if (reusedCompetitors) {
+      listing = { ...listing, competitors: reusedCompetitors };
+      d3ProvidedCompetitors = true;
+    } else {
+      const appKittieKey = process.env['APP_KITTI_API_KEY'];
+      if (appKittieKey) {
+        const functionCompetitors = await fetchFunctionGroundedCompetitors(
+          ref,
+          resolved,
+          new AppKittieClient(appKittieKey),
+          storage,
+        );
+        if (functionCompetitors.length > 0) {
+          listing = { ...listing, competitors: functionCompetitors };
+          d3ProvidedCompetitors = true;
+        }
+      }
+    }
 
     // Signals computed once — passed to generation (for prompt + normalization)
     // and reused for hashing / persistence below.
     const signals = computeSignals(listing);
-
-    const priorSnap = priorSnapR.ok ? priorSnapR.value : null;
 
     // ── B1: vision analysis — runs BEFORE prompt construction so the vision
     //    facts (per-slot critiques, icon assessment) can be included in the
@@ -283,11 +295,12 @@ const scoreStep = createStep({
         getKeywordProvider(),
       ));
 
-    // C-FU2: when identity is cross-domain or escalated, genre-matched
-    // competitors are category peers (e.g. Expedia for an EV app) — strip
-    // their `theirs_only` gap terms so the model never sees irrelevant keywords.
+    // C-FU2: suppress competitor gap terms for cross-domain/escalated apps, but
+    // ONLY when D3 didn't provide function-grounded peers. When D3 ran, competitors
+    // are identity-matched (e.g. EVgo/PlugShare for Rivian) — suppressing their
+    // gap terms would undo D3's benefit for exactly the apps it was built to fix.
     const candidateResult =
-      (resolved.escalate || resolved.divergence === 'cross_domain')
+      (resolved.escalate || resolved.divergence === 'cross_domain') && !d3ProvidedCompetitors
         ? suppressCompetitorGapTerms(rawCandidateResult)
         : rawCandidateResult;
 
@@ -403,6 +416,7 @@ const scoreStep = createStep({
       now,
       visionResult, // B1: persist vision result for future reuse
       candidateResult: rawCandidateResult, // C4: persist raw (suppressCompetitorGapTerms is a per-audit view, not stored state)
+      functionCompetitorSeeds: d3ProvidedCompetitors ? d3Seeds : undefined, // D3: seeds for reuse on unchanged identity
       // B4: pass pre-fetched values to avoid duplicate storage reads in persistAudit.
       priorSnapshot: priorSnap,
       priorLedger: priorLedgerR.ok ? priorLedgerR.value : [],

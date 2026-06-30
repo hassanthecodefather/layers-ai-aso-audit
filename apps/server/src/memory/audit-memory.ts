@@ -215,6 +215,8 @@ export interface PersistInput {
   visionResult?: unknown;
   /** C4: keyword candidate result to persist with the snapshot. Optional for backward compat. */
   candidateResult?: unknown;
+  /** D3: seeds used for function-grounded competitor discovery. Stored for selectFunctionCompetitors reuse. */
+  functionCompetitorSeeds?: string[];
   /** B4: Pre-fetched prior snapshot (avoids a duplicate storage read). */
   priorSnapshot?: ListingSnapshot | null;
   /** B4: Pre-fetched prior ledger (avoids a duplicate storage read). */
@@ -281,6 +283,7 @@ export async function persistAudit(
     modelId: input.modelId,
     visionResult: input.visionResult,
     candidateResult: input.candidateResult,
+    functionCompetitorSeeds: input.functionCompetitorSeeds,
   };
   await storage.putSnapshot(snapshot);
 

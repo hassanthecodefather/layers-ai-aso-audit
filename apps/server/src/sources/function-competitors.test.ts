@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fetchFunctionGroundedCompetitors } from './function-competitors';
+import { fetchFunctionGroundedCompetitors, selectFunctionCompetitors } from './function-competitors';
 import type { AppRef } from '../domain/app-url';
 import type { ResolvedIdentity } from '../identity/resolve';
 import type { AppKittieClient, AppKittieTopApp } from '../keywords/appkittie-client';
 import type { StorageClient } from '../memory/storage-client';
-import type { Competitor } from '../domain/listing';
+import type { Competitor, AppListing } from '../domain/listing';
+import type { ListingSnapshot } from '../domain/snapshot';
 
 // ── Mock iTunes batch lookup ────────────────────────────────────────────────────
 
@@ -242,5 +243,72 @@ describe('fetchFunctionGroundedCompetitors', () => {
 
     // Should still return competitors — tombstone failure doesn't abort
     expect(result).toEqual(mockCompetitors);
+  });
+});
+
+// ── selectFunctionCompetitors reuse tests ────────────────────────────────────
+
+function makeSnapshot(
+  competitors: Competitor[],
+  functionCompetitorSeeds?: string[],
+): ListingSnapshot {
+  return {
+    id: 'snap_1',
+    appId: '123456',
+    country: 'us',
+    fetchedAt: '2026-01-01T00:00:00Z',
+    listing: { competitors } as unknown as AppListing,
+    signals: {},
+    report: {} as ListingSnapshot['report'],
+    rubricVersion: 'v1',
+    promptHash: 'abc123',
+    modelId: 'gemini',
+    functionCompetitorSeeds,
+  };
+}
+
+describe('selectFunctionCompetitors', () => {
+  it('returns null when priorSnapshot is null', () => {
+    expect(selectFunctionCompetitors(makeResolved(), null)).toBeNull();
+  });
+
+  it('returns null when priorSnapshot has no functionCompetitorSeeds', () => {
+    const snap = makeSnapshot([makeCompetitor('111', 'ChargePoint')]);
+    expect(selectFunctionCompetitors(makeResolved(), snap)).toBeNull();
+  });
+
+  it('returns null when seeds changed (niche changed)', () => {
+    const snap = makeSnapshot(
+      [makeCompetitor('111', 'ChargePoint')],
+      ['old niche', 'Electric vehicle companion'],
+    );
+    const resolved = makeResolved({ niche: 'EV charging', category: 'Electric vehicle companion' });
+    expect(selectFunctionCompetitors(resolved, snap)).toBeNull();
+  });
+
+  it('returns prior competitors when seeds match', () => {
+    const competitors = [makeCompetitor('111', 'ChargePoint'), makeCompetitor('222', 'PlugShare')];
+    const seeds = ['EV charging', 'Electric vehicle companion'];
+    const snap = makeSnapshot(competitors, seeds);
+    const resolved = makeResolved({ niche: 'EV charging', category: 'Electric vehicle companion' });
+
+    expect(selectFunctionCompetitors(resolved, snap)).toEqual(competitors);
+  });
+
+  it('returns prior competitors when seeds match in different order', () => {
+    const competitors = [makeCompetitor('111', 'ChargePoint')];
+    // Seeds stored in reversed order — sort should still match
+    const snap = makeSnapshot(competitors, ['Electric vehicle companion', 'EV charging']);
+    const resolved = makeResolved({ niche: 'EV charging', category: 'Electric vehicle companion' });
+
+    expect(selectFunctionCompetitors(resolved, snap)).toEqual(competitors);
+  });
+
+  it('returns null when seeds match but prior competitors are empty', () => {
+    const seeds = ['EV charging', 'Electric vehicle companion'];
+    const snap = makeSnapshot([], seeds);
+    const resolved = makeResolved({ niche: 'EV charging', category: 'Electric vehicle companion' });
+
+    expect(selectFunctionCompetitors(resolved, snap)).toBeNull();
   });
 });

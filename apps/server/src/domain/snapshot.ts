@@ -37,5 +37,11 @@ export const ListingSnapshotSchema = z.object({
    * compatibility with pre-C snapshots. Validated by candidates.ts on use.
    */
   candidateResult: z.unknown().optional(),
+  /**
+   * Seeds used for D3 function-grounded competitor discovery (niche + category).
+   * Stored so selectFunctionCompetitors can skip AppKittie on unchanged identity.
+   * Absent when D3 didn't run or returned no competitors.
+   */
+  functionCompetitorSeeds: z.array(z.string()).optional(),
 });
 export type ListingSnapshot = z.infer<typeof ListingSnapshotSchema>;
