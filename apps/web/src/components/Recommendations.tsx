@@ -54,16 +54,48 @@ export function Recommendations(props: RecommendationsProps) {
   );
 }
 
+const BUCKET_SHORT: Record<string, string> = {
+  crash_stability: 'Crashes',
+  login_auth: 'Login',
+  pricing_subscription: 'Pricing',
+  ads_intrusive: 'Ads',
+  performance_speed: 'Performance',
+  battery_resource: 'Battery',
+  data_loss_sync: 'Data Loss',
+  ui_ux_confusion: 'UI/UX',
+  onboarding: 'Onboarding',
+  notifications: 'Notifications',
+  privacy_permissions: 'Privacy',
+  customer_support: 'Support',
+  device_compat: 'Compatibility',
+  content_quality: 'Content',
+  other: 'Other',
+};
+
 function RecommendationCard({ rec }: { rec: Recommendation }) {
   const hasDiff = rec.before != null && rec.after != null;
   const isKeyword = rec.intent === 'add_keyword' && rec.referent?.kind === 'keyword' && rec.referent.value;
   const keywords = isKeyword
     ? rec.referent.value!.split(',').map((k) => k.trim()).filter(Boolean)
     : [];
+  const isTheme = rec.intent === 'fix_complaint_theme' && rec.referent?.kind === 'theme';
+  const isReviewId = rec.intent === 'respond_to_reviews' && rec.referent?.kind === 'reviewId';
 
   return (
     <article className="rounded-xl border border-white/10 bg-white/[0.03] p-3.5">
-      <p className="text-sm font-medium text-zinc-100">{rec.title}</p>
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-sm font-medium text-zinc-100">{rec.title}</p>
+        {isTheme && rec.referent.bucket && (
+          <span className="shrink-0 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[11px] font-medium text-rose-300">
+            {BUCKET_SHORT[rec.referent.bucket] ?? rec.referent.bucket}
+          </span>
+        )}
+        {isReviewId && rec.referent.value && (
+          <span className="shrink-0 rounded-md border border-white/10 bg-white/[0.05] px-2 py-0.5 font-mono text-[10px] text-zinc-500">
+            {rec.referent.value}
+          </span>
+        )}
+      </div>
       <p className="mt-1 text-xs leading-relaxed text-zinc-400">
         {rec.rationale}
       </p>

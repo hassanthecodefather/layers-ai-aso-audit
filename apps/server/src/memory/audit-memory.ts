@@ -217,6 +217,8 @@ export interface PersistInput {
   candidateResult?: unknown;
   /** D3: seeds used for function-grounded competitor discovery. Stored for selectFunctionCompetitors reuse. */
   functionCompetitorSeeds?: string[];
+  /** D-UI: theme analysis result for snapshot storage + reuse. */
+  themeResult?: unknown;
   /** B4: Pre-fetched prior snapshot (avoids a duplicate storage read). */
   priorSnapshot?: ListingSnapshot | null;
   /** B4: Pre-fetched prior ledger (avoids a duplicate storage read). */
@@ -284,6 +286,7 @@ export async function persistAudit(
     visionResult: input.visionResult,
     candidateResult: input.candidateResult,
     functionCompetitorSeeds: input.functionCompetitorSeeds,
+    themeResult: input.themeResult,
   };
   await storage.putSnapshot(snapshot);
 

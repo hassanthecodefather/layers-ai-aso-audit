@@ -112,6 +112,27 @@ export const ScoredDimensionSchema = DimensionScoreSchema.extend({
 });
 export type ScoredDimension = z.infer<typeof ScoredDimensionSchema>;
 
+/** Wire-shape summary of the D2 theme analysis result (reviewIds collapsed to count). */
+export const ThemeResultSchema = z.object({
+  themes: z.array(z.object({
+    bucket: z.string(),
+    text: z.string(),
+    reviewCount: z.number(),
+    isUnresolved: z.boolean(),
+  })),
+  versionDelta: z.object({
+    olderVersion: z.string(),
+    newerVersion: z.string(),
+    olderAvgRating: z.number(),
+    newerAvgRating: z.number(),
+    delta: z.number(),
+  }).nullable(),
+  featureRequests: z.array(z.string()),
+  sampleSize: z.number(),
+  taxonomyVersion: z.literal('theme-taxonomy@1'),
+}).nullable().optional();
+export type ThemeResult = z.infer<typeof ThemeResultSchema>;
+
 /**
  * The finished audit. Defined as a schema (not just a type) so the workflow
  * can declare it as its output and Mastra validates the boundary.
@@ -128,5 +149,6 @@ export const AuditReportSchema = z.object({
   strategic: z.array(RecommendationSchema),
   competitorComparison: AuditDraftSchema.shape.competitorComparison,
   limitations: z.array(z.string()),
+  themeResult: ThemeResultSchema,
 });
 export type AuditReport = z.infer<typeof AuditReportSchema>;

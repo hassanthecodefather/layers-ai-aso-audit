@@ -38,6 +38,11 @@ export const ListingSnapshotSchema = z.object({
    */
   candidateResult: z.unknown().optional(),
   /**
+   * Theme analysis result from D2. Optional for backward compatibility with
+   * pre-D snapshots. Validated by themes.ts on use.
+   */
+  themeResult: z.unknown().optional(),
+  /**
    * Seeds used for D3 function-grounded competitor discovery (niche + category).
    * Stored so selectFunctionCompetitors can skip AppKittie on unchanged identity.
    * Absent when D3 didn't run or returned no competitors.

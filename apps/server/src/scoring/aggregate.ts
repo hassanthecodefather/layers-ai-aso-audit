@@ -6,6 +6,7 @@ import {
   type DimensionScore,
   type Recommendation,
   type ScoredDimension,
+  type ThemeResult,
 } from '../domain/audit';
 import type { AppSummary } from '../domain/listing';
 import { rubricFor } from './rubric';
@@ -13,6 +14,7 @@ import type { ListingSignals } from './signals';
 import { deriveConfidence, codeScore, coarseOrdinalScore } from './dimension-scorer';
 import { replayOverallScore } from './replay';
 import type { VisionResult } from '../vision/types';
+import type { ThemeAnalysisResult } from '../reviews/themes';
 
 /**
  * Turn the LLM's `AuditDraft` into a finished `AuditReport`.
@@ -40,6 +42,7 @@ export function assembleReport(
   draft: AuditDraft,
   signals?: ListingSignals,
   visionResult?: VisionResult,
+  themeResult?: ThemeAnalysisResult | null,
 ): AuditReport {
   const byId = new Map<DimensionId, DimensionScore>();
   for (const d of draft.dimensions) byId.set(d.id, d);
@@ -101,6 +104,25 @@ export function assembleReport(
   const inCategory = (c: Recommendation['category']): Recommendation[] =>
     draft.recommendations.filter((r) => r.category === c);
 
+  const sampleSize = themeResult
+    ? new Set(themeResult.themes.flatMap((t) => t.reviewIds)).size
+    : 0;
+
+  const themeResultWire: ThemeResult = themeResult
+    ? {
+        themes: themeResult.themes.map((t) => ({
+          bucket: t.bucket,
+          text: t.text,
+          reviewCount: t.reviewIds.length,
+          isUnresolved: t.isUnresolved,
+        })),
+        versionDelta: themeResult.versionDelta,
+        featureRequests: themeResult.featureRequests,
+        sampleSize,
+        taxonomyVersion: themeResult.taxonomyVersion,
+      }
+    : null;
+
   return {
     app,
     generatedAt: new Date().toISOString(),
@@ -112,5 +134,6 @@ export function assembleReport(
     strategic: inCategory('strategic'),
     competitorComparison: draft.competitorComparison,
     limitations: draft.limitations,
+    themeResult: themeResultWire,
   };
 }

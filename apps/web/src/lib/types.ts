@@ -39,7 +39,7 @@ export interface Recommendation {
   category: RecommendationCategory;
   dimension: string;
   intent: string;
-  referent: { kind: string; value?: string };
+  referent: { kind: string; value?: string; bucket?: string; text?: string };
   title: string;
   rationale: string;
   evidence: string;
@@ -54,6 +54,29 @@ export interface CompetitorRow {
   edge: string;
 }
 
+export interface VersionDelta {
+  olderVersion: string;
+  newerVersion: string;
+  olderAvgRating: number;
+  newerAvgRating: number;
+  delta: number;
+}
+
+export interface ThemeRow {
+  bucket: string;
+  text: string;
+  reviewCount: number;
+  isUnresolved: boolean;
+}
+
+export interface ThemeResult {
+  themes: ThemeRow[];
+  versionDelta: VersionDelta | null;
+  featureRequests: string[];
+  sampleSize: number;
+  taxonomyVersion: 'theme-taxonomy@1';
+}
+
 export interface AuditReport {
   app: AppSummary;
   generatedAt: string;
@@ -65,6 +88,7 @@ export interface AuditReport {
   strategic: Recommendation[];
   competitorComparison: { summary: string; rows: CompetitorRow[] };
   limitations: string[];
+  themeResult?: ThemeResult | null;
 }
 
 export interface ProgressEvent {

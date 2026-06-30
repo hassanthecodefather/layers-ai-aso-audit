@@ -29,7 +29,7 @@ import { getIdentityVisionClient } from '../../identity/identity-vision-client';
 import { runSecondaryUplifts } from '../../vision/secondary-uplifts';
 import { generateCandidates, selectCandidateResult, suppressCompetitorGapTerms } from '../../keywords/candidates';
 import { getKeywordProvider } from '../../keywords/asa-client';
-import { analyzeThemes } from '../../reviews/themes';
+import { analyzeThemes, selectThemeResult } from '../../reviews/themes';
 import { getEmbeddingProvider, resolveOtherThemeKey } from '../../reviews/embedding';
 import { AppKittieClient } from '../../keywords/appkittie-client';
 import { fetchFunctionGroundedCompetitors, selectFunctionCompetitors, seedKeywords } from '../../sources/function-competitors';
@@ -304,10 +304,11 @@ const scoreStep = createStep({
         ? suppressCompetitorGapTerms(rawCandidateResult)
         : rawCandidateResult;
 
-    // D2: theme analysis — runs before prompt so themes appear in ratings section
-    const themeResult = listing.reviews.length > 0
-      ? await analyzeThemes(listing.reviews, llm)
-      : null;
+    // D2: theme analysis — reuse if reviews unchanged; otherwise one LLM pass
+    const priorThemeResult = selectThemeResult(listing.reviews, priorSnap);
+    const themeResult = priorThemeResult ?? (
+      listing.reviews.length > 0 ? await analyzeThemes(listing.reviews, llm) : null
+    );
 
     const builtPrompt = buildAuditPrompt(listing, signals, priorContext, visionResult, candidateResult, themeResult);
     const promptHash = createHash('sha256')
@@ -399,7 +400,7 @@ const scoreStep = createStep({
 
       draft = { ...draft, recommendations: enrichedRecommendations };
 
-      report = assembleReport(toSummary(listing), draft, signals, visionResult);
+      report = assembleReport(toSummary(listing), draft, signals, visionResult, themeResult);
       usedModelId = llm.modelId;
     }
 
@@ -417,6 +418,7 @@ const scoreStep = createStep({
       visionResult, // B1: persist vision result for future reuse
       candidateResult: rawCandidateResult, // C4: persist raw (suppressCompetitorGapTerms is a per-audit view, not stored state)
       functionCompetitorSeeds: d3ProvidedCompetitors ? d3Seeds : undefined, // D3: seeds for reuse on unchanged identity
+      themeResult, // D-UI: persist for selectThemeResult reuse + wire shape
       // B4: pass pre-fetched values to avoid duplicate storage reads in persistAudit.
       priorSnapshot: priorSnap,
       priorLedger: priorLedgerR.ok ? priorLedgerR.value : [],

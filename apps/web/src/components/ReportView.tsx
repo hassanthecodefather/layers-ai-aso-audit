@@ -1,5 +1,6 @@
 import type { AuditReport } from '../lib/types';
 import { ScoreCard } from './ScoreCard';
+import { ReviewInsights } from './ReviewInsights';
 import { Recommendations } from './Recommendations';
 import { CompetitorTable } from './CompetitorTable';
 
@@ -15,6 +16,10 @@ export function ReportView({ report }: { report: AuditReport }) {
         headline={report.headline}
         dimensions={report.dimensions}
       />
+
+      {report.themeResult && (
+        <ReviewInsights themeResult={report.themeResult} />
+      )}
 
       <Recommendations
         quickWins={report.quickWins}

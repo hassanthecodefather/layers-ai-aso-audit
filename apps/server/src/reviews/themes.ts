@@ -12,6 +12,7 @@ import type { Review } from '../domain/listing';
 import type { LlmProvider } from '../llm/provider';
 import { ComplaintThemeSchema, type ComplaintTheme } from '../domain/recommendation';
 import { extractJsonObject } from '../scoring/extract';
+import type { ListingSnapshot } from '../domain/snapshot';
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -196,6 +197,50 @@ function parseThemeResponse(
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
+
+// ── Snapshot round-trip schema (for selectThemeResult reuse) ─────────────────
+
+const StoredThemeResultSchema = z.object({
+  themes: z.array(z.object({
+    bucket: ComplaintThemeSchema,
+    text: z.string(),
+    reviewIds: z.array(z.string()),
+    isUnresolved: z.boolean(),
+  })),
+  versionDelta: z.object({
+    olderVersion: z.string(),
+    newerVersion: z.string(),
+    olderAvgRating: z.number(),
+    newerAvgRating: z.number(),
+    delta: z.number(),
+  }).nullable(),
+  featureRequests: z.array(z.string()),
+  taxonomyVersion: z.literal('theme-taxonomy@1'),
+});
+
+/**
+ * Reuse the stored theme result when the review set is unchanged.
+ * Mirrors selectCandidateResult / selectVisionResult — same-IDs check.
+ */
+export function selectThemeResult(
+  reviews: Review[],
+  priorSnapshot: ListingSnapshot | null,
+): ThemeAnalysisResult | null {
+  if (!priorSnapshot) return null;
+  if (!priorSnapshot.themeResult) return null;
+
+  const parsed = StoredThemeResultSchema.safeParse(priorSnapshot.themeResult);
+  if (!parsed.success) return null;
+
+  const currentIds = reviews.map((r) => r.id ?? '').sort().join('|');
+  const priorIds = (priorSnapshot.listing.reviews ?? [])
+    .map((r) => (r as { id?: string }).id ?? '')
+    .sort()
+    .join('|');
+  if (currentIds !== priorIds) return null;
+
+  return parsed.data as ThemeAnalysisResult;
+}
 
 /**
  * Classify complaint themes from a review sample using one LLM pass.
