@@ -351,7 +351,7 @@ const scoreStep = createStep({
       modelId: usedModelId,
       now,
       visionResult, // B1: persist vision result for future reuse
-      candidateResult, // C4: persist candidate result for future reuse
+      candidateResult: rawCandidateResult, // C4: persist raw (suppressCompetitorGapTerms is a per-audit view, not stored state)
       // B4: pass pre-fetched values to avoid duplicate storage reads in persistAudit.
       priorSnapshot: priorSnap,
       priorLedger: priorLedgerR.ok ? priorLedgerR.value : [],
