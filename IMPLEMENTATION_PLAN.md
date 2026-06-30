@@ -223,14 +223,23 @@ The interactive half of the spec's identity-escalation logic (the A2 line above 
 
 ---
 
-## Phase E · P5 Cost & Courtesy Control
+## Phase E · P5 Cost & Courtesy Control — ⬜ scoped (decisions locked 2026-07-01)
 
-**E1 · Cache [live].** Wrap `sources/http.ts` and the LLM/vision calls; entity-keyed (`app|competitor|asset`, never per-user); TTLs (iTunes 24h, RSS 1–3h, competitors 7d, vision by screenshot-fingerprint + per-asset SHA-256, ~30-day sanity); provenance stamps `observed_from_cache` + `fetched_at`; `--fresh` bypass. Read-through to `fetched_at` so P1's byte-identity reuse can't be fooled by stale cache.
+**Scope note — don't re-cache the LLM.** B/C/D already built `selectX` snapshot-reuse (vision/candidate/competitor/theme) + whole-snapshot `listingUnchanged` reuse, which already skips the text-scoring LLM and all recompute on an unchanged listing. So **E1 caches the *source* layer, not the LLM** — its incremental value is cross-entity/cross-audit *fetches* (esp. entity-shared competitor lookups), honest provenance, and the `--fresh` bypass. The spec's "read-through to `fetched_at` so P1 reuse isn't fooled by stale cache" is exactly this interaction.
 
-**E2 · Spend & loop governor [live].** In-process singleton: count-kill at **~2,000 metered calls/hr** (all metered: iTunes + Gemini/vision + crawler), run-entry **<2s** trip, **5-min** wall-clock cap per run. Dollar estimate post-hoc (default $5/day; text from req/resp size, **vision per-image-tile**), alert-only.
+**Codebase readiness:** `sources/http.ts` (`fetchWithRetry`/`fetchJson`) carries iTunes/crawler/websearch — but vision (`client.ts`), AppKittie (`appkittie-client.ts`), and embeddings (`embedding.ts`) use **raw `fetch()` that bypasses it**, and the text LLM goes through Mastra `agent.generate()`. All three controls are net-new; `ProvenanceSchema` lacks `observed_from_cache`.
 
-**E3 · Courtesy throttle [live].** Process-global serial pacer before all iTunes calls (~3.5s, ~17/min); honour `Retry-After`; full-jitter backoff with `max(Retry-After, min-interval)` floor; in-run same-key coalescing.
-- **TDD first (§F P5):** re-audit hits cache (0 upstream, provenance flipped); re-entrant loop killed ~2s; pacer spaces ≥3.5s + honours injected `Retry-After`; one deep audit under the 5-min cap.
+**E0 · Metered-source gateway [pure refactor] — the enabling move.** Route `http.ts` **and** the three raw-`fetch` clients (vision / AppKittie / embedding) through **one chokepoint** so the cache, governor, and pacer all live in a single place (and the raw-`fetch` bypass is fixed). The gateway classifies each call by **entity kind** (`app | competitor | asset`) and **upstream** (iTunes / crawler / vision / appkittie / embedding) so the cache key, pacer-applicability, and governor metering are uniform.
+
+**E1 · Cache [live] — LibSQL `aso_cache` table (persistent, decision).** Entity-keyed (`${kind}:${id}`, **never per-user**), backed by an `aso_cache` table beside the other `aso_*` tables (survives restarts; aligns with the Postgres swap). TTLs: iTunes 24h, RSS 1–3h, competitors 7d, vision by screenshot-fingerprint + per-asset SHA-256 (~30-day sanity, never infinite). Stamp provenance **`observed_from_cache` + `fetched_at`** (add `observed_from_cache` to `ProvenanceSchema`); read-through to `fetched_at` so `listingUnchanged`/`selectX` reuse compares real freshness, not a stale cache hit. `--fresh` bypasses. Implements the §B `Cache` interface. **Source fetches only** (per the scope note).
+
+**E2 · Spend & loop governor [live].** In-process singleton in the gateway, metering **all** calls that pass through it (iTunes + Gemini text + vision + embedding + AppKittie + crawler): count-kill at **~2,000 metered calls/hr**, **run-entry <2s trip** (the fast re-entrancy catch), **5-min wall-clock cap** per run. On trip → stop honestly, mark affected dimensions `unavailable (cap reached)`, never zero-fill. Dollar estimate post-hoc/alert-only ($5/day default; text from req/resp size, **vision per-image-tile**). Implements the §B `Governor` interface.
+
+**E3 · Courtesy throttle [live].** Process-global serial pacer in the gateway, applied to **iTunes calls only** (shared IP): ~**3.5s** min interval (~17/min); honour `Retry-After` verbatim; full-jitter backoff with a `max(Retry-After, min-interval)` floor; in-run same-key coalescing. AppKittie/Gemini are governor-metered but **not** pacer-bound.
+
+**Build order:** E0 gateway → E3 pacer + E2 governor (safety: don't-get-banned / don't-run-away) → E1 cache (read-through optimization). **TDD first (§F P5):** re-audit hits cache (0 upstream calls, provenance `observed_from_cache`); re-entrant loop killed within ~2s; pacer spaces iTunes ≥3.5s + honours injected `Retry-After`; one deep audit stays under the 5-min cap.
+
+**Seam note (multi-tenant later):** cache keyed by entity (not user) and the governor as a pluggable interface → "share by entity, shard by credential" + per-tenant budgets drop in at 6a with no rewrite.
 
 ---
 
