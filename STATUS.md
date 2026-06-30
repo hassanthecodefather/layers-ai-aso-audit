@@ -16,7 +16,7 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
 | **0** | Groundwork: Gemini-only, migration runner | ✅ | suite green + live audit on Gemini |
 | **A** | ID-lite identity + P1 persistent memory | ✅ | §F ID-lite **and** §F P1 green; reworded re-raise collapses to one row (typed referent); 2nd audit references 1st, marks applied, never repeats. **A6 score determinism complete** (191 tests) |
 | **B** | P2 image analysis + ID-full | ✅ | §F P2 green (vision confidence, zero-LLM reuse, pHash observed, promote-panel non-panoramic-only); ID-full stage=`full` augments identity without mutating ID-lite fields. **Live-verified on the real Rivian listing** (B5 hardening). |
-| **C** | P3 keyword research (160-char linter) | ✅ | tsc clean · 287 tests · linter deterministic · stub honest · gap analysis inferred · candidateResult reuse (C4 residual closed) |
+| **C** | P3 keyword research (160-char linter) | ✅ | tsc clean · 294 tests · linter deterministic · stub honest · gap analysis inferred · candidateResult reuse (C4 residual closed) |
 | **D** | P4 deep review analysis | ⬜ | — |
 | **E** | P5 cost & courtesy control | ⬜ | — |
 | **F** | Net-new uplifts (storefront sweep, export, …) | ⬜ | — |
@@ -36,6 +36,8 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
 **C2 notes:** `generateCandidates()` is a pure async function — no model call. Extracts tokens from description and competitor names using the same plural-normalisation as the linter. Gap analysis: `yours_only` / `theirs_only` / `shared` vs competitor titles (all `inferred`). Volume queries capped at 10 per audit (competitor-source candidates queried first). ASA volume delegates to `AsaClient` seam; `StubAsaClient` returns `{ available: false, label: 'popularity unavailable' }` — never fabricates zeros. Wired into `audit-workflow.ts`; `formatCandidatesForPrompt()` injects gap section into the audit prompt.
 
 **C-FU2 notes (divergence-aware gap suppression, `5ada6af`):** `suppressCompetitorGapTerms()` strips `theirs_only` gap rows when `resolved.escalate || resolved.divergence === 'cross_domain'` (genre-mismatched peers like Expedia/Booking for the Travel-listed Rivian shouldn't seed `add_keyword` recs for a vehicle app). Keeps `yours_only`/`shared`/description candidates. **Store-raw / transform-on-read:** the snapshot persists the *raw* `candidateResult`; suppression is a per-audit view from current `resolved` state — same pattern as vision (raw in DB, identity-aware transform fresh each audit), so an identity flip out of cross-domain restores the terms. Long-term cure (function-grounded competitors via AppKittie `topApps`) stays deferred to Phase D pending the decision-#6 egress review.
+
+**C-FU3 notes (multi-keyword referent split, `76e57e1`):** the LLM sometimes packs several keywords into one `add_keyword` referent (`"electric,vehicle"`), which would mint one `rec_key` for the group and break per-keyword dedup/belief-accumulation. `expandAddKeywordRec()` (in `audit-memory.ts`, run before `toLedgerRec`) splits comma-joined values into one rec per keyword with a stable single-keyword `value_key`, dedups within the split (`tracker,trackers` → one row), and **splits on comma only** — space-separated keyphrases (`"electric vehicle"`) stay intact. Code-side fix (code derives the key, never trusts the model); prompt tightening is a complement. 7 tests incl. the dedup contract (`"a,b"` then standalone `"a"` → same row, not a third).
 
 **C4 notes:** `AppKittieClient` implements `AsaClient` behind the seam. MCP JSON-RPC 2.0 over HTTPS — transport is programmatic (MCP tools never exposed to the agent). Normalises `get_keyword_difficulty` response to the domain volume type (adds `difficulty?: number`). Handles both `application/json` and `text/event-stream` MCP response formats. Graceful degradation: any network/parse error → `available: false` (no throw). `getKeywordProvider()` factory replaces `getAsaClient()`: checks `APP_KITTI_API_KEY` first → `AppKittieClient`; else stub. Provenance label: "AppKittie estimate". Live smoke (gated on `APP_KITTI_API_KEY`) verified against real MCP endpoint.
 
@@ -84,7 +86,7 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
 
 ## Tests (the source of truth)
 
-- **287 hermetic tests pass** (`npm test`). Covers (Phase A): StorageClient conformance,
+- **294 hermetic tests pass** (`npm test`). Covers (Phase A): StorageClient conformance,
   ID-lite §F gates, P1 §F gates (dedup, contradiction, zero-LLM replay),
   human-confirm reuse/re-ask, memory loop end-to-end, classifier fail-safe
   parsing, dismissal-is-honoured, **reworded re-raise collapses to one row**,
@@ -128,7 +130,7 @@ replay/aggregate share one formula; classifier logs on parse failure.
 
 Phase A carry-overs: **all closed in B4** (applied-detection extended, escalate gate fixed, reachability guard added, efficiency improved).
 
-**Post-review fixes (final whole-branch review):** B2/B3 vision calls now gated on `visionWasFresh` — they only run when `selectVisionResult` returned null (images changed), so unchanged re-audits skip B2/B3 calls entirely. `pHashDistance.confidence` is `'inferred'` when competitor icon URLs are empty (placeholder 64 is not an observed measurement). Identity row de-dup is resolved by the same gate. Then the **B5 live-integration hardening** (above) closed the real-vision-path honesty gaps. Suite is now **287 tests** green (3 live smokes skipped).
+**Post-review fixes (final whole-branch review):** B2/B3 vision calls now gated on `visionWasFresh` — they only run when `selectVisionResult` returned null (images changed), so unchanged re-audits skip B2/B3 calls entirely. `pHashDistance.confidence` is `'inferred'` when competitor icon URLs are empty (placeholder 64 is not an observed measurement). Identity row de-dup is resolved by the same gate. Then the **B5 live-integration hardening** (above) closed the real-vision-path honesty gaps. Suite is now **294 tests** green (3 live smokes skipped).
 
 **Snapshot blob round-trip fix (`4393c35` + `845de56`) — corrects the Phase-B/C reuse record.** Both optional snapshot blobs (`visionResult`, `candidateResult`) were silently writing `null` to their columns (pass-through omission in `persistAudit` + `?? null` in the store), so `selectVisionResult` / `selectCandidateResult` always read empty → **vision reuse was dead through all of Phase B** (every re-audit re-called Gemini vision) and candidate reuse was dead in C4. The unit tests missed it (they pass in-memory snapshots, never the DB round-trip). Now both are correctly persisted, and `storageClientConformance` has explicit **put→latest round-trip guards** for each blob (so it can't silently regress, and the guards run against Postgres at 6a).
 
@@ -142,7 +144,7 @@ Phase A carry-overs: **all closed in B4** (applied-detection extended, escalate 
   re-fetch" intent holds; documented as accepted.
 - **Resolved** — the pre-existing `mastra/routes.ts` Hono `Context` type-skew on
   `streamSSE` is fixed with a scoped `c as any`; **`tsc --noEmit` is now fully clean**
-  and can gate CI. `npm test` green (287).
+  and can gate CI. `npm test` green (294).
 
 ## Gotchas
 
@@ -151,7 +153,7 @@ Phase A carry-overs: **all closed in B4** (applied-detection extended, escalate 
 
 ## Next up
 
-- **Phase C is complete (C1–C4 ✅ + C4 residual ✅, 287 tests).** Phase D next: P4 deep review analysis.
+- **Phase C is complete (C1–C4 ✅ + C4 residual ✅, 294 tests).** Phase D next: P4 deep review analysis.
 - **Phase D prerequisites to stand up first (not yet built):**
   - **Embeddings seam** — D2's `other`-bucket fallback needs Gemini embeddings (cosine ≥ 0.85); no embeddings client/seam exists anywhere yet. Biggest net-new piece.
   - **RSS pagination + stable review id** — `fetchReviews` is hardcoded `page=1`, `limit=25`; D1 needs ~500/country paginated. `ReviewSchema` has no `id`; D2's `respond_to_reviews → reviewId` needs the RSS `<id>` (verify stability) or a content-hash fallback — open decision.
