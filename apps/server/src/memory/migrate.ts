@@ -114,6 +114,9 @@ export const MIGRATIONS: readonly string[] = [
   // runMigrations to make this safe on repeated boots.
   // NOTE: This migration is wrapped specially in runMigrations below.
   `ALTER TABLE aso_listing_snapshots ADD COLUMN vision_result_json TEXT`,
+
+  // ── Phase C4: Keyword Candidates — add candidate_result column ──────────────
+  `ALTER TABLE aso_listing_snapshots ADD COLUMN candidate_result_json TEXT`,
 ];
 
 /** Open a raw LibSQL client against the given url (defaults to the app DB). */

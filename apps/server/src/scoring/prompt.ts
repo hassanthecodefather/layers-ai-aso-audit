@@ -369,6 +369,15 @@ export function buildAuditPrompt(
     'Cite concrete signals as evidence; give before/after text for every ' +
       'text change. Do not compute an overall score — only the per-dimension ' +
       'scores.',
+    '',
+    'KEYWORD CANDIDATE RULE — when a "## Keyword gap analysis" section appears above:',
+    '  • Generate one `add_keyword` recommendation for each top candidate term ' +
+      '(from description candidates and relevant competitor gap terms). ' +
+      'Each recommendation must use a SINGLE keyword as `referent.value` — ' +
+      'never multiple words in one value.',
+    '  • These should target `dimension: "keywordField"` (or `"title"` / `"subtitle"` if ' +
+      'the term is strong enough to belong in a visible field).',
+    '  • Produce at least 3 and up to 6 such `add_keyword` recommendations if candidates are present.',
   ].join('\n');
 }
 
