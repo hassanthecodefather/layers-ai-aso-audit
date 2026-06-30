@@ -79,7 +79,7 @@ export type ComplaintTheme = z.infer<typeof ComplaintThemeSchema>;
 export const ReferentSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('keyword'), value: z.string().min(1) }),
   z.object({ kind: z.literal('country'), value: z.string().min(2).max(2) }),
-  z.object({ kind: z.literal('theme'), bucket: ComplaintThemeSchema, text: z.string() }),
+  z.object({ kind: z.literal('theme'), bucket: ComplaintThemeSchema, text: z.string(), resolvedKey: z.string().optional() }),
   z.object({ kind: z.literal('reviewId'), value: z.string() }),
   z.object({ kind: z.literal('none') }),
 ]);

@@ -77,7 +77,7 @@ export function computeRecKey(input: RecKeyInput): string {
  */
 export function valueKeyFor(intent: IntentTag, referent: Referent): string {
   if (SINGLE_INSTANCE_INTENTS.has(intent) || referent.kind === 'none') return '';
-  if (referent.kind === 'theme') return referent.bucket; // stable enum id, no normalization needed
+  if (referent.kind === 'theme') return referent.resolvedKey ?? referent.bucket; // resolvedKey used for 'other' bucket; named buckets fall back to bucket
   return normalizeValueKey(referent.value); // keyword, country, reviewId
 }
 

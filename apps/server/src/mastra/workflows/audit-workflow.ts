@@ -30,6 +30,7 @@ import { runSecondaryUplifts } from '../../vision/secondary-uplifts';
 import { generateCandidates, selectCandidateResult, suppressCompetitorGapTerms } from '../../keywords/candidates';
 import { getKeywordProvider } from '../../keywords/asa-client';
 import { analyzeThemes } from '../../reviews/themes';
+import { getEmbeddingProvider, resolveOtherThemeKey } from '../../reviews/embedding';
 import { AppKittieClient } from '../../keywords/appkittie-client';
 import { fetchFunctionGroundedCompetitors } from '../../sources/function-competitors';
 
@@ -360,6 +361,30 @@ const scoreStep = createStep({
           }),
         };
       }
+
+      // ── §F P4: enrich 'other'-bucket fix_complaint_theme recs with stable resolved keys ──
+      // Done after per-dimension reuse splice (draft is final) and before assembleReport.
+      // priorLedgerR was read above for persistAudit; reuse here for prior 'other' themes.
+      // draft.recommendations is a flat array of Recommendation; quickWins/highImpact/strategic
+      // are assembled by assembleReport from this flat list.
+      const priorLedger = priorLedgerR.ok ? priorLedgerR.value : [];
+      const priorOtherThemes = priorLedger
+        .filter((r) => r.intent === 'fix_complaint_theme' && r.valueKey.startsWith('other:'))
+        .map((r) => ({ text: r.body, valueKey: r.valueKey }));
+
+      const embedder = getEmbeddingProvider();
+
+      const enrichedRecommendations = await Promise.all(
+        draft.recommendations.map(async (rec) => {
+          if (rec.intent !== 'fix_complaint_theme' || rec.referent.kind !== 'theme' || rec.referent.bucket !== 'other') {
+            return rec;
+          }
+          const resolvedKey = await resolveOtherThemeKey(rec.referent.text, priorOtherThemes, embedder);
+          return { ...rec, referent: { ...rec.referent, resolvedKey } };
+        }),
+      );
+
+      draft = { ...draft, recommendations: enrichedRecommendations };
 
       report = assembleReport(toSummary(listing), draft, signals, visionResult);
       usedModelId = llm.modelId;
