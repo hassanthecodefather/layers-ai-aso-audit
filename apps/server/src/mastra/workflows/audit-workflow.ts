@@ -30,6 +30,8 @@ import { runSecondaryUplifts } from '../../vision/secondary-uplifts';
 import { generateCandidates, selectCandidateResult, suppressCompetitorGapTerms } from '../../keywords/candidates';
 import { getKeywordProvider } from '../../keywords/asa-client';
 import { analyzeThemes } from '../../reviews/themes';
+import { AppKittieClient } from '../../keywords/appkittie-client';
+import { fetchFunctionGroundedCompetitors } from '../../sources/function-competitors';
 
 /**
  * The ASO audit workflow.
@@ -189,7 +191,7 @@ const scoreStep = createStep({
     const agent = mastra?.getAgent('asoAuditor');
     if (!agent) throw new Error('ASO auditor agent is not registered.');
 
-    const listing = inputData;
+    let listing = inputData;
     const storage = await getStorage();
     const now = new Date().toISOString();
 
@@ -211,6 +213,24 @@ const scoreStep = createStep({
     }
 
     const identityFactSheet = buildFactSheet(extractIdentitySignals(listing));
+
+    // ── D3: function-grounded competitor discovery — identity-seeded, not genre-based.
+    // Runs before selectCandidateResult so the reuse check sees the correct competitor set.
+    // Falls back silently when AppKittie is not keyed — listing.competitors stays as-is
+    // (genre-based from resolveListing). Per-audit credit cap: MAX_SEEDS=2 queries.
+    const ref = { appId: listing.appId, country: listing.country };
+    const appKittieKey = process.env['APP_KITTI_API_KEY'];
+    if (appKittieKey) {
+      const functionCompetitors = await fetchFunctionGroundedCompetitors(
+        ref,
+        resolved,
+        new AppKittieClient(appKittieKey),
+        storage,
+      );
+      if (functionCompetitors.length > 0) {
+        listing = { ...listing, competitors: functionCompetitors };
+      }
+    }
 
     // ── P1: read prior history for reconciliation (NOT injected into generation) ─
     // Generation is a pure function of (listing + identity); the ledger is read

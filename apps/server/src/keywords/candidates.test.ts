@@ -414,3 +414,91 @@ describe('suppressCompetitorGapTerms', () => {
     expect(result.candidates).toEqual(noCompetitors.candidates);
   });
 });
+
+// ── D3: competitorTokens reads competitor description ─────────────────────────
+
+describe('D3 — competitorTokens includes tokens from competitor description', () => {
+  it('extracts tokens from competitor description, not just name', async () => {
+    const listing = makeListing({
+      name: 'Rivian',
+      competitors: [
+        {
+          appId: '2',
+          name: 'ChargePoint',
+          developer: 'ChargePoint Inc',
+          primaryGenre: 'Utilities',
+          averageRating: 4.0,
+          ratingCount: 100,
+          formattedPrice: 'Free',
+          screenshotCount: 3,
+          hasPreviewVideo: false,
+          description: 'Find charging stations and manage your sessions remotely.',
+        },
+      ],
+    });
+    const result = await generateCandidates(listing, makeLinter('Rivian'), new StubAsaClient());
+
+    // 'station' (from description 'stations') and 'session' should be extracted
+    // as competitor-sourced tokens since they don't appear in the app title
+    const competitorCandidates = result.candidates.filter((c) => c.source === 'competitor');
+    const keys = competitorCandidates.map((c) => c.normalizedKey);
+    // At minimum 'station' or 'session' from the competitor description should surface
+    const hasDescriptionTokens = keys.some((k) => ['station', 'session', 'charging', 'manag', 'remot'].includes(k));
+    expect(hasDescriptionTokens).toBe(true);
+  });
+
+  it('competitor description tokens appear as theirs_only gap rows when absent from title', async () => {
+    const listing = makeListing({
+      name: 'Rivian',
+      subtitle: null,
+      competitors: [
+        {
+          appId: '2',
+          name: 'ChargePoint',
+          developer: 'ChargePoint Inc',
+          primaryGenre: 'Utilities',
+          averageRating: 4.0,
+          ratingCount: 100,
+          formattedPrice: 'Free',
+          screenshotCount: 3,
+          hasPreviewVideo: false,
+          description: 'Navigate charging infrastructure worldwide.',
+        },
+      ],
+    });
+    const result = await generateCandidates(listing, makeLinter('Rivian'), new StubAsaClient());
+
+    // 'navigate' or 'infrastructure' from competitor description should be theirs_only
+    const theirsOnly = result.gap.filter((g) => g.gapCategory === 'theirs_only');
+    const keys = theirsOnly.map((g) => g.normalizedKey);
+    // At least one description-derived token should appear in theirs_only
+    const hasDescGapToken = keys.some((k) => ['navig', 'infrastructur', 'worldwide'].includes(k));
+    expect(hasDescGapToken).toBe(true);
+  });
+
+  it('competitor without description works exactly as before (backward compat)', async () => {
+    const listing = makeListing({
+      name: 'Rivian',
+      competitors: [
+        {
+          appId: '2',
+          name: 'Tesla',
+          developer: 'Tesla',
+          primaryGenre: 'Utilities',
+          averageRating: 4.0,
+          ratingCount: 100,
+          formattedPrice: 'Free',
+          screenshotCount: 5,
+          hasPreviewVideo: false,
+          // no description field
+        },
+      ],
+    });
+    const result = await generateCandidates(listing, makeLinter('Rivian'), new StubAsaClient());
+    const tesla = result.gap.find((g) => g.normalizedKey === 'tesla');
+    expect(tesla?.gapCategory).toBe('theirs_only');
+    // Should not throw, should return valid result
+    expect(result.candidates).toBeDefined();
+    expect(result.gap).toBeDefined();
+  });
+});

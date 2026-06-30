@@ -86,12 +86,15 @@ function extractTokens(text: string): Map<string, string> {
   return result;
 }
 
-/** Extract tokens from all competitor names (de-duplicated by normalizedKey). */
+/** Extract tokens from all competitor names and descriptions (de-duplicated by normalizedKey). */
 function competitorTokens(listing: AppListing): Map<string, string> {
   const result = new Map<string, string>();
   for (const c of listing.competitors) {
-    for (const [key, raw] of extractTokens(c.name)) {
-      if (!result.has(key)) result.set(key, raw);
+    const texts = [c.name, c.description].filter(Boolean) as string[];
+    for (const text of texts) {
+      for (const [key, raw] of extractTokens(text)) {
+        if (!result.has(key)) result.set(key, raw);
+      }
     }
   }
   return result;
@@ -289,6 +292,11 @@ export function selectCandidateResult(
  * title/subtitle) and `shared` (terms in both) are kept because they're
  * grounded in your listing regardless of competitor quality. Description
  * candidates are always kept.
+ *
+ * D3 provides function-grounded competitors (identity-seeded via AppKittie) when
+ * AppKittie is keyed, making this suppression unnecessary for those runs.
+ * This function remains the fallback for un-keyed runs where genre-based
+ * competitors from fetchCompetitors may still be cross-domain peers.
  *
  * Pure function — returns a new object, does not mutate input.
  */

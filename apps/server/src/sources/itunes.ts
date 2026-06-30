@@ -192,6 +192,41 @@ export async function fetchReviews(ref: AppRef, limit = 500): Promise<Review[]> 
 // ── Competitors (Search) ───────────────────────────────────────────────────
 
 /**
+ * Batch iTunes Lookup — fetches up to N apps by their numeric trackIds.
+ * Used by D3 to turn AppKittie topApps (iTunes store IDs) into Competitor rows.
+ */
+export async function batchLookupCompetitors(
+  appStoreIds: string[],
+  country: string,
+  excludeAppId: string,
+  limit = 6,
+): Promise<Competitor[]> {
+  if (appStoreIds.length === 0) return [];
+  const ids = appStoreIds.slice(0, 20).join(',');   // iTunes batch cap
+  const url = `https://itunes.apple.com/lookup?id=${encodeURIComponent(ids)}&country=${encodeURIComponent(country)}&entity=software`;
+  try {
+    const data = await fetchJson<RawLookupResponse>(url, { source: 'iTunes Lookup (competitors)', retries: 1 });
+    return (data.results ?? [])
+      .filter((r) => String(r.trackId) !== excludeAppId && r.trackName)
+      .slice(0, limit)
+      .map((r) => ({
+        appId: String(r.trackId ?? ''),
+        name: r.trackName ?? 'Unknown',
+        developer: r.artistName ?? 'Unknown',
+        primaryGenre: r.primaryGenreName ?? null,
+        averageRating: num(r.averageUserRating),
+        ratingCount: num(r.userRatingCount),
+        formattedPrice: r.formattedPrice ?? null,
+        screenshotCount: (r.screenshotUrls ?? []).length,
+        hasPreviewVideo: false,
+        description: r.description ?? undefined,   // D3: tokenized in competitorTokens()
+      }));
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Category peers via the iTunes Search API.
  *
  * Apple has no public "similar apps" endpoint, so we approximate: search the

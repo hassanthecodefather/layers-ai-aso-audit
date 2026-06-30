@@ -36,12 +36,20 @@ interface McpResponse {
 
 // ── AppKittie domain shape ────────────────────────────────────────────────────
 
+export interface AppKittieTopApp {
+  appStoreId: string;
+  title?: string;
+  averageRating?: number;
+  ratingCount?: number;
+}
+
 interface AppKittieKwData {
   keyword: string;
   popularity: number;
   difficulty: number;
   appsCount: number;
   trafficScore: number;
+  topApps?: AppKittieTopApp[];   // may be absent on API error
 }
 
 // ── Client ────────────────────────────────────────────────────────────────────
@@ -66,6 +74,20 @@ export class AppKittieClient implements AsaClient {
     } catch (err) {
       console.warn(`[appkittie] getVolume failed for "${term}": ${String(err)}`);
       return { available: false, label: 'popularity unavailable' };
+    }
+  }
+
+  /** Returns apps ranked for a keyword (identity-grounded competitor discovery). */
+  async getTopApps(term: string, storefront = 'us'): Promise<AppKittieTopApp[]> {
+    try {
+      const country = storefront.toUpperCase();
+      const payload = await this.#callTool<{ data: AppKittieKwData }>(
+        'get_keyword_difficulty',
+        { keyword: term, country, source: 'apple_mobile' },
+      );
+      return payload.data.topApps ?? [];
+    } catch {
+      return [];  // graceful — never throws, never fabricates
     }
   }
 

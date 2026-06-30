@@ -34,6 +34,7 @@ export const CompetitorSchema = z.object({
   formattedPrice: z.string().nullable(),
   screenshotCount: z.number(),
   hasPreviewVideo: z.boolean(),
+  description: z.string().optional(),   // from iTunes Lookup; inferred-only gap source
 });
 export type Competitor = z.infer<typeof CompetitorSchema>;
 
