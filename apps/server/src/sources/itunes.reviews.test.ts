@@ -74,9 +74,9 @@ describe('fetchReviews — field mapping', () => {
     const reviews = await fetchReviews(ref, 500);
 
     expect(reviews).toHaveLength(1);
-    expect(reviews[0].id).toBe('12345');
-    expect(reviews[0].appVersion).toBe('2.1.0');
-    expect(reviews[0].rating).toBe(4);
+    expect(reviews[0]!.id).toBe('12345');
+    expect(reviews[0]!.appVersion).toBe('2.1.0');
+    expect(reviews[0]!.rating).toBe(4);
   });
 
   it('maps author, title, body, and updated', async () => {
@@ -92,10 +92,10 @@ describe('fetchReviews — field mapping', () => {
 
     const reviews = await fetchReviews(ref, 500);
 
-    expect(reviews[0].author).toBe('Alice');
-    expect(reviews[0].title).toBe('Wonderful');
-    expect(reviews[0].body).toBe('Best app ever.');
-    expect(reviews[0].updated).toBe('2024-06-01T12:00:00Z');
+    expect(reviews[0]!.author).toBe('Alice');
+    expect(reviews[0]!.title).toBe('Wonderful');
+    expect(reviews[0]!.body).toBe('Best app ever.');
+    expect(reviews[0]!.updated).toBe('2024-06-01T12:00:00Z');
   });
 
   it('sets appVersion to null when im:version is absent', async () => {
@@ -106,7 +106,7 @@ describe('fetchReviews — field mapping', () => {
 
     const reviews = await fetchReviews(ref, 500);
 
-    expect(reviews[0].appVersion).toBeNull();
+    expect(reviews[0]!.appVersion).toBeNull();
   });
 
   it('sets id to undefined when id.label is absent', async () => {
@@ -117,7 +117,7 @@ describe('fetchReviews — field mapping', () => {
 
     const reviews = await fetchReviews(ref, 500);
 
-    expect(reviews[0].id).toBeUndefined();
+    expect(reviews[0]!.id).toBeUndefined();
   });
 });
 
@@ -143,8 +143,8 @@ describe('fetchReviews — pagination', () => {
 
     // Should have exactly the 2 reviews from page 1; page 2 caused early exit.
     expect(reviews).toHaveLength(2);
-    expect(reviews[0].id).toBe('r1');
-    expect(reviews[1].id).toBe('r2');
+    expect(reviews[0]!.id).toBe('r1');
+    expect(reviews[1]!.id).toBe('r2');
 
     // fetch called twice: once for page 1, once for page 2.
     expect(vi.mocked(global.fetch)).toHaveBeenCalledTimes(2);
@@ -222,6 +222,6 @@ describe('fetchReviews — error handling', () => {
 
     // Got the 1 review from page 1; page 2 error caused early exit.
     expect(reviews).toHaveLength(1);
-    expect(reviews[0].id).toBe('ok');
+    expect(reviews[0]!.id).toBe('ok');
   });
 });
