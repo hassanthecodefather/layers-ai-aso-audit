@@ -18,6 +18,8 @@ export const ReviewSchema = z.object({
   title: z.string(),
   body: z.string(),
   updated: z.string().nullable(),
+  id: z.string().optional(),        // Apple's stable review ID from RSS id.label
+  appVersion: z.string().nullable().optional(), // app version from im:version.label
 });
 export type Review = z.infer<typeof ReviewSchema>;
 

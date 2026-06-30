@@ -136,6 +136,8 @@ export async function fetchITunesCore(ref: AppRef): Promise<Result<ITunesCore>> 
 
 interface RawRssEntry {
   'im:rating'?: { label?: string };
+  'im:version'?: { label?: string };
+  id?: { label?: string };
   title?: { label?: string };
   content?: { label?: string };
   author?: { name?: { label?: string } };
@@ -150,31 +152,41 @@ interface RawRssResponse {
  * Recent customer reviews via the iTunes RSS feed. Best-effort: reviews are
  * one input to one dimension, so a feed failure returns `[]` rather than
  * aborting the whole audit.
+ *
+ * Paginates across up to 10 pages of 50 reviews each (Apple's public limit),
+ * stopping early when a page returns no entries or on network error.
  */
-export async function fetchReviews(ref: AppRef, limit = 25): Promise<Review[]> {
-  const url =
-    `https://itunes.apple.com/${encodeURIComponent(ref.country)}/rss/customerreviews/` +
-    `page=1/id=${encodeURIComponent(ref.appId)}/sortby=mostrecent/json`;
-  try {
-    const data = await fetchJson<RawRssResponse>(url, {
-      source: 'iTunes Reviews',
-      retries: 1,
-    });
-    const raw = data.feed?.entry;
-    const entries = Array.isArray(raw) ? raw : raw ? [raw] : [];
-    return entries
-      .filter((e): e is RawRssEntry => Boolean(e['im:rating']))
-      .slice(0, limit)
-      .map((e) => ({
-        author: e.author?.name?.label ?? 'Anonymous',
-        rating: Number(e['im:rating']?.label ?? 0),
-        title: e.title?.label ?? '',
-        body: e.content?.label ?? '',
-        updated: e.updated?.label ?? null,
-      }));
-  } catch {
-    return [];
+export async function fetchReviews(ref: AppRef, limit = 500): Promise<Review[]> {
+  const all: Review[] = [];
+  for (let page = 1; page <= 10 && all.length < limit; page++) {
+    const url =
+      `https://itunes.apple.com/${encodeURIComponent(ref.country)}/rss/customerreviews/` +
+      `page=${page}/id=${encodeURIComponent(ref.appId)}/sortby=mostrecent/json`;
+    try {
+      const data = await fetchJson<RawRssResponse>(url, {
+        source: 'iTunes Reviews',
+        retries: 1,
+      });
+      const raw = data.feed?.entry;
+      const entries = Array.isArray(raw) ? raw : raw ? [raw] : [];
+      const pageReviews = entries
+        .filter((e): e is RawRssEntry => Boolean(e['im:rating']))
+        .map((e) => ({
+          author: e.author?.name?.label ?? 'Anonymous',
+          rating: Number(e['im:rating']?.label ?? 0),
+          title: e.title?.label ?? '',
+          body: e.content?.label ?? '',
+          updated: e.updated?.label ?? null,
+          id: e.id?.label || undefined,
+          appVersion: e['im:version']?.label ?? null,
+        }));
+      if (pageReviews.length === 0) break; // no more pages
+      all.push(...pageReviews);
+    } catch {
+      break; // treat fetch error as end of pages
+    }
   }
+  return all.slice(0, limit);
 }
 
 // ── Competitors (Search) ───────────────────────────────────────────────────
