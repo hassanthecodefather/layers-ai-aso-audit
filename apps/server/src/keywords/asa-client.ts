@@ -1,20 +1,27 @@
 /**
- * ASA (Apple Search Ads) popularity client — Phase C2.
+ * Keyword volume client seam — Phase C2/C4.
  *
- * The real OAuth2 client (scope `searchadsorg`, JWT `client_secret`) is the
- * drop-in replacement when the key lands. Until then StubAsaClient returns
- * `available: false` — volume-dependent rankings are labelled
- * "popularity unavailable" so the audit is honest about what it doesn't know.
+ * Provider precedence (getKeywordProvider):
+ *   APP_KITTI_API_KEY set  → AppKittieClient (interim default)
+ *   ASA creds set          → (future) real ASA OAuth2 client
+ *   else                   → StubAsaClient ("popularity unavailable")
  *
- * Returns `unavailable` (not zero) — a zero-volume result and an unkeyed
- * result are different things and must not be conflated.
+ * The seam stays here; the concrete providers live in their own files so
+ * switching is a one-line factory change, not a refactor.
+ *
+ * StubAsaClient returns `available: false` — never fabricates a zero.
+ * An unkeyed result and a genuine zero-volume term are different things.
  */
 
+import { AppKittieClient } from './appkittie-client';
+
 export interface AsaVolume {
-  /** True only when the ASA API responded with real data. */
+  /** True only when the provider responded with real data. */
   available: boolean;
-  /** Relative popularity 0–100 (Apple Search Ads scale). Present only when available=true. */
+  /** Relative popularity 0–100 (Apple Search Ads scale or AppKittie estimate). Present only when available=true. */
   popularity?: number;
+  /** Search difficulty 0–100 (AppKittie). Present only when available=true and the provider supplies it. */
+  difficulty?: number;
   /** Human-readable label for the prompt/report. */
   label: string;
 }
@@ -34,11 +41,22 @@ export class StubAsaClient implements AsaClient {
 }
 
 /**
- * Factory: returns the real client when ASA credentials are set, otherwise
- * falls back to the stub so the keyword linter continues to work without a key.
+ * Provider factory — checks env vars in precedence order:
+ *   1. APP_KITTI_API_KEY → AppKittieClient (interim default)
+ *   2. (future) ASA_CLIENT_ID + ASA_TEAM_ID + ASA_KEY_ID + ASA_PRIVATE_KEY → real ASA client
+ *   3. StubAsaClient (no-op fallback)
  */
-export function getAsaClient(): AsaClient {
-  // Real client drop-in: check for ASA_CLIENT_ID + ASA_TEAM_ID + ASA_KEY_ID + ASA_PRIVATE_KEY
-  // and return a real OAuth2 client when present. Not yet built — key pending.
+export function getKeywordProvider(): AsaClient {
+  const appKittieKey = process.env['APP_KITTI_API_KEY'];
+  if (appKittieKey) {
+    return new AppKittieClient(appKittieKey);
+  }
+  // Real ASA OAuth2 client: check for ASA_CLIENT_ID + ASA_TEAM_ID + ASA_KEY_ID + ASA_PRIVATE_KEY
+  // Not yet built — key pending.
   return new StubAsaClient();
+}
+
+/** @deprecated Use getKeywordProvider() — kept for backward compatibility. */
+export function getAsaClient(): AsaClient {
+  return getKeywordProvider();
 }

@@ -1,16 +1,17 @@
 /**
- * Keyword candidate generation + gap analysis (Phase C2).
+ * Keyword candidate generation + gap analysis (Phase C2/C4).
  *
- * Pure function of listing + linter result + ASA client.
+ * Pure function of listing + linter result + keyword provider.
  * No model call — deterministic derivation from observable text.
  *
  * Gap analysis compares your visible fields (title + subtitle) against
  * competitor names. Competitor keyword fields are never observable so all
  * gap conclusions carry confidence='inferred'.
  *
- * Volume ranking delegates to the AsaClient; under the stub every
- * volume-dependent label reads "popularity unavailable" — the deterministic
- * linter/gap findings still surface.
+ * Volume ranking delegates to the AsaClient/AppKittieClient behind the seam.
+ * Under the stub every volume-dependent label reads "popularity unavailable";
+ * with AppKittie the top-N candidates (≤10, credit-capped) are enriched with
+ * popularity + difficulty — the deterministic linter/gap findings always surface.
  */
 
 import type { AppListing } from '../domain/listing';
@@ -30,6 +31,7 @@ export interface KeywordCandidate {
   volumeLabel: string;
   volumeAvailable: boolean;
   popularity?: number;
+  difficulty?: number;
 }
 
 export type GapCategory =
@@ -46,6 +48,7 @@ export interface GapRow {
   volumeLabel: string;
   volumeAvailable: boolean;
   popularity?: number;
+  difficulty?: number;
 }
 
 export interface CandidateResult {
@@ -123,16 +126,22 @@ export async function generateCandidates(
     .filter(([key]) => !yourTokens.has(key))
     .map(([key, raw]) => ({ key, raw }));
 
-  // ── Query ASA volume for all candidate terms ──────────────────────────────
+  // ── Query volume for candidate terms (capped at 10 for credit control) ───────
+  // Competitor-source candidates get priority — they're more likely to be
+  // high-volume keywords absent from our metadata. Description candidates
+  // fill remaining slots up to the cap. Beyond the cap, candidates surface
+  // without volume data (volumeAvailable=false) — still actionable for gap analysis.
+  const QUERY_CAP = 10;
   const allCandidateKeys = [
+    ...compCandidates.map((c) => c.key), // priority: competitor gaps
     ...descCandidates.map((c) => c.key),
-    ...compCandidates.map((c) => c.key),
   ];
-  // Deduplicate before querying — don't double-bill the same term.
   const uniqueKeys = [...new Set(allCandidateKeys)];
+  const keysToQuery = uniqueKeys.slice(0, QUERY_CAP);
+
   const volumeMap = new Map<string, Awaited<ReturnType<AsaClient['getVolume']>>>();
   await Promise.all(
-    uniqueKeys.map(async (key) => {
+    keysToQuery.map(async (key) => {
       const vol = await asaClient.getVolume(key, listing.country);
       volumeMap.set(key, vol);
     }),
@@ -141,28 +150,24 @@ export async function generateCandidates(
   const popularityAvailable = [...volumeMap.values()].some((v) => v.available);
 
   // ── Build candidates list ─────────────────────────────────────────────────
+  const fallbackVol = { available: false, label: 'popularity unavailable' } as const;
+
+  function volFields(vol: Awaited<ReturnType<AsaClient['getVolume']>>) {
+    if (!vol.available) return {};
+    return {
+      ...(vol.popularity !== undefined ? { popularity: vol.popularity } : {}),
+      ...(vol.difficulty !== undefined ? { difficulty: vol.difficulty } : {}),
+    };
+  }
+
   const candidates: KeywordCandidate[] = [
     ...descCandidates.map(({ key, raw }) => {
-      const vol = volumeMap.get(key)!;
-      return {
-        term: raw,
-        normalizedKey: key,
-        source: 'description' as const,
-        volumeLabel: vol.label,
-        volumeAvailable: vol.available,
-        ...(vol.available && vol.popularity !== undefined ? { popularity: vol.popularity } : {}),
-      };
+      const vol = volumeMap.get(key) ?? fallbackVol;
+      return { term: raw, normalizedKey: key, source: 'description' as const, volumeLabel: vol.label, volumeAvailable: vol.available, ...volFields(vol) };
     }),
     ...compCandidates.map(({ key, raw }) => {
-      const vol = volumeMap.get(key)!;
-      return {
-        term: raw,
-        normalizedKey: key,
-        source: 'competitor' as const,
-        volumeLabel: vol.label,
-        volumeAvailable: vol.available,
-        ...(vol.available && vol.popularity !== undefined ? { popularity: vol.popularity } : {}),
-      };
+      const vol = volumeMap.get(key) ?? fallbackVol;
+      return { term: raw, normalizedKey: key, source: 'competitor' as const, volumeLabel: vol.label, volumeAvailable: vol.available, ...volFields(vol) };
     }),
   ];
 
@@ -186,48 +191,24 @@ export async function generateCandidates(
   // yours_only: in your title/subtitle, absent from all competitor names
   for (const [key, raw] of yourTokens) {
     if (!theirTokens.has(key)) {
-      const vol = volumeMap.get(key) ?? { available: false, label: 'popularity unavailable' };
-      gap.push({
-        term: raw,
-        normalizedKey: key,
-        gapCategory: 'yours_only',
-        confidence: 'inferred',
-        volumeLabel: vol.label,
-        volumeAvailable: vol.available,
-        ...(vol.available && vol.popularity !== undefined ? { popularity: vol.popularity } : {}),
-      });
+      const vol = volumeMap.get(key) ?? fallbackVol;
+      gap.push({ term: raw, normalizedKey: key, gapCategory: 'yours_only', confidence: 'inferred', volumeLabel: vol.label, volumeAvailable: vol.available, ...volFields(vol) });
     }
   }
 
   // theirs_only: in ≥1 competitor name, absent from your title/subtitle
   for (const [key, raw] of theirTokens) {
     if (!yourTokens.has(key)) {
-      const vol = volumeMap.get(key) ?? { available: false, label: 'popularity unavailable' };
-      gap.push({
-        term: raw,
-        normalizedKey: key,
-        gapCategory: 'theirs_only',
-        confidence: 'inferred',
-        volumeLabel: vol.label,
-        volumeAvailable: vol.available,
-        ...(vol.available && vol.popularity !== undefined ? { popularity: vol.popularity } : {}),
-      });
+      const vol = volumeMap.get(key) ?? fallbackVol;
+      gap.push({ term: raw, normalizedKey: key, gapCategory: 'theirs_only', confidence: 'inferred', volumeLabel: vol.label, volumeAvailable: vol.available, ...volFields(vol) });
     }
   }
 
   // shared: in both
   for (const [key, raw] of yourTokens) {
     if (theirTokens.has(key)) {
-      const vol = volumeMap.get(key) ?? { available: false, label: 'popularity unavailable' };
-      gap.push({
-        term: raw,
-        normalizedKey: key,
-        gapCategory: 'shared',
-        confidence: 'inferred',
-        volumeLabel: vol.label,
-        volumeAvailable: vol.available,
-        ...(vol.available && vol.popularity !== undefined ? { popularity: vol.popularity } : {}),
-      });
+      const vol = volumeMap.get(key) ?? fallbackVol;
+      gap.push({ term: raw, normalizedKey: key, gapCategory: 'shared', confidence: 'inferred', volumeLabel: vol.label, volumeAvailable: vol.available, ...volFields(vol) });
     }
   }
 
@@ -279,14 +260,43 @@ export function formatCandidatesForPrompt(result: CandidateResult): string {
     return lines.join('\n');
   }
 
-  // Real ASA path (when the key lands): rank by popularity descending.
+  // Volume-enriched path (AppKittie or real ASA): rank by popularity descending.
+  // Provenance label is in each candidate's volumeLabel ("AppKittie estimate" or "Apple Search Ads").
   const ranked = result.candidates
     .filter((c) => c.volumeAvailable)
     .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0));
 
-  return [
-    '## Keyword gap analysis',
-    `Top candidates by ASA popularity: ${ranked.slice(0, 5).map((c) => `"${c.term}" (${c.popularity})`).join(', ')}`,
-    `Competitor gaps: ${result.gap.filter((g) => g.gapCategory === 'theirs_only').map((g) => `"${g.term}" (pop: ${g.popularity ?? 'n/a'})`).join(', ')}`,
-  ].join('\n');
+  const fmtCandidate = (c: (typeof ranked)[number]) => {
+    const parts = [`"${c.term}"`];
+    if (c.popularity !== undefined) parts.push(`pop ${c.popularity}/100`);
+    if (c.difficulty !== undefined) parts.push(`difficulty ${c.difficulty}/100`);
+    return parts.join(' ');
+  };
+
+  const theirs = result.gap.filter((g) => g.gapCategory === 'theirs_only');
+  const fmtGap = (g: (typeof theirs)[number]) => {
+    const parts = [`"${g.term}"`];
+    if (g.popularity !== undefined) parts.push(`pop ${g.popularity}/100`);
+    return parts.join(' ');
+  };
+
+  const lines = [
+    '## Keyword gap analysis (AppKittie estimate — confidence "inferred")',
+    'All findings are confidence "inferred" (keyword fields not publicly observable).',
+  ];
+
+  if (ranked.length > 0) {
+    lines.push(`Top candidates by popularity: ${ranked.slice(0, 5).map(fmtCandidate).join(', ')}`);
+  }
+
+  if (theirs.length > 0) {
+    lines.push(`Competitor terms absent from your title/subtitle (gaps): ${theirs.map(fmtGap).join(', ')}`);
+  }
+
+  const yours = result.gap.filter((g) => g.gapCategory === 'yours_only');
+  if (yours.length > 0) {
+    lines.push(`Your differentiators (not in any competitor name): ${yours.map((g) => `"${g.term}"`).join(', ')}`);
+  }
+
+  return lines.join('\n');
 }

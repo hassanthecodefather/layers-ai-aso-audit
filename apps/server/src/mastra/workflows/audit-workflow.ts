@@ -28,7 +28,7 @@ import { runIdFull } from '../../identity/id-full';
 import { getIdentityVisionClient } from '../../identity/identity-vision-client';
 import { runSecondaryUplifts } from '../../vision/secondary-uplifts';
 import { generateCandidates } from '../../keywords/candidates';
-import { getAsaClient } from '../../keywords/asa-client';
+import { getKeywordProvider } from '../../keywords/asa-client';
 
 /**
  * The ASO audit workflow.
@@ -255,7 +255,7 @@ const scoreStep = createStep({
     const candidateResult = await generateCandidates(
       listing,
       signals.keywordLinter,
-      getAsaClient(),
+      getKeywordProvider(),
     );
 
     const builtPrompt = buildAuditPrompt(listing, signals, priorContext, visionResult, candidateResult);

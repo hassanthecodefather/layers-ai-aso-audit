@@ -5,7 +5,7 @@ contracts live elsewhere: [`specification.md`](specification.md) is the *what*,
 [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) is the *how-to-build*. This
 file is the *where-we-are* — read it first, trust the tests over the prose.
 
-_Last updated: 2026-06-30 · spec v1.3.1 · **Phase C complete**_
+_Last updated: 2026-06-30 · spec v1.3.1 · **Phase C complete (C4 AppKittie wired)**_
 
 Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferred (by design)
 
@@ -15,7 +15,7 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
 |---|---|---|---|
 | **0** | Groundwork: Gemini-only, migration runner | ✅ | suite green + live audit on Gemini |
 | **A** | ID-lite identity + P1 persistent memory | ✅ | §F ID-lite **and** §F P1 green; reworded re-raise collapses to one row (typed referent); 2nd audit references 1st, marks applied, never repeats. **A6 score determinism complete** (191 tests) |
-| **B** | P2 image analysis + ID-full | ✅ | §F P2 green (vision confidence, zero-LLM reuse, pHash observed, promote-panel non-panoramic-only); ID-full stage=`full` augments identity without mutating ID-lite fields. **209 tests.** |
+| **B** | P2 image analysis + ID-full | ✅ | §F P2 green (vision confidence, zero-LLM reuse, pHash observed, promote-panel non-panoramic-only); ID-full stage=`full` augments identity without mutating ID-lite fields. **Live-verified on the real Rivian listing** (B5 hardening). |
 | **C** | P3 keyword research (160-char linter) | ✅ | tsc clean · 262 tests · linter deterministic · stub honest · gap analysis inferred |
 | **D** | P4 deep review analysis | ⬜ | — |
 | **E** | P5 cost & courtesy control | ⬜ | — |
@@ -28,10 +28,13 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
 |---|---|---|
 | C1 · 160-char keyword linter + CJK/RTL detection | ✅ | `apps/server/src/keywords/linter.ts`; `keywords/linter.test.ts` (28 tests) |
 | C2 · Keyword candidate generation + gap analysis | ✅ | `apps/server/src/keywords/candidates.ts`; `keywords/asa-client.ts`; `keywords/candidates.test.ts` (15 tests) |
+| C4 · AppKittie interim keyword provider via MCP | ✅ | `apps/server/src/keywords/appkittie-client.ts`; `keywords/appkittie-client.test.ts` (11 tests, 1 live smoke) |
 
 **C1 notes:** Pure deterministic linter — no model call. Tokenises title + subtitle, reports cross-field duplicates, plural redundancies, and wasted words using the same `normalizeValueKey` as the dedup layer. CJK/RTL detection: >20% non-Latin codepoints in title → `scriptSupported: false`, all mechanics suppressed. Budget: title(30) + subtitle(30) + keyword-field(100) = 160 chars. Wired into `signals.ts` as `keywordLinter: LinterResult`; injected into prompt via `keywordLinterFacts()` in `prompt.ts`.
 
-**C2 notes:** `generateCandidates()` is a pure async function — no model call. Extracts tokens from description and competitor names using the same plural-normalisation as the linter. Gap analysis: `yours_only` / `theirs_only` / `shared` vs competitor titles (all `inferred`). ASA volume delegates to `AsaClient` seam; `StubAsaClient` returns `{ available: false, label: 'popularity unavailable' }` — never fabricates zeros. Wired into `audit-workflow.ts`; `formatCandidatesForPrompt()` injects gap section into the audit prompt.
+**C2 notes:** `generateCandidates()` is a pure async function — no model call. Extracts tokens from description and competitor names using the same plural-normalisation as the linter. Gap analysis: `yours_only` / `theirs_only` / `shared` vs competitor titles (all `inferred`). Volume queries capped at 10 per audit (competitor-source candidates queried first). ASA volume delegates to `AsaClient` seam; `StubAsaClient` returns `{ available: false, label: 'popularity unavailable' }` — never fabricates zeros. Wired into `audit-workflow.ts`; `formatCandidatesForPrompt()` injects gap section into the audit prompt.
+
+**C4 notes:** `AppKittieClient` implements `AsaClient` behind the seam. MCP JSON-RPC 2.0 over HTTPS — transport is programmatic (MCP tools never exposed to the agent). Normalises `get_keyword_difficulty` response to the domain volume type (adds `difficulty?: number`). Handles both `application/json` and `text/event-stream` MCP response formats. Graceful degradation: any network/parse error → `available: false` (no throw). `getKeywordProvider()` factory replaces `getAsaClient()`: checks `APP_KITTI_API_KEY` first → `AppKittieClient`; else stub. Provenance label: "AppKittie estimate". Live smoke (gated on `APP_KITTI_API_KEY`) verified against real MCP endpoint.
 
 ## Phase B — detail
 
@@ -43,7 +46,7 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
 | B3 · P2 secondary uplifts — screenshot intelligence, cross-device matrix, PPO ≤3 | ✅ | `apps/server/src/vision/secondary-uplifts.ts`; `vision/client.ts` extended |
 | B4 · Phase-A carry-over fixes — applied-detect (previewVideo), escalate gate, reachability guard, efficiency | ✅ | `memory/audit-memory.ts`; `scoring/score.ts`; `mastra/tools/resolve-identity.ts`; `mastra/workflows/audit-workflow.ts` |
 
-**B1 notes:** `SCORER_VERSION` bumped to `'phase-b-v1'` (invalidates Phase A cached scores). Screenshots/icon confidence upgrades to `observed` when vision ran; `codeScore('screenshots')` returns vision coarse-ordinal {0,5,10}. `selectVisionResult` is a pure function — if screenshot/icon URLs match the prior snapshot's, returns stored VisionResult with zero LLM calls. `jimp` added for pHash computation (pure JS). Competitor icon/screenshot URLs are not available in `AppListing.Competitor` — competitor image comparison deferred to Phase D. `getVisionClient()` returns a no-op stub when no API key is set (all hermetic tests unaffected).
+**B1 notes:** `SCORER_VERSION` is `'phase-b-v2'` (invalidates Phase A *and* pre-cap cached scores). Screenshots/icon confidence upgrades to `observed` **only when vision produced real critiques** (the shared `visionUsable` guard); `codeScore('screenshots')` returns the vision coarse-ordinal {0,5,10}, capped at 5 when `< 10` slots are used. `selectVisionResult` is a pure function — if screenshot/icon URLs match the prior snapshot's, returns stored VisionResult with zero LLM calls. `jimp` added for pHash computation (pure JS). Competitor icon/screenshot URLs are not available in `AppListing.Competitor` — competitor image comparison deferred to Phase D. `getVisionClient()` returns a no-op stub when no API key is set, and the no-op result is labelled `inferred` (never a fabricated `observed`).
 
 **B2 notes:** `runIdFull()` is a pure function — copies `category`, `categoryBand`, `tally`, `divergence`, `source` verbatim from ID-lite; vision adds `audience` and may raise `nicheBand`. De-escalation only fires when `litePrior.escalate && litePrior.divergence !== 'cross_domain' && creativeMatchesFunction`. `getIdentityVisionClient()` returns a no-op stub without API key.
 
@@ -52,6 +55,13 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
 - `buildPriorContext` "do not rewrite positioning" note now gates on `escalate && source !== 'human_confirmed'` (not bare `divergence === 'cross_domain'`).
 - Identify-step LLM call now has a `reachable()` guard (matches score-listing pattern).
 - `buildAuditPrompt` built once per audit; `persistAudit` uses pre-fetched snapshot/ledger when provided.
+
+**B5 · Live-integration hardening (surfaced by a manual live audit of the real Rivian listing — the live Gemini-vision path is now exercised end-to-end):**
+- **Apple-CDN base64 proxy:** `mzstatic.com` URLs sent straight to Gemini returned empty critiques (Apple blocks the fetch); `client.ts: #fetchAsDataUrl` now fetches each image in Node and inlines it as `data:…;base64`, wrapped in try/catch so a `!res.ok` or thrown network error degrades to the original URL instead of crashing `Promise.all`.
+- **Thinking-token truncation:** raised vision `max_tokens` 2000→8000 (identity-vision 400→800) + concise-critique prompt, so the model finishes JSON before the budget runs out.
+- **Honest degradation on parse failure (key fix):** the shared `visionUsable(v) = !!v && v.screenshotSetVerdict.critiques.length > 0` guard governs all four scoring/prompt sites in lockstep — on a `{}`/truncated response, `deriveConfidence('screenshots')` → `inferred`, `codeScore('screenshots')` → `slotsUsedOf10` (not a fabricated `5`), and both prompt sites let the limitation surface. 7 regression tests cover the empty-critiques path.
+- **Slot-utilisation cap:** `coarseScore` capped at 5 when `< 10` slots used (only a full set of 10 earns 10); stays within {0,5,10}.
+- **Identity-ledger head:** `latestIdentity` prefers the `full` row (`CASE WHEN stage='full'…`), and a new stage-blind `maxIdentityVersion` drives the version counter so monotonic numbering holds — a reuse re-audit no longer buries the full row's audience. Pinned by conformance + regression tests.
 
 ## Phase A — detail
 
@@ -69,7 +79,7 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
 
 ## Tests (the source of truth)
 
-- **262 hermetic tests pass** (`npm test`). Covers (Phase A): StorageClient conformance,
+- **272 hermetic tests pass** (`npm test`). Covers (Phase A): StorageClient conformance,
   ID-lite §F gates, P1 §F gates (dedup, contradiction, zero-LLM replay),
   human-confirm reuse/re-ask, memory loop end-to-end, classifier fail-safe
   parsing, dismissal-is-honoured, **reworded re-raise collapses to one row**,
@@ -86,7 +96,9 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
   determinism, wasted words, cross-field duplicates, plural redundancy, reclaimableChars;
   keyword candidates + gap analysis (15 tests) — stub path honest "popularity unavailable",
   dedup via same `normalizeValueKey` as linter, gap categories `yours_only`/`theirs_only`/`shared`,
-  all gap rows `confidence: 'inferred'`, `formatCandidatesForPrompt` coverage.
+  all gap rows `confidence: 'inferred'`, `formatCandidatesForPrompt` coverage;
+  AppKittie MCP client (11 tests incl. 1 live smoke) — normalization, graceful degradation,
+  factory precedence, SSE+JSON response handling, live-verified against real endpoint.
 - **Live smokes (gated on a Gemini key, skipped by default):**
   - `scoring/audit-smoke.test.ts` — full audit + identity + persist on real Gemini.
   - `mastra/workflow-smoke.test.ts` — real workflow suspend → resume(decision) → report.
@@ -109,7 +121,7 @@ replay/aggregate share one formula; classifier logs on parse failure.
 
 Phase A carry-overs: **all closed in B4** (applied-detection extended, escalate gate fixed, reachability guard added, efficiency improved).
 
-**Post-review fixes (final whole-branch review):** B2/B3 vision calls now gated on `visionWasFresh` — they only run when `selectVisionResult` returned null (images changed), so unchanged re-audits skip B2/B3 calls entirely. `pHashDistance.confidence` is `'inferred'` when competitor icon URLs are empty (placeholder 64 is not an observed measurement). Identity row de-dup is resolved by the same gate. All 209 tests pass post-fix.
+**Post-review fixes (final whole-branch review):** B2/B3 vision calls now gated on `visionWasFresh` — they only run when `selectVisionResult` returned null (images changed), so unchanged re-audits skip B2/B3 calls entirely. `pHashDistance.confidence` is `'inferred'` when competitor icon URLs are empty (placeholder 64 is not an observed measurement). Identity row de-dup is resolved by the same gate. Then the **B5 live-integration hardening** (above) closed the real-vision-path honesty gaps. All **262 tests** pass (2 live smokes skipped).
 
 ## Known gaps / deviations (conscious, not bugs)
 
@@ -121,7 +133,7 @@ Phase A carry-overs: **all closed in B4** (applied-detection extended, escalate 
   re-fetch" intent holds; documented as accepted.
 - **Resolved** — the pre-existing `mastra/routes.ts` Hono `Context` type-skew on
   `streamSSE` is fixed with a scoped `c as any`; **`tsc --noEmit` is now fully clean**
-  and can gate CI. `npm test` green (191).
+  and can gate CI. `npm test` green (262).
 
 ## Gotchas
 
@@ -130,10 +142,15 @@ Phase A carry-overs: **all closed in B4** (applied-detection extended, escalate 
 
 ## Next up
 
-- **Phase C is complete (C1–C2 ✅, 262 tests).** Phase D next: P4 deep review analysis.
+- **Phase C is complete (C1–C4 ✅, 272 tests).** Phase D next: P4 deep review analysis.
+- **Phase D prerequisites to stand up first (not yet built):**
+  - **Embeddings seam** — D2's `other`-bucket fallback needs Gemini embeddings (cosine ≥ 0.85); no embeddings client/seam exists anywhere yet. Biggest net-new piece.
+  - **RSS pagination + stable review id** — `fetchReviews` is hardcoded `page=1`, `limit=25`; D1 needs ~500/country paginated. `ReviewSchema` has no `id`; D2's `respond_to_reviews → reviewId` needs the RSS `<id>` (verify stability) or a content-hash fallback — open decision.
+  - **D0 two-version + perturbed review fixtures** for the §F P4 dismissed-theme test.
+  - **A3 placeholder graduation** — `fix_complaint_theme` + `respond_to_reviews` move from single-instance to multi-instance referents (planned).
 - **Competitor icon/screenshot URLs** — deferred to Phase D when a competitor-detail fetch is added. `analyze.ts` currently passes empty arrays; update when URLs are available.
 
 ## Key-arrival follow-ups (drop-in, one file each)
 
 - **Web-search key** → replace `NoopWebSearch` (`sources/websearch/`) with Exa/Tavily.
-- **ASA key** → P3 volume/popularity (Phase C).
+- **ASA key** → replace `StubAsaClient` (`keywords/asa-client.ts`) with the real OAuth2 client (scope `searchadsorg`, JWT `client_secret`). **Genuine one-file drop-in** — the candidate-gen/gap-analysis consumption path (`generateCandidates` → `getVolume`) already exists, so volume/popularity lights up with no other changes.
