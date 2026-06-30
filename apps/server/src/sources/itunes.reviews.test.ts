@@ -109,15 +109,42 @@ describe('fetchReviews — field mapping', () => {
     expect(reviews[0]!.appVersion).toBeNull();
   });
 
-  it('sets id to undefined when id.label is absent', async () => {
-    const entry = makeEntry({ id: undefined });
+  it('generates a stable content-hash id (rc: prefix) when id.label is absent', async () => {
+    const entry = makeEntry({ id: undefined, title: 'No id review', body: 'missing id' });
     vi.mocked(global.fetch)
       .mockResolvedValueOnce(jsonResponse(feedResponse([entry])))
       .mockImplementation(() => Promise.resolve(emptyPage()));
 
     const reviews = await fetchReviews(ref, 500);
 
-    expect(reviews[0]!.id).toBeUndefined();
+    expect(reviews[0]!.id).toMatch(/^rc:[0-9a-f]{16}$/);
+  });
+
+  it('content-hash id is deterministic — same review content produces same id', async () => {
+    const entry = makeEntry({ id: undefined, title: 'Same', body: 'Same body', author: 'Bob' });
+    vi.mocked(global.fetch)
+      .mockResolvedValueOnce(jsonResponse(feedResponse([entry])))
+      .mockImplementation(() => Promise.resolve(emptyPage()));
+    const [first] = await fetchReviews(ref, 500);
+
+    vi.mocked(global.fetch)
+      .mockResolvedValueOnce(jsonResponse(feedResponse([entry])))
+      .mockImplementation(() => Promise.resolve(emptyPage()));
+    const [second] = await fetchReviews(ref, 500);
+
+    expect(first!.id).toBe(second!.id);
+  });
+
+  it('content-hash id is distinct for reviews with different content', async () => {
+    const entryA = makeEntry({ id: undefined, title: 'Alpha', body: 'body A' });
+    const entryB = makeEntry({ id: undefined, title: 'Beta', body: 'body B' });
+    vi.mocked(global.fetch)
+      .mockResolvedValueOnce(jsonResponse(feedResponse([entryA, entryB])))
+      .mockImplementation(() => Promise.resolve(emptyPage()));
+
+    const reviews = await fetchReviews(ref, 500);
+
+    expect(reviews[0]!.id).not.toBe(reviews[1]!.id);
   });
 });
 

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { ok, err, type Result } from '../domain/result';
 import { appStoreUrl, type AppRef } from '../domain/app-url';
 import type { Competitor, Review } from '../domain/listing';
@@ -149,6 +150,21 @@ interface RawRssResponse {
 }
 
 /**
+ * Stable per-review content ID, used when Apple's RSS <id> is absent.
+ * Hash of (title + body + rating + author) — all stable fields for a given
+ * review. Prefixed with 'rc:' to distinguish from real Apple numeric IDs.
+ */
+function reviewContentId(e: RawRssEntry): string {
+  const parts = [
+    e.title?.label ?? '',
+    e.content?.label ?? '',
+    e['im:rating']?.label ?? '0',
+    e.author?.name?.label ?? '',
+  ];
+  return 'rc:' + createHash('sha256').update(parts.join('\x00')).digest('hex').slice(0, 16);
+}
+
+/**
  * Recent customer reviews via the iTunes RSS feed. Best-effort: reviews are
  * one input to one dimension, so a feed failure returns `[]` rather than
  * aborting the whole audit.
@@ -177,7 +193,7 @@ export async function fetchReviews(ref: AppRef, limit = 500): Promise<Review[]> 
           title: e.title?.label ?? '',
           body: e.content?.label ?? '',
           updated: e.updated?.label ?? null,
-          id: e.id?.label || undefined,
+          id: e.id?.label || reviewContentId(e),
           appVersion: e['im:version']?.label ?? null,
         }));
       if (pageReviews.length === 0) break; // no more pages
