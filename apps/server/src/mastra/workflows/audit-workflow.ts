@@ -27,7 +27,7 @@ import { getVisionClient, runVision, selectVisionResult } from '../../vision';
 import { runIdFull } from '../../identity/id-full';
 import { getIdentityVisionClient } from '../../identity/identity-vision-client';
 import { runSecondaryUplifts } from '../../vision/secondary-uplifts';
-import { generateCandidates, selectCandidateResult } from '../../keywords/candidates';
+import { generateCandidates, selectCandidateResult, suppressCompetitorGapTerms } from '../../keywords/candidates';
 import { getKeywordProvider } from '../../keywords/asa-client';
 
 /**
@@ -254,12 +254,20 @@ const scoreStep = createStep({
     // returns the stored result (zero AppKittie calls, stable promptHash) when
     // listing text + competitor set are unchanged — mirroring selectVisionResult.
     const priorCandidateResult = selectCandidateResult(listing, priorSnap);
-    const candidateResult =
+    const rawCandidateResult =
       priorCandidateResult ?? (await generateCandidates(
         listing,
         signals.keywordLinter,
         getKeywordProvider(),
       ));
+
+    // C-FU2: when identity is cross-domain or escalated, genre-matched
+    // competitors are category peers (e.g. Expedia for an EV app) — strip
+    // their `theirs_only` gap terms so the model never sees irrelevant keywords.
+    const candidateResult =
+      (resolved.escalate || resolved.divergence === 'cross_domain')
+        ? suppressCompetitorGapTerms(rawCandidateResult)
+        : rawCandidateResult;
 
     const builtPrompt = buildAuditPrompt(listing, signals, priorContext, visionResult, candidateResult);
     const promptHash = createHash('sha256')

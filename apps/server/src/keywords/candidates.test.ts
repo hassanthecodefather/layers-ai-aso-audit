@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateCandidates, formatCandidatesForPrompt, selectCandidateResult } from './candidates';
+import { generateCandidates, formatCandidatesForPrompt, selectCandidateResult, suppressCompetitorGapTerms } from './candidates';
 import type { CandidateResult } from './candidates';
 import { StubAsaClient } from './asa-client';
 import { runLinter } from './linter';
@@ -371,5 +371,46 @@ describe('selectCandidateResult', () => {
     // Reversed order — should still reuse
     const reversed = makeListing({ competitors: [comp2, comp1] });
     expect(selectCandidateResult(reversed, snap)).not.toBeNull();
+  });
+});
+
+// ── suppressCompetitorGapTerms — C-FU2 divergence-aware filter ────────────────
+
+const MIXED_CANDIDATE_RESULT: CandidateResult = {
+  candidates: [{ term: 'charging', normalizedKey: 'charging', source: 'description', volumeLabel: 'popularity unavailable', volumeAvailable: false }],
+  gap: [
+    { term: 'rivian', normalizedKey: 'rivian', gapCategory: 'yours_only', confidence: 'inferred', volumeLabel: 'popularity unavailable', volumeAvailable: false },
+    { term: 'expedia', normalizedKey: 'expedia', gapCategory: 'theirs_only', confidence: 'inferred', volumeLabel: 'popularity unavailable', volumeAvailable: false },
+    { term: 'hotels', normalizedKey: 'hotel', gapCategory: 'theirs_only', confidence: 'inferred', volumeLabel: 'popularity unavailable', volumeAvailable: false },
+    { term: 'travel', normalizedKey: 'travel', gapCategory: 'shared', confidence: 'inferred', volumeLabel: 'popularity unavailable', volumeAvailable: false },
+  ],
+  popularityAvailable: false,
+};
+
+describe('suppressCompetitorGapTerms', () => {
+  it('removes theirs_only rows, keeps yours_only and shared', () => {
+    const result = suppressCompetitorGapTerms(MIXED_CANDIDATE_RESULT);
+    const categories = result.gap.map((g) => g.gapCategory);
+    expect(categories).not.toContain('theirs_only');
+    expect(categories).toContain('yours_only');
+    expect(categories).toContain('shared');
+  });
+
+  it('does not mutate the original result', () => {
+    const original = { ...MIXED_CANDIDATE_RESULT, gap: [...MIXED_CANDIDATE_RESULT.gap] };
+    suppressCompetitorGapTerms(MIXED_CANDIDATE_RESULT);
+    expect(MIXED_CANDIDATE_RESULT.gap).toHaveLength(original.gap.length);
+  });
+
+  it('keeps description candidates untouched', () => {
+    const result = suppressCompetitorGapTerms(MIXED_CANDIDATE_RESULT);
+    expect(result.candidates).toEqual(MIXED_CANDIDATE_RESULT.candidates);
+  });
+
+  it('is a no-op when there are no theirs_only rows', () => {
+    const noCompetitors: CandidateResult = { ...MIXED_CANDIDATE_RESULT, gap: [] };
+    const result = suppressCompetitorGapTerms(noCompetitors);
+    expect(result.gap).toHaveLength(0);
+    expect(result.candidates).toEqual(noCompetitors.candidates);
   });
 });

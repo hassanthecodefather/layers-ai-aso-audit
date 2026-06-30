@@ -279,6 +279,26 @@ export function selectCandidateResult(
   return parsed.data as CandidateResult;
 }
 
+/**
+ * Strips competitor-derived gap rows from a CandidateResult when the resolved
+ * identity is cross-domain or escalated. In that case the genre-matched
+ * competitors are category peers (e.g. Expedia / Booking for an EV app listed
+ * under Travel) and their names produce irrelevant `theirs_only` gap terms.
+ *
+ * Only `theirs_only` rows are removed — `yours_only` (terms from your own
+ * title/subtitle) and `shared` (terms in both) are kept because they're
+ * grounded in your listing regardless of competitor quality. Description
+ * candidates are always kept.
+ *
+ * Pure function — returns a new object, does not mutate input.
+ */
+export function suppressCompetitorGapTerms(result: CandidateResult): CandidateResult {
+  return {
+    ...result,
+    gap: result.gap.filter((g) => g.gapCategory !== 'theirs_only'),
+  };
+}
+
 // ── Linter-result accessor for integration (no circular dep) ──────────────────
 
 /**
