@@ -193,7 +193,7 @@ The interactive half of the spec's identity-escalation logic (the A2 line above 
 
 ---
 
-## Phase D · P4 Deep Review Analysis [live Gemini + embeddings] — ✅ complete (357 tests, tsc clean) · 1 non-blocking carry-over
+## Phase D · P4 Deep Review Analysis [live Gemini + embeddings] — ✅ complete (365 tests, tsc clean) · 1 non-blocking carry-over
 
 **D0 · Capture review fixtures [pure] — ✅ built (`c0a81e9`).** Two frozen `Review[]` fixtures (`reviews/__fixtures__/rivian.reviews.sample{1,2}.json`, sample2 perturbed) for the §F P4 dedup tests.
 
@@ -211,14 +211,12 @@ The interactive half of the spec's identity-escalation logic (the A2 line above 
 - ✅ **`#2` reuse implemented:** `selectFunctionCompetitors(resolved, priorSnap)` mirrors `selectCandidateResult` — compares sorted seed keywords vs the prior snapshot's `functionCompetitorSeeds`; unchanged identity → reuse stored competitors, **zero AppKittie calls**. `latestSnapshot` hoisted before the D3 block; seeds persisted in `snapshot.functionCompetitorSeeds`.
 - **Decision #6 — recorded as MADE:** AppKittie is accepted as the **load-bearing competitor-discovery source for the beta**, behind the swappable seam, on these grounds: egress is keyword-level only (no customer-app-id batches), listings come from iTunes (not AppKittie), tombstones honoured, and it stays trivially replaceable (swap to AppTweak/AppFigures later if competitor-intel egress becomes material). This closes the gate the task was deferred on.
 
-**D-UI · Surface the review analysis (Review Insights panel + rec-card badges) — ⬜ scoped.**
-*Why: Phase D computes rich data (per-version sentiment delta, 15-bucket theme breakdown, feature requests) that is currently **only used to build the prompt and then discarded** — `themeResult` isn't in the `AuditReport` wire shape, so the UI can't show it. The per-version delta ("did the last release fix it or break it?") is a spec-flagged P4 headline uplift, and the themed summary is P4's "what we show".*
-- **Both, panel-first:**
-  1. **Review Insights panel** (between ScoreCard and Recommendations): per-version sentiment delta, theme breakdown (bucket → review count), feature requests. Requires adding `themeResult` to the `AuditReport` wire shape **and persisting it in the snapshot** (per §D the analysis should be reconstructable, not ephemeral — so the schema change is the right data architecture regardless of UI).
-  2. **Rec-card badges** (nearly free once theme data is in the report): the complaint bucket on `fix_complaint_theme` cards, the triggering review on `respond_to_reviews` cards — the §D evidence chip made visible.
-- **Build cautions (both from patterns hit this phase):**
-  - **Add theme reuse alongside the wire-shape change.** `analyzeThemes` is an LLM pass — add `selectThemeResult(reviews, priorSnap)` mirroring `selectVisionResult`/`selectCandidateResult`/`selectFunctionCompetitors` so an unchanged-review re-audit reuses it (zero LLM). Do it now, while touching the snapshot shape, or it re-runs the theme LLM every audit.
-  - **Honest sample labels (the P4 hard part):** the panel states the sample ("based on N recent reviews"), shows the per-version delta **only above the min-sample threshold** (D2 already gates this → "insufficient sample" otherwise), and carries the `inferred` labels. Never imply we read every review.
+**D-UI · Surface the review analysis (Review Insights panel + rec-card badges) — ✅ built (`ac324f2`; persistence fix `bd1b9d3`/`06a7c3d`).**
+- ✅ **Review Insights panel** (`ReviewInsights.tsx`, between ScoreCard and Recommendations): per-version sentiment-delta chip (green/red/neutral), 15-bucket theme breakdown (count + description, amber "unresolved" badge for `other`), feature requests (first 3 + expand), and a "Based on N recent reviews" footer. `themeResult` is in the `AuditReport` wire shape (`aggregate.ts` builds `themeResultWire` + `sampleSize`).
+- ✅ **Rec-card badges** (`Recommendations.tsx`): rose bucket badge on `fix_complaint_theme`, monospace review-ID chip on `respond_to_reviews`.
+- ✅ **Theme reuse — live.** `selectThemeResult(reviews, priorSnap)` mirrors the other `selectX` reuse; unchanged reviews skip the `analyzeThemes` LLM pass. **This required closing the *3rd recurrence* of the silent persistence-drop bug:** `themeResult` was in the snapshot domain type but not in the storage layer, so reuse read `undefined` and re-ran every audit. Fixed by adding `theme_result_json` (migrate + write/read), exactly like `vision`/`candidate`.
+- ✅ **Honest sample labels:** footer states the sample; per-version delta only shown above min-sample (gated in `analyzeThemes`); `inferred`/`unresolved` labels carried.
+- ✅ **The silent-drop bug class is now closed for good:** `storageClientConformance` has put→latest round-trip guards for **all three** snapshot blobs (`visionResult`, `candidateResult`, `themeResult`) + the absent-blobs assertion, so a 4th recurrence is caught at the gate. Test fixtures now build via `makeReview()`/`AppListingSchema.parse()` so they're type-checked by construction (no more hand-rolled-fixture tsc breaks).
 
 **Phase-D carry-over (non-blocking — tracked):**
 - **#3 (cost, deferred) — embedding re-embeds priors.** `resolveOtherThemeKey` re-embeds each prior `other`-theme per call (O(N) embed calls), no stored vectors. Fine for the beta (other-themes rare, embeddings cheap); store the vector + pin the embedding model id later. Integration depth: the §F P4 `other`-path is pinned at the dedup layer; a workflow-level perturbed-sample test would be the gold standard.

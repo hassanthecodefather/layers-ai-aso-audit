@@ -16,7 +16,7 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
 | **0** | Groundwork: Gemini-only, migration runner | ✅ | suite green + live audit on Gemini |
 | **A** | ID-lite identity + P1 persistent memory | ✅ | §F ID-lite **and** §F P1 green; reworded re-raise collapses to one row (typed referent); 2nd audit references 1st, marks applied, never repeats. **A6 score determinism complete** (191 tests) |
 | **B** | P2 image analysis + ID-full | ✅ | §F P2 green (vision confidence, zero-LLM reuse, pHash observed, promote-panel non-panoramic-only); ID-full stage=`full` augments identity without mutating ID-lite fields. **Live-verified on the real Rivian listing** (B5 hardening). |
-| **C** | P3 keyword research (160-char linter) | ✅ | tsc clean · 357 tests · linter deterministic · stub honest · gap analysis inferred · candidateResult reuse (C4 residual closed) |
+| **C** | P3 keyword research (160-char linter) | ✅ | tsc clean · 365 tests · linter deterministic · stub honest · gap analysis inferred · candidateResult reuse (C4 residual closed) |
 | **D** | P4 deep review analysis | ✅ | RSS→500, 15-bucket theme taxonomy + per-version delta, multi-instance graduation; **`other`-bucket embedding dedup** (cosine ≥ 0.85, merge bug fixed); **D3 function-grounded competitors** (identity-seeded → AppKittie topApps → iTunes listings, #1/#2 fixed). §F P4 both paths green. 1 carry-over (#3 re-embed cost) |
 | **E** | P5 cost & courtesy control | ⬜ | — |
 | **F** | Net-new uplifts (storefront sweep, export, …) | ⬜ | — |
@@ -39,6 +39,8 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
 **D3 (done):** identity-seeded (`resolved.niche`/`category`) → AppKittie `getTopApps` → tombstone filter → `batchLookupCompetitors` via **iTunes Lookup** (not AppKittie). Egress kept keyword-level; `MAX_SEEDS=2` cap; graceful fallback when unkeyed. **#1** suppression now gates on `!d3ProvidedCompetitors` (flag set on fetch + reuse paths) so cross-domain apps keep their real peers' terms. **#2** `selectFunctionCompetitors` reuses stored competitors on unchanged identity seeds (zero AppKittie calls). Decision #6 recorded as made (AppKittie accepted as load-bearing, swappable seam).
 
 **D1 (done):** `reviewContentId()` — every `Review` always carries a stable id (RSS `<id>`, else `rc:<sha256[:16]>` of title+body+rating+author), so `respond_to_reviews` dedup is sound across the 500-review window.
+
+**D-UI (done):** `ReviewInsights.tsx` panel (version-delta chip, 15-bucket theme breakdown, feature requests, "Based on N reviews" footer) + rec-card badges (bucket on `fix_complaint_theme`, review-ID chip on `respond_to_reviews`). `themeResult` is in the `AuditReport` wire shape (`aggregate.ts`). `selectThemeResult` reuse is **live** — but only after closing the **3rd silent persistence-drop bug** (`themeResult` was in the snapshot type but not the storage layer): fixed by `theme_result_json` (migrate + write/read). **All three snapshot blobs (`vision`/`candidate`/`theme`) now have round-trip conformance guards**, so this bug class is closed; test fixtures build via `makeReview()`/`AppListingSchema.parse()` (type-checked by construction).
 
 **Carry-over (#3, non-blocking):** `resolveOtherThemeKey` re-embeds priors each call (no stored vectors) — fine for the beta (other-themes rare); store the vector + pin the embedding model id later.
 
@@ -106,7 +108,7 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
 
 ## Tests (the source of truth)
 
-- **357 hermetic tests pass** (`npm test`). Covers (Phase A): StorageClient conformance,
+- **365 hermetic tests pass** (`npm test`). Covers (Phase A): StorageClient conformance,
   ID-lite §F gates, P1 §F gates (dedup, contradiction, zero-LLM replay),
   human-confirm reuse/re-ask, memory loop end-to-end, classifier fail-safe
   parsing, dismissal-is-honoured, **reworded re-raise collapses to one row**,
@@ -150,7 +152,7 @@ replay/aggregate share one formula; classifier logs on parse failure.
 
 Phase A carry-overs: **all closed in B4** (applied-detection extended, escalate gate fixed, reachability guard added, efficiency improved).
 
-**Post-review fixes (final whole-branch review):** B2/B3 vision calls now gated on `visionWasFresh` — they only run when `selectVisionResult` returned null (images changed), so unchanged re-audits skip B2/B3 calls entirely. `pHashDistance.confidence` is `'inferred'` when competitor icon URLs are empty (placeholder 64 is not an observed measurement). Identity row de-dup is resolved by the same gate. Then the **B5 live-integration hardening** (above) closed the real-vision-path honesty gaps. Suite is now **357 tests** green (3 live smokes skipped).
+**Post-review fixes (final whole-branch review):** B2/B3 vision calls now gated on `visionWasFresh` — they only run when `selectVisionResult` returned null (images changed), so unchanged re-audits skip B2/B3 calls entirely. `pHashDistance.confidence` is `'inferred'` when competitor icon URLs are empty (placeholder 64 is not an observed measurement). Identity row de-dup is resolved by the same gate. Then the **B5 live-integration hardening** (above) closed the real-vision-path honesty gaps. Suite is now **365 tests** green (3 live smokes skipped).
 
 **Snapshot blob round-trip fix (`4393c35` + `845de56`) — corrects the Phase-B/C reuse record.** Both optional snapshot blobs (`visionResult`, `candidateResult`) were silently writing `null` to their columns (pass-through omission in `persistAudit` + `?? null` in the store), so `selectVisionResult` / `selectCandidateResult` always read empty → **vision reuse was dead through all of Phase B** (every re-audit re-called Gemini vision) and candidate reuse was dead in C4. The unit tests missed it (they pass in-memory snapshots, never the DB round-trip). Now both are correctly persisted, and `storageClientConformance` has explicit **put→latest round-trip guards** for each blob (so it can't silently regress, and the guards run against Postgres at 6a).
 
@@ -164,7 +166,7 @@ Phase A carry-overs: **all closed in B4** (applied-detection extended, escalate 
   re-fetch" intent holds; documented as accepted.
 - **Resolved** — the pre-existing `mastra/routes.ts` Hono `Context` type-skew on
   `streamSSE` is fixed with a scoped `c as any`; **`tsc --noEmit` is now fully clean**
-  and can gate CI. `npm test` green (357).
+  and can gate CI. `npm test` green (365).
 
 ## Gotchas
 
@@ -173,7 +175,7 @@ Phase A carry-overs: **all closed in B4** (applied-detection extended, escalate 
 
 ## Next up
 
-- **Phases 0–D all complete (357 tests, tsc clean).** **Phase E (P5 cost & courtesy control) is next** — cache (entity-keyed), spend/loop governor, courtesy throttle. E1's cache also retroactively benefits the uncached LLM/AppKittie/iTunes calls in B/C/D.
+- **Phases 0–D all complete (365 tests, tsc clean).** **Phase E (P5 cost & courtesy control) is next** — cache (entity-keyed), spend/loop governor, courtesy throttle. E1's cache also retroactively benefits the uncached LLM/AppKittie/iTunes calls in B/C/D.
 - **Phase D carry-over (non-blocking):** #3 — `resolveOtherThemeKey` re-embeds priors each call (store the vector + pin the embedding model id later).
 - **Competitor images** — `analyze.ts` still passes empty competitor icon/screenshot URLs; D3 now provides competitor app ids, so competitor visual benchmarking could be wired (Phase E/F, mind vision cost + decision-#6 egress).
 
