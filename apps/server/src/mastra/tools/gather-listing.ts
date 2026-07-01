@@ -2,6 +2,7 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { AppListingSchema } from '../../domain/listing';
 import { resolveListing } from '../../sources';
+import { getCache } from '../../cost/cache';
 
 /**
  * `gather-listing` — assemble the full, audit-ready listing.
@@ -13,8 +14,21 @@ import { resolveListing } from '../../sources';
 
 /** Assemble the complete listing for an app. Throws on failure. */
 export async function gatherListing(appId: string, country: string) {
+  // E1: reset cache hit counter so we can stamp provenance after the fetch fan-out.
+  getCache().resetHitCount();
+
   const listing = await resolveListing({ appId, country });
   if (!listing.ok) throw new Error(listing.error);
+
+  // E1: stamp observedFromCache=true if every fetch was served from cache.
+  const hits = getCache().hitCount();
+  if (hits > 0) {
+    return {
+      ...listing.value,
+      provenance: { ...listing.value.provenance, observedFromCache: true },
+    };
+  }
+
   return listing.value;
 }
 

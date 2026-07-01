@@ -35,7 +35,7 @@ function makeListing(overrides: Partial<AppListing> = {}): AppListing {
     currentVersionReleaseDate: '2024-01-01T00:00:00Z',
     reviews: [],
     competitors: [],
-    provenance: { itunes: true, crawler: false, reviews: false, competitors: false },
+    provenance: { itunes: true, crawler: false, reviews: false, competitors: false, observedFromCache: false },
     ...overrides,
   };
 }
@@ -80,6 +80,7 @@ describe('computeSignals — subtitle', () => {
           crawler: true,
           reviews: false,
           competitors: false,
+          observedFromCache: false,
         },
       }),
     );

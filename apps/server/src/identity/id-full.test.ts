@@ -44,7 +44,7 @@ const stubListing: AppListing = {
   currentVersionReleaseDate: '2024-01-01',
   reviews: [],
   competitors: [],
-  provenance: { itunes: true, crawler: false, reviews: false, competitors: false },
+  provenance: { itunes: true, crawler: false, reviews: false, competitors: false, observedFromCache: false },
 };
 
 /** A resolved ID-lite identity that escalated due to low niche band (not cross_domain). */

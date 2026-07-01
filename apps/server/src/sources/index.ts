@@ -63,6 +63,7 @@ export async function resolveListing(ref: AppRef): Promise<Result<AppListing>> {
       crawler: extras !== null,
       reviews: reviews.length > 0,
       competitors: competitors.length > 0,
+      observedFromCache: false,
     },
   };
 

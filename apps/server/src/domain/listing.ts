@@ -49,6 +49,8 @@ export const ProvenanceSchema = z.object({
   crawler: z.boolean(),
   reviews: z.boolean(),
   competitors: z.boolean(),
+  /** True when all listing data was served from the HTTP response cache (E1). */
+  observedFromCache: z.boolean().optional().default(false),
 });
 export type Provenance = z.infer<typeof ProvenanceSchema>;
 

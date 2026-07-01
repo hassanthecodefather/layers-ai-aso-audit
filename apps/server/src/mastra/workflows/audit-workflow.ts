@@ -104,7 +104,7 @@ function coreToIdentityListing(core: ITunesCore) {
     currentVersionReleaseDate: core.currentVersionReleaseDate,
     reviews: [],
     competitors: [],
-    provenance: { itunes: true, crawler: false, reviews: false, competitors: false },
+    provenance: { itunes: true, crawler: false, reviews: false, competitors: false, observedFromCache: false },
   });
 }
 

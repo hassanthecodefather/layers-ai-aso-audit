@@ -1,8 +1,14 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { AppKittieClient } from './appkittie-client';
 import { getKeywordProvider, StubAsaClient } from './asa-client';
+import { setCache, NoOpCache } from '../cost/cache';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
+
+// Use NoOpCache so AppKittie tests don't need a real DB with aso_cache table.
+beforeEach(() => {
+  setCache(new NoOpCache());
+});
 
 function makeMcpResponse(data: unknown) {
   return {
@@ -16,12 +22,15 @@ function makeMcpResponse(data: unknown) {
 }
 
 function mockFetch(responseBody: unknown, status = 200) {
+  const text = JSON.stringify(responseBody);
   return vi.fn().mockResolvedValue({
     ok: status >= 200 && status < 300,
     status,
     statusText: status === 200 ? 'OK' : 'Error',
     headers: { get: (_: string) => 'application/json' },
     json: () => Promise.resolve(responseBody),
+    // text() is needed because the gateway buffers the body for cache storage.
+    text: () => Promise.resolve(text),
   });
 }
 
@@ -29,6 +38,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   delete process.env['APP_KITTI_API_KEY'];
+  setCache(new NoOpCache());
 });
 
 // ── Normalization ─────────────────────────────────────────────────────────────

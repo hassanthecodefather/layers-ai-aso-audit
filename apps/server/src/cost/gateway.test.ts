@@ -3,7 +3,7 @@
  * No real network calls — all fetch is stubbed via vi.fn() or setGateway().
  */
 
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import {
   PassthroughGateway,
   getGateway,
@@ -11,12 +11,19 @@ import {
 } from './gateway';
 import { fetchWithRetry } from '../sources/http';
 import { getPacer, setPacer, SerialPacer } from './pacer';
+import { setCache, NoOpCache } from './cache';
+
+beforeEach(() => {
+  // Use NoOpCache so gateway tests don't need a real DB with aso_cache table.
+  setCache(new NoOpCache());
+});
 
 afterEach(() => {
   // Restore singletons after each test that may have replaced them.
   setGateway(new PassthroughGateway());
   setPacer(new SerialPacer());
   getPacer().reset();
+  setCache(new NoOpCache());
 });
 
 describe('PassthroughGateway', () => {
@@ -25,7 +32,9 @@ describe('PassthroughGateway', () => {
     const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(mockResponse);
 
     const gw = new PassthroughGateway();
-    const result = await gw.fetch('https://example.com/test', { kind: 'app', upstream: 'itunes' }, { method: 'GET' });
+    // Use kind: 'asset' (uncacheable) so the gateway returns the original Response
+    // reference unchanged — caching would buffer the body and create a new Response.
+    const result = await gw.fetch('https://example.com/test', { kind: 'asset', upstream: 'vision' }, { method: 'GET' });
 
     expect(spy).toHaveBeenCalledWith('https://example.com/test', { method: 'GET' });
     expect(result).toBe(mockResponse);

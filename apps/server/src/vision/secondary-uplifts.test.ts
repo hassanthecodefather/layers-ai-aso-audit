@@ -210,6 +210,7 @@ function makeListing(
       crawler: false,
       reviews: false,
       competitors: false,
+      observedFromCache: false,
     },
   };
 }

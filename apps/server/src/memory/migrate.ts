@@ -120,6 +120,16 @@ export const MIGRATIONS: readonly string[] = [
 
   // ── Phase D2: Theme Analysis — add theme_result column ──────────────────────
   `ALTER TABLE aso_listing_snapshots ADD COLUMN theme_result_json TEXT`,
+
+  // ── Phase E1: Source cache ────────────────────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS aso_cache (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  fetched_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+)`,
+  `CREATE INDEX IF NOT EXISTS aso_cache_expires
+  ON aso_cache (expires_at)`,
 ];
 
 /** Open a raw LibSQL client against the given url (defaults to the app DB). */

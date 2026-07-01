@@ -7,15 +7,19 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { fetchReviews } from './itunes';
 import { setPacer, SerialPacer } from '../cost/pacer';
+import { setCache, NoOpCache } from '../cost/cache';
 
 // ── Pacer stub — skip all throttle delays in unit tests ───────────────────────
 
 beforeEach(() => {
+  // Use NoOpCache so fetchReviews tests don't need a real DB with aso_cache table.
+  setCache(new NoOpCache());
   setPacer({ wait: vi.fn().mockResolvedValue(undefined), reset: vi.fn() });
 });
 
 afterEach(() => {
   setPacer(new SerialPacer());
+  setCache(new NoOpCache());
 });
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -54,11 +58,15 @@ function feedResponse(entries: unknown[]) {
 
 /** Build a Response stub from a JSON body. */
 function jsonResponse(body: unknown, status = 200): Response {
+  const text = JSON.stringify(body);
   return {
     ok: status >= 200 && status < 300,
     status,
     statusText: 'OK',
+    headers: { get: (_: string) => 'application/json' },
     json: () => Promise.resolve(body),
+    // text() is needed because the gateway buffers the body for cache storage.
+    text: () => Promise.resolve(text),
   } as unknown as Response;
 }
 
