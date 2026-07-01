@@ -45,13 +45,8 @@ export interface SourceGateway {
 
 export class PassthroughGateway implements SourceGateway {
   async fetch(url: string, call: GatewayCall, init?: RequestInit): Promise<Response> {
-    // 1. Governor preflight
-    const denial = getGovernor().preflight();
-    if (!denial.ok) {
-      throw new GovernorDenialError(denial.error, url, call);
-    }
-
-    // 2. Cache lookup — only for cacheable upstreams, non-asset calls, not skipCache
+    // 1. Cache lookup — happens BEFORE governor so cache hits are truly free:
+    //    no metered-call count, no pacer delay, no upstream call.
     const shouldCache =
       CACHEABLE_UPSTREAMS.has(call.upstream) &&
       call.kind !== 'asset' &&
@@ -63,7 +58,6 @@ export class PassthroughGateway implements SourceGateway {
         : `${call.upstream}:${createHash('sha256').update(url).digest('hex').slice(0, 16)}`;
       const hit = await getCache().get<string>(key);
       if (hit) {
-        // Serve from cache — pacer not needed for cache hits
         return new Response(hit.value, {
           status: 200,
           headers: {
@@ -73,6 +67,12 @@ export class PassthroughGateway implements SourceGateway {
           },
         });
       }
+    }
+
+    // 2. Governor preflight — counts only real upstream calls (cache misses)
+    const denial = getGovernor().preflight();
+    if (!denial.ok) {
+      throw new GovernorDenialError(denial.error, url, call);
     }
 
     // 3. Courtesy throttle — iTunes only (shared IP, ~20 calls/min ceiling)

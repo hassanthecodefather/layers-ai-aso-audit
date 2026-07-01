@@ -1,11 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { InProcessGovernor, getGovernor, setGovernor } from './governor';
 import { PassthroughGateway, GovernorDenialError } from './gateway';
+import { setCache, NoOpCache } from './cache';
 
 describe('InProcessGovernor', () => {
   let governor: InProcessGovernor;
 
   beforeEach(() => {
+    // Use NoOpCache so gateway.fetch() cache lookup always misses and governor preflight runs.
+    setCache(new NoOpCache());
     governor = new InProcessGovernor();
     setGovernor(governor);
   });
