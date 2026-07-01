@@ -5,6 +5,7 @@
  */
 
 import { getGateway, type GatewayCall } from '../cost/gateway';
+import { getPacer } from '../cost/pacer';
 
 /** A failure from an external data source. Carries which source failed. */
 export class SourceError extends Error {
@@ -55,6 +56,15 @@ export async function fetchWithRetry(
           retryable,
         );
       }
+
+      // On 429, honour Retry-After header via the pacer and skip normal backoff.
+      if (res.status === 429 && attempt < retries) {
+        const retryAfterHeader = res.headers.get('Retry-After');
+        const retryAfterMs = retryAfterHeader ? parseFloat(retryAfterHeader) * 1000 : 0;
+        await getPacer().wait(retryAfterMs);
+        continue; // skip the normal exponential-backoff sleep below
+      }
+
       lastError = new SourceError(source, `HTTP ${res.status}`, true);
     } catch (cause) {
       if (cause instanceof SourceError && !cause.retryable) throw cause;

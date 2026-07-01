@@ -6,6 +6,17 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { fetchReviews } from './itunes';
+import { setPacer, SerialPacer } from '../cost/pacer';
+
+// ── Pacer stub — skip all throttle delays in unit tests ───────────────────────
+
+beforeEach(() => {
+  setPacer({ wait: vi.fn().mockResolvedValue(undefined), reset: vi.fn() });
+});
+
+afterEach(() => {
+  setPacer(new SerialPacer());
+});
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

@@ -10,10 +10,13 @@ import {
   setGateway,
 } from './gateway';
 import { fetchWithRetry } from '../sources/http';
+import { getPacer, setPacer, SerialPacer } from './pacer';
 
 afterEach(() => {
-  // Restore singleton after each test that may have replaced it.
+  // Restore singletons after each test that may have replaced them.
   setGateway(new PassthroughGateway());
+  setPacer(new SerialPacer());
+  getPacer().reset();
 });
 
 describe('PassthroughGateway', () => {
@@ -45,6 +48,47 @@ describe('setGateway / getGateway', () => {
     };
     setGateway(stub);
     expect(getGateway()).toBe(stub);
+  });
+});
+
+describe('PassthroughGateway pacer integration', () => {
+  it('calls getPacer().wait() for upstream: itunes', async () => {
+    const mockWait = vi.fn().mockResolvedValue(undefined);
+    setPacer({ wait: mockWait, reset: vi.fn() });
+
+    const mockResponse = new Response('ok', { status: 200 });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(mockResponse);
+
+    const gw = new PassthroughGateway();
+    await gw.fetch('https://itunes.apple.com/', { kind: 'app', upstream: 'itunes' });
+
+    expect(mockWait).toHaveBeenCalledOnce();
+  });
+
+  it('calls getPacer().wait() for upstream: reviews', async () => {
+    const mockWait = vi.fn().mockResolvedValue(undefined);
+    setPacer({ wait: mockWait, reset: vi.fn() });
+
+    const mockResponse = new Response('ok', { status: 200 });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(mockResponse);
+
+    const gw = new PassthroughGateway();
+    await gw.fetch('https://itunes.apple.com/rss/customerreviews', { kind: 'app', upstream: 'reviews' });
+
+    expect(mockWait).toHaveBeenCalledOnce();
+  });
+
+  it('does NOT call getPacer().wait() for non-iTunes upstreams (e.g. vision)', async () => {
+    const mockWait = vi.fn().mockResolvedValue(undefined);
+    setPacer({ wait: mockWait, reset: vi.fn() });
+
+    const mockResponse = new Response('ok', { status: 200 });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(mockResponse);
+
+    const gw = new PassthroughGateway();
+    await gw.fetch('https://vision.example.com/', { kind: 'asset', upstream: 'vision' });
+
+    expect(mockWait).not.toHaveBeenCalled();
   });
 });
 

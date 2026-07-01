@@ -8,6 +8,7 @@
  */
 
 import { getGovernor, GovernorDenialError } from './governor';
+import { getPacer } from './pacer';
 
 export { GovernorDenialError } from './governor';
 
@@ -36,6 +37,12 @@ export class PassthroughGateway implements SourceGateway {
     if (!denial.ok) {
       throw new GovernorDenialError(denial.error, url, call);
     }
+
+    // Courtesy throttle — iTunes only (shared IP, ~20 calls/min ceiling)
+    if (call.upstream === 'itunes' || call.upstream === 'reviews') {
+      await getPacer().wait();
+    }
+
     return fetch(url, init);
   }
 }
