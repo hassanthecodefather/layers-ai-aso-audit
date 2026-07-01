@@ -82,6 +82,12 @@ export class InProcessGovernor implements Governor {
     }
   }
 
+  /** Number of metered calls recorded in the current rolling window. For tests only. */
+  meteredCount(): number {
+    const oneHourAgo = Date.now() - 60 * 60 * 1000;
+    return this.#callLog.filter((t) => t > oneHourAgo).length;
+  }
+
   reset(): void {
     this.#callLog = [];
     this.#runStart = null;

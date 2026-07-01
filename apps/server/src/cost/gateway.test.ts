@@ -153,11 +153,12 @@ describe('cache hit is free — governor not counted, pacer not called', () => {
       { kind: 'app', upstream: 'itunes', entityId: 'app1:us' },
     );
 
-    // Governor call log must be empty (cache hit never called preflight)
-    // Access via the internal state by calling preflight() 2000 times would hit count_cap;
-    // instead verify by checking that a subsequent preflight() still returns ok (not yet near ceiling).
-    const preflightResult = governor.preflight();
-    expect(preflightResult.ok).toBe(true); // first real call — governor count = 1
+    // Cache hit must not have incremented the governor call log at all.
+    expect(governor.meteredCount()).toBe(0);
+
+    // Confirm a subsequent real call does count (sanity-check that meteredCount works).
+    governor.preflight();
+    expect(governor.meteredCount()).toBe(1);
 
     // Pacer must not have been called
     expect(mockWait).not.toHaveBeenCalled();
