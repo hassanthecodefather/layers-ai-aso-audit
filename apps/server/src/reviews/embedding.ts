@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { getGateway } from '../cost/gateway';
 
 export interface EmbeddingProvider {
   /** Embed a text string, returns a float vector. Returns [] on failure. */
@@ -19,13 +20,10 @@ export class GeminiEmbeddingProvider implements EmbeddingProvider {
 
   async embed(text: string): Promise<number[]> {
     try {
-      const res = await fetch(
+      const res = await getGateway().fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${this.apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: 'models/text-embedding-004', content: { parts: [{ text }] } }),
-        },
+        { kind: 'app', upstream: 'embedding' },
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'models/text-embedding-004', content: { parts: [{ text }] } }) },
       );
       if (!res.ok) return [];
       const json = await res.json() as { embedding?: { values?: number[] } };

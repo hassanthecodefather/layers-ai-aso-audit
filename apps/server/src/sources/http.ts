@@ -4,6 +4,8 @@
  * adapters stay focused on *mapping* data, not on transport plumbing.
  */
 
+import { getGateway, type GatewayCall } from '../cost/gateway';
+
 /** A failure from an external data source. Carries which source failed. */
 export class SourceError extends Error {
   constructor(
@@ -22,6 +24,7 @@ interface FetchOptions {
   readonly timeoutMs?: number;
   readonly retries?: number;
   readonly init?: RequestInit;
+  readonly call?: GatewayCall; // NEW — passed to gateway.fetch()
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -33,7 +36,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  */
 export async function fetchWithRetry(
   url: string,
-  { source, timeoutMs = 12_000, retries = 2, init }: FetchOptions,
+  { source, timeoutMs = 12_000, retries = 2, init, call }: FetchOptions,
 ): Promise<Response> {
   let lastError: unknown;
 
@@ -41,7 +44,7 @@ export async function fetchWithRetry(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const res = await fetch(url, { ...init, signal: controller.signal });
+      const res = await getGateway().fetch(url, call ?? { kind: 'app', upstream: 'itunes' }, { ...init, signal: controller.signal });
       if (res.ok) return res;
 
       const retryable = res.status === 429 || res.status >= 500;

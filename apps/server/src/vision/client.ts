@@ -5,6 +5,8 @@
  *  - NoOpVisionClient: returns empty/minimal results when no API key is set
  */
 
+import { getGateway } from '../cost/gateway';
+
 export interface ScreenshotAnalysisInput {
   screenshotUrls: string[];
   competitorFirstFrameUrls: string[]; // top 3 competitor icons/first screenshots
@@ -238,7 +240,7 @@ Analyze the app icon for ASO quality. Return JSON:
   /** Fetch a remote image and return it as a base64 data URL. */
   async #fetchAsDataUrl(url: string): Promise<string> {
     try {
-      const res = await fetch(url, {
+      const res = await getGateway().fetch(url, { kind: 'asset', upstream: 'vision' }, {
         headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ASO-Audit/1.0)' },
       });
       if (!res.ok) {
@@ -256,12 +258,9 @@ Analyze the app icon for ASO quality. Return JSON:
   }
 
   async #call(body: unknown): Promise<string> {
-    const response = await fetch(this.#endpoint, {
+    const response = await getGateway().fetch(this.#endpoint, { kind: 'app', upstream: 'vision' }, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.#apiKey}`,
-      },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.#apiKey}` },
       body: JSON.stringify(body),
     });
 

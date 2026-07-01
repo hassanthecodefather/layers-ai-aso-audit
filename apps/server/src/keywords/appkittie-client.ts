@@ -15,6 +15,7 @@
  */
 
 import type { AsaClient, AsaVolume } from './asa-client';
+import { getGateway } from '../cost/gateway';
 
 const MCP_URL = 'https://mcp.appkittie.com';
 
@@ -92,20 +93,14 @@ export class AppKittieClient implements AsaClient {
   }
 
   async #callTool<T>(name: string, args: Record<string, unknown>): Promise<T> {
-    const res = await fetch(MCP_URL, {
+    const res = await getGateway().fetch(MCP_URL, { kind: 'app', upstream: 'appkittie' }, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${this.apiKey}`,
         'Content-Type': 'application/json',
-        // MCP spec requires both; AppKittie returns JSON when text/event-stream is included.
         Accept: 'application/json, text/event-stream',
       },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: '1',
-        method: 'tools/call',
-        params: { name, arguments: args },
-      }),
+      body: JSON.stringify({ jsonrpc: '2.0', id: '1', method: 'tools/call', params: { name, arguments: args } }),
     });
     if (!res.ok) {
       throw new Error(`AppKittie HTTP ${res.status} ${res.statusText}`);
