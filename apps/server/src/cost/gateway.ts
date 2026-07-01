@@ -7,6 +7,10 @@
  *   E3 — iTunes courtesy pacer
  */
 
+import { getGovernor, GovernorDenialError } from './governor';
+
+export { GovernorDenialError } from './governor';
+
 export type EntityKind = 'app' | 'competitor' | 'asset';
 export type UpstreamKind = 'itunes' | 'crawler' | 'reviews' | 'vision' | 'appkittie' | 'embedding';
 
@@ -27,7 +31,11 @@ export interface SourceGateway {
 }
 
 export class PassthroughGateway implements SourceGateway {
-  async fetch(url: string, _call: GatewayCall, init?: RequestInit): Promise<Response> {
+  async fetch(url: string, call: GatewayCall, init?: RequestInit): Promise<Response> {
+    const denial = getGovernor().preflight();
+    if (!denial.ok) {
+      throw new GovernorDenialError(denial.error, url, call);
+    }
     return fetch(url, init);
   }
 }

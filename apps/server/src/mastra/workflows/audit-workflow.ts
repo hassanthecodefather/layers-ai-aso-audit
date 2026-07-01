@@ -24,6 +24,7 @@ import {
 } from '../../identity/human-confirm';
 import { buildPriorContext, persistAudit } from '../../memory/audit-memory';
 import { getVisionClient, runVision, selectVisionResult } from '../../vision';
+import { getGovernor, GovernorDenialError } from '../../cost/governor';
 import { runIdFull } from '../../identity/id-full';
 import { getIdentityVisionClient } from '../../identity/identity-vision-client';
 import { runSecondaryUplifts } from '../../vision/secondary-uplifts';
@@ -180,6 +181,12 @@ const scoreStep = createStep({
   inputSchema: AppListingSchema,
   outputSchema: AuditReportSchema,
   execute: async ({ inputData, mastra, getStepResult }) => {
+    const runResult = getGovernor().startRun();
+    if (!runResult.ok) {
+      // Reentrant run — refuse immediately rather than burning budget
+      throw new GovernorDenialError('reentrant', 'audit-run', { kind: 'app', upstream: 'itunes' });
+    }
+    try {
     const llm = getLlmProvider();
     if (!(await llm.reachable())) {
       throw new Error(
@@ -513,6 +520,9 @@ const scoreStep = createStep({
     }
 
     return { ...report, limitations: [...report.limitations, ...notes] };
+    } finally {
+      getGovernor().endRun();
+    }
   },
 });
 
