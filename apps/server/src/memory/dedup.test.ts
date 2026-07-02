@@ -134,8 +134,10 @@ describe('§F P4 other-bucket embedding path', () => {
       valueKey: priorValueKey,
       taxonomyVersion: 'theme-taxonomy@1',
       dimension: 'ratings', intent: 'fix_complaint_theme',
-      targetField: null, title: 'Fix map complaints', body: 'map navigation broken',
-      beforeText: null, afterText: null, evidence: [],
+      targetField: null, title: 'Fix map complaints',
+      body: 'Address the navigation complaints surfaced in user reviews.',
+      // beforeText stores the raw theme complaint text (set by toLedgerRec for other-bucket recs).
+      beforeText: 'map navigation broken', afterText: null, evidence: [],
       status: 'dismissed',
       supersededBy: null, firstSeenAt: '2026-01-01', lastSeenAt: '2026-01-01', appliedAt: null,
       proofRegime: 'correlational',
@@ -146,9 +148,10 @@ describe('§F P4 other-bucket embedding path', () => {
       isLive: true,
       embed: vi.fn()
         .mockResolvedValueOnce([1, 0, 0])       // new: "map is broken"
-        .mockResolvedValueOnce([0.95, 0.2, 0]), // prior body: "map navigation broken" (cosine ≈ 0.98)
+        .mockResolvedValueOnce([0.95, 0.2, 0]), // prior beforeText: "map navigation broken" (cosine ≈ 0.98)
     };
-    const newValueKey = await resolveOtherThemeKey('map is broken', [{ text: dismissedRec.body, valueKey: priorValueKey }], stubEmb);
+    // Use beforeText (theme text), not body (rationale) — they embed very differently.
+    const newValueKey = await resolveOtherThemeKey('map is broken', [{ text: dismissedRec.beforeText!, valueKey: priorValueKey }], stubEmb);
     expect(newValueKey).toBe(priorValueKey); // same key → same rec_key → dismissed row found
 
     // With the same valueKey, computeRecKey would produce the same recKey, so findContradiction fires.

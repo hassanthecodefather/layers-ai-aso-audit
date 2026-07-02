@@ -98,6 +98,8 @@ function snapshot(over: Partial<ListingSnapshot> = {}): ListingSnapshot {
     visionResult: over.visionResult,
     candidateResult: over.candidateResult,
     themeResult: over.themeResult,
+    functionCompetitorSeeds: over.functionCompetitorSeeds,
+    competitorMiningResult: over.competitorMiningResult,
   };
 }
 
@@ -259,7 +261,31 @@ export function storageClientConformance(
       }
     });
 
-    it('leaves visionResult, candidateResult, and themeResult undefined when absent', async () => {
+    it('round-trips functionCompetitorSeeds through put/latest (D3 regression guard)', async () => {
+      const h = await makeClient();
+      try {
+        const seeds = ['ev charging', 'electric vehicle'];
+        unwrap(await h.client.putSnapshot(snapshot({ functionCompetitorSeeds: seeds })));
+        const got = unwrap(await h.client.latestSnapshot('app1', 'us'));
+        expect(got?.functionCompetitorSeeds).toEqual(seeds);
+      } finally {
+        h.close();
+      }
+    });
+
+    it('round-trips competitorMiningResult through put/latest (F-K2 regression guard)', async () => {
+      const h = await makeClient();
+      try {
+        const mining = { painPoints: [{ bucket: 'crash_stability', text: 'App crashes', reviewCount: 5, competitors: ['CompA'] }], competitorsCovered: ['CompA'], lowRatingReviewCount: 5 };
+        unwrap(await h.client.putSnapshot(snapshot({ competitorMiningResult: mining })));
+        const got = unwrap(await h.client.latestSnapshot('app1', 'us'));
+        expect(got?.competitorMiningResult).toEqual(mining);
+      } finally {
+        h.close();
+      }
+    });
+
+    it('leaves visionResult, candidateResult, themeResult, functionCompetitorSeeds, and competitorMiningResult undefined when absent', async () => {
       const h = await makeClient();
       try {
         unwrap(await h.client.putSnapshot(snapshot()));
@@ -267,6 +293,8 @@ export function storageClientConformance(
         expect(got?.visionResult).toBeUndefined();
         expect(got?.candidateResult).toBeUndefined();
         expect(got?.themeResult).toBeUndefined();
+        expect(got?.functionCompetitorSeeds).toBeUndefined();
+        expect(got?.competitorMiningResult).toBeUndefined();
       } finally {
         h.close();
       }

@@ -35,7 +35,7 @@ import { getEmbeddingProvider, resolveOtherThemeKey } from '../../reviews/embedd
 import { AppKittieClient } from '../../keywords/appkittie-client';
 import { fetchFunctionGroundedCompetitors, selectFunctionCompetitors, seedKeywords } from '../../sources/function-competitors';
 import { rankOpportunities } from '../../keywords/opportunity';
-import { mineCompetitorReviews } from '../../keywords/competitor-mining';
+import { mineCompetitorReviews, selectCompetitorMining } from '../../keywords/competitor-mining';
 import { buildCompetitorTieringResult } from '../../sources/competitor-tiering';
 
 /**
@@ -302,7 +302,6 @@ const scoreStep = createStep({
     const rawCandidateResult =
       priorCandidateResult ?? (await generateCandidates(
         listing,
-        signals.keywordLinter,
         getKeywordProvider(),
       ));
 
@@ -323,8 +322,12 @@ const scoreStep = createStep({
 
     // F-K2: competitor review mining — gated on D3 having provided function-grounded
     // peers (prevents genre-mismatch noise from polluting the mining result).
+    // Reuse stored result when the D3 competitor set is unchanged (mirrors selectCandidateResult).
+    const priorMiningResult = d3ProvidedCompetitors
+      ? selectCompetitorMining(listing.competitors, priorSnap)
+      : null;
     const competitorMining = d3ProvidedCompetitors
-      ? await mineCompetitorReviews(listing.competitors, ref.country, llm)
+      ? (priorMiningResult ?? await mineCompetitorReviews(listing.competitors, ref.country, llm))
       : null;
 
     // F-K3: competitor tiering + per-keyword gap mapping (pure, no new API calls).
@@ -410,9 +413,11 @@ const scoreStep = createStep({
       // draft.recommendations is a flat array of Recommendation; quickWins/highImpact/strategic
       // are assembled by assembleReport from this flat list.
       const priorLedger = priorLedgerR.ok ? priorLedgerR.value : [];
+      // beforeText holds the raw theme complaint text for other-bucket recs (set by toLedgerRec).
+      // r.body is the recommendation rationale — a different string that produces wrong cosine scores.
       const priorOtherThemes = priorLedger
         .filter((r) => r.intent === 'fix_complaint_theme' && r.valueKey.startsWith('other:'))
-        .map((r) => ({ text: r.body, valueKey: r.valueKey }));
+        .map((r) => ({ text: r.beforeText ?? '', valueKey: r.valueKey }));
 
       const embedder = getEmbeddingProvider();
 
@@ -447,6 +452,7 @@ const scoreStep = createStep({
       candidateResult: rawCandidateResult, // C4: persist raw (suppressCompetitorGapTerms is a per-audit view, not stored state)
       functionCompetitorSeeds: d3ProvidedCompetitors ? d3Seeds : undefined, // D3: seeds for reuse on unchanged identity
       themeResult, // D-UI: persist for selectThemeResult reuse + wire shape
+      competitorMiningResult: competitorMining ?? undefined, // F-K2: persist for selectCompetitorMining reuse
       // B4: pass pre-fetched values to avoid duplicate storage reads in persistAudit.
       priorSnapshot: priorSnap,
       priorLedger: priorLedgerR.ok ? priorLedgerR.value : [],

@@ -105,7 +105,11 @@ export function toLedgerRec(
     targetField: map.targetField,
     title: rec.title,
     body: rec.rationale,
-    beforeText: rec.before,
+    // For other-bucket complaint themes, store the raw theme text in beforeText so
+    // priorOtherThemes can embed it on the next audit (r.body = rationale prose ≠ theme text).
+    beforeText: (rec.intent === 'fix_complaint_theme' && rec.referent.kind === 'theme' && rec.referent.bucket === 'other')
+      ? (rec.referent.text ?? rec.before ?? null)
+      : (rec.before ?? null),
     afterText: rec.after,
     evidence,
     status: 'proposed',
@@ -220,6 +224,8 @@ export interface PersistInput {
   functionCompetitorSeeds?: string[];
   /** D-UI: theme analysis result for snapshot storage + reuse. */
   themeResult?: unknown;
+  /** F-K2: competitor review mining result for snapshot storage + reuse. */
+  competitorMiningResult?: unknown;
   /** B4: Pre-fetched prior snapshot (avoids a duplicate storage read). */
   priorSnapshot?: ListingSnapshot | null;
   /** B4: Pre-fetched prior ledger (avoids a duplicate storage read). */
@@ -288,6 +294,7 @@ export async function persistAudit(
     candidateResult: input.candidateResult,
     functionCompetitorSeeds: input.functionCompetitorSeeds,
     themeResult: input.themeResult,
+    competitorMiningResult: input.competitorMiningResult,
   };
   await storage.putSnapshot(snapshot);
 

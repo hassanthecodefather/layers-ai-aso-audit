@@ -10,6 +10,7 @@
  */
 
 import type { CreativeMatchResult, IdentityVisionClient } from './id-full';
+import { getGateway } from '../cost/gateway';
 
 // ── Gemini implementation ─────────────────────────────────────────────────────
 
@@ -80,14 +81,18 @@ Guidelines:
   }
 
   async #call(body: unknown): Promise<string> {
-    const response = await fetch(this.#endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.#apiKey}`,
+    const response = await getGateway().fetch(
+      this.#endpoint,
+      { kind: 'app', upstream: 'vision' },
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.#apiKey}`,
+        },
+        body: JSON.stringify(body),
       },
-      body: JSON.stringify(body),
-    });
+    );
 
     if (!response.ok) {
       const text = await response.text().catch(() => '');

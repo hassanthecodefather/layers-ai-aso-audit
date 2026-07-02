@@ -1,7 +1,7 @@
 /**
  * Keyword candidate generation + gap analysis (Phase C2/C4).
  *
- * Pure function of listing + linter result + keyword provider.
+ * Pure function of listing + keyword provider.
  * No model call — deterministic derivation from observable text.
  *
  * Gap analysis compares your visible fields (title + subtitle) against
@@ -18,7 +18,6 @@ import { z } from 'zod';
 import type { AppListing } from '../domain/listing';
 import type { ListingSnapshot } from '../domain/snapshot';
 import type { AsaClient } from './asa-client';
-import type { LinterResult } from './linter';
 import { normalizeValueKey } from '../memory/dedup';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -104,7 +103,6 @@ function competitorTokens(listing: AppListing): Map<string, string> {
 
 export async function generateCandidates(
   listing: AppListing,
-  linter: LinterResult,
   asaClient: AsaClient,
 ): Promise<CandidateResult> {
   // ── Your visible-field keys ───────────────────────────────────────────────

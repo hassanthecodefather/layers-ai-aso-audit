@@ -40,8 +40,9 @@ export class LibSqlStorageClient implements StorageClient {
       `INSERT INTO aso_listing_snapshots
         (id, app_id, country, fetched_at, listing_json, signals_json,
          report_json, rubric_version, prompt_hash, model_id, vision_result_json,
-         candidate_result_json, theme_result_json)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         candidate_result_json, theme_result_json,
+         function_competitor_seeds_json, competitor_mining_result_json)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         s.id,
         s.appId,
@@ -56,6 +57,8 @@ export class LibSqlStorageClient implements StorageClient {
         JSON.stringify(s.visionResult ?? null),
         JSON.stringify(s.candidateResult ?? null),
         JSON.stringify(s.themeResult ?? null),
+        s.functionCompetitorSeeds != null ? JSON.stringify(s.functionCompetitorSeeds) : null,
+        JSON.stringify(s.competitorMiningResult ?? null),
       ],
     );
     return r.ok ? ok(undefined) : err(r.error);
@@ -78,7 +81,7 @@ export class LibSqlStorageClient implements StorageClient {
   }
 
   #parseSnapshot(row: Row): Result<ListingSnapshot> {
-    // vision_result_json / candidate_result_json / theme_result_json may be absent in older rows
+    // Optional JSON blobs — may be absent in older rows (columns added later).
     const visionResultRaw = row.vision_result_json != null
       ? JSON.parse(String(row.vision_result_json))
       : undefined;
@@ -87,6 +90,12 @@ export class LibSqlStorageClient implements StorageClient {
       : undefined;
     const themeResultRaw = row.theme_result_json != null
       ? JSON.parse(String(row.theme_result_json))
+      : undefined;
+    const functionCompetitorSeedsRaw = row.function_competitor_seeds_json != null
+      ? JSON.parse(String(row.function_competitor_seeds_json))
+      : undefined;
+    const competitorMiningResultRaw = row.competitor_mining_result_json != null
+      ? JSON.parse(String(row.competitor_mining_result_json))
       : undefined;
 
     const parsed = ListingSnapshotSchema.safeParse({
@@ -103,6 +112,8 @@ export class LibSqlStorageClient implements StorageClient {
       visionResult: visionResultRaw ?? undefined,
       candidateResult: candidateResultRaw ?? undefined,
       themeResult: themeResultRaw ?? undefined,
+      functionCompetitorSeeds: functionCompetitorSeedsRaw ?? undefined,
+      competitorMiningResult: competitorMiningResultRaw ?? undefined,
     });
     return parsed.success
       ? ok(parsed.data)
@@ -267,13 +278,17 @@ export class LibSqlStorageClient implements StorageClient {
     appId: string,
     country: string,
   ): Promise<Result<IdentityVersion | null>> {
-    // Prefer stage='full' over stage='lite' — a full row written by B2 should
-    // remain the head across subsequent re-audits that only append lite rows.
-    // If two full rows exist the most recent wins; same for two lite rows.
+    // Priority: human_confirmed > full > lite; within same tier, highest version wins.
+    // A human-confirmed override must never be shadowed by a freshly-written lite row
+    // (which toIdentityVersion always writes as stage='lite').
     const r = await this.#run(
       `SELECT * FROM aso_identity_versions
         WHERE app_id = ? AND country = ?
-        ORDER BY CASE WHEN stage = 'full' THEN 0 ELSE 1 END, version DESC LIMIT 1`,
+        ORDER BY
+          CASE WHEN source = 'human_confirmed' THEN 0 ELSE 1 END,
+          CASE WHEN stage = 'full' THEN 0 ELSE 1 END,
+          version DESC
+        LIMIT 1`,
       [appId, country],
     );
     if (!r.ok) return err(r.error);

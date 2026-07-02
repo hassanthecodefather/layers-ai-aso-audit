@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { generateCandidates, formatCandidatesForPrompt, selectCandidateResult, suppressCompetitorGapTerms } from './candidates';
 import type { CandidateResult } from './candidates';
 import { StubAsaClient } from './asa-client';
-import { runLinter } from './linter';
 import type { AppListing } from '../domain/listing';
 import type { ListingSnapshot } from '../domain/snapshot';
 
@@ -45,10 +44,6 @@ function makeListing(overrides: Partial<AppListing> = {}): AppListing {
   };
 }
 
-function makeLinter(title: string, subtitle: string | null = null) {
-  return runLinter({ title, subtitle, keywordField: null });
-}
-
 /** Minimal CandidateResult for reuse tests. */
 const STUB_CANDIDATE_RESULT: CandidateResult = {
   candidates: [{ term: 'electric', normalizedKey: 'electric', source: 'description', volumeLabel: 'popularity unavailable', volumeAvailable: false }],
@@ -78,7 +73,7 @@ function makeSnapshot(listing: AppListing, candidateResult?: unknown): ListingSn
 describe('stub ASA client — honest unavailable (not fabricated zero)', () => {
   it('popularityAvailable is false under the stub', async () => {
     const listing = makeListing();
-    const result = await generateCandidates(listing, makeLinter('Rivian'), new StubAsaClient());
+    const result = await generateCandidates(listing, new StubAsaClient());
     expect(result.popularityAvailable).toBe(false);
   });
 
@@ -86,7 +81,7 @@ describe('stub ASA client — honest unavailable (not fabricated zero)', () => {
     const listing = makeListing({
       description: 'Control your electric vehicle from your phone.',
     });
-    const result = await generateCandidates(listing, makeLinter('Rivian'), new StubAsaClient());
+    const result = await generateCandidates(listing, new StubAsaClient());
     for (const c of result.candidates) {
       expect(c.volumeLabel).toBe('popularity unavailable');
       expect(c.volumeAvailable).toBe(false);
@@ -110,7 +105,7 @@ describe('stub ASA client — honest unavailable (not fabricated zero)', () => {
         },
       ],
     });
-    const result = await generateCandidates(listing, makeLinter('Rivian'), new StubAsaClient());
+    const result = await generateCandidates(listing, new StubAsaClient());
     for (const g of result.gap) {
       expect(g.volumeLabel).toBe('popularity unavailable');
     }
@@ -138,7 +133,7 @@ describe('candidate dedup — normalizeValueKey (same plural rule as linter)', (
         },
       ],
     });
-    const result = await generateCandidates(listing, makeLinter('Rivian'), new StubAsaClient());
+    const result = await generateCandidates(listing, new StubAsaClient());
     const vehicleKeys = result.candidates.filter((c) => c.normalizedKey === 'vehicle');
     expect(vehicleKeys.length).toBeLessThanOrEqual(1);
   });
@@ -147,7 +142,7 @@ describe('candidate dedup — normalizeValueKey (same plural rule as linter)', (
     const listing = makeListing({
       description: 'Monitor charging. Manage charge sessions.',
     });
-    const result = await generateCandidates(listing, makeLinter('Rivian'), new StubAsaClient());
+    const result = await generateCandidates(listing, new StubAsaClient());
     const keys = result.candidates.map((c) => c.normalizedKey);
     const uniqueKeys = new Set(keys);
     expect(keys.length).toBe(uniqueKeys.size);
@@ -174,7 +169,7 @@ describe('gap analysis — yours_only / theirs_only / shared', () => {
       name: 'Rivian',
       competitors: [competitor],
     });
-    const result = await generateCandidates(listing, makeLinter('Rivian'), new StubAsaClient());
+    const result = await generateCandidates(listing, new StubAsaClient());
     const rivian = result.gap.find((g) => g.normalizedKey === 'rivian');
     expect(rivian?.gapCategory).toBe('yours_only');
   });
@@ -184,7 +179,7 @@ describe('gap analysis — yours_only / theirs_only / shared', () => {
       name: 'Rivian',
       competitors: [competitor],
     });
-    const result = await generateCandidates(listing, makeLinter('Rivian'), new StubAsaClient());
+    const result = await generateCandidates(listing, new StubAsaClient());
     const tesla = result.gap.find((g) => g.normalizedKey === 'tesla');
     expect(tesla?.gapCategory).toBe('theirs_only');
   });
@@ -195,14 +190,14 @@ describe('gap analysis — yours_only / theirs_only / shared', () => {
       subtitle: null,
       competitors: [{ ...competitor, name: 'Electric Vehicle Control' }],
     });
-    const result = await generateCandidates(listing, makeLinter('Rivian Electric'), new StubAsaClient());
+    const result = await generateCandidates(listing, new StubAsaClient());
     const electric = result.gap.find((g) => g.normalizedKey === 'electric');
     expect(electric?.gapCategory).toBe('shared');
   });
 
   it('labels all gap rows as confidence "inferred"', async () => {
     const listing = makeListing({ competitors: [competitor] });
-    const result = await generateCandidates(listing, makeLinter('Rivian'), new StubAsaClient());
+    const result = await generateCandidates(listing, new StubAsaClient());
     for (const g of result.gap) {
       expect(g.confidence).toBe('inferred');
     }
@@ -217,7 +212,7 @@ describe('description candidates', () => {
       name: 'Rivian',
       description: 'Rivian vehicle control application for charging management.',
     });
-    const result = await generateCandidates(listing, makeLinter('Rivian'), new StubAsaClient());
+    const result = await generateCandidates(listing, new StubAsaClient());
     const rivianCand = result.candidates.find(
       (c) => c.normalizedKey === 'rivian' && c.source === 'description',
     );
@@ -228,7 +223,7 @@ describe('description candidates', () => {
     const listing = makeListing({
       description: 'The best free app for vehicle management.',
     });
-    const result = await generateCandidates(listing, makeLinter('Rivian'), new StubAsaClient());
+    const result = await generateCandidates(listing, new StubAsaClient());
     const wastedKeys = new Set(['best', 'free', 'app', 'the']);
     const wastedCandidates = result.candidates.filter((c) => wastedKeys.has(c.normalizedKey));
     expect(wastedCandidates).toHaveLength(0);
@@ -238,7 +233,7 @@ describe('description candidates', () => {
     const listing = makeListing({
       description: 'Monitor charging and control your vehicle remotely.',
     });
-    const result = await generateCandidates(listing, makeLinter('Rivian'), new StubAsaClient());
+    const result = await generateCandidates(listing, new StubAsaClient());
     const sources = result.candidates.map((c) => c.source);
     expect(sources).toContain('description');
   });
@@ -264,9 +259,8 @@ describe('determinism', () => {
         },
       ],
     });
-    const linter = makeLinter('Rivian');
-    const r1 = await generateCandidates(listing, linter, new StubAsaClient());
-    const r2 = await generateCandidates(listing, linter, new StubAsaClient());
+    const r1 = await generateCandidates(listing, new StubAsaClient());
+    const r2 = await generateCandidates(listing, new StubAsaClient());
     expect(r1).toEqual(r2);
   });
 });
@@ -278,7 +272,7 @@ describe('formatCandidatesForPrompt', () => {
     const listing = makeListing({
       description: 'Control your electric vehicle.',
     });
-    const result = await generateCandidates(listing, makeLinter('Rivian'), new StubAsaClient());
+    const result = await generateCandidates(listing, new StubAsaClient());
     const text = formatCandidatesForPrompt(result);
     expect(text).toContain('unavailable');
     expect(text).toContain('inferred');
@@ -300,7 +294,7 @@ describe('formatCandidatesForPrompt', () => {
         },
       ],
     });
-    const result = await generateCandidates(listing, makeLinter('Rivian'), new StubAsaClient());
+    const result = await generateCandidates(listing, new StubAsaClient());
     const text = formatCandidatesForPrompt(result);
     // "tesla" or "model" should appear in the gap section
     expect(text.toLowerCase()).toMatch(/tesla|model/);
@@ -436,7 +430,7 @@ describe('D3 — competitorTokens includes tokens from competitor description', 
         },
       ],
     });
-    const result = await generateCandidates(listing, makeLinter('Rivian'), new StubAsaClient());
+    const result = await generateCandidates(listing, new StubAsaClient());
 
     // 'station' (from description 'stations') and 'session' should be extracted
     // as competitor-sourced tokens since they don't appear in the app title
@@ -466,7 +460,7 @@ describe('D3 — competitorTokens includes tokens from competitor description', 
         },
       ],
     });
-    const result = await generateCandidates(listing, makeLinter('Rivian'), new StubAsaClient());
+    const result = await generateCandidates(listing, new StubAsaClient());
 
     // 'navigate' or 'infrastructure' from competitor description should be theirs_only
     const theirsOnly = result.gap.filter((g) => g.gapCategory === 'theirs_only');
@@ -494,7 +488,7 @@ describe('D3 — competitorTokens includes tokens from competitor description', 
         },
       ],
     });
-    const result = await generateCandidates(listing, makeLinter('Rivian'), new StubAsaClient());
+    const result = await generateCandidates(listing, new StubAsaClient());
     const tesla = result.gap.find((g) => g.normalizedKey === 'tesla');
     expect(tesla?.gapCategory).toBe('theirs_only');
     // Should not throw, should return valid result

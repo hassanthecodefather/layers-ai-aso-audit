@@ -12,8 +12,10 @@
 
 import type { Competitor } from '../domain/listing';
 import type { LlmProvider } from '../llm';
+import type { ListingSnapshot } from '../domain/snapshot';
 import { fetchReviews } from '../sources/itunes';
 import { analyzeThemes } from '../reviews/themes';
+import { z } from 'zod';
 
 /** Max competitors to mine (keeps LLM + review-fetch costs bounded). */
 const MAX_COMPETITORS = 3;
@@ -148,4 +150,41 @@ export function formatCompetitorMiningForPrompt(
   );
 
   return lines.join('\n');
+}
+
+// ── Reuse (mirrors selectCandidateResult / selectVisionResult pattern) ────────
+
+const CompetitorMiningResultSchema = z.object({
+  painPoints: z.array(z.object({
+    bucket: z.string(),
+    text: z.string(),
+    reviewCount: z.number(),
+    competitors: z.array(z.string()),
+  })),
+  competitorsCovered: z.array(z.string()),
+  lowRatingReviewCount: z.number(),
+});
+
+/**
+ * Return the stored competitor mining result when D3 competitors haven't changed,
+ * so unchanged re-audits skip the LLM+review-fetch pass.
+ */
+export function selectCompetitorMining(
+  currentCompetitors: Competitor[],
+  priorSnap: ListingSnapshot | null | undefined,
+): CompetitorMiningResult | null {
+  if (!priorSnap?.competitorMiningResult) return null;
+
+  // Cache is valid when D3 competitor set (appIds) is unchanged.
+  const currentIds = new Set(currentCompetitors.map((c) => c.appId));
+  const storedIds = new Set(
+    (priorSnap.listing.competitors ?? []).map((c) => c.appId),
+  );
+  if (currentIds.size !== storedIds.size) return null;
+  for (const id of currentIds) {
+    if (!storedIds.has(id)) return null;
+  }
+
+  const parsed = CompetitorMiningResultSchema.safeParse(priorSnap.competitorMiningResult);
+  return parsed.success ? parsed.data : null;
 }

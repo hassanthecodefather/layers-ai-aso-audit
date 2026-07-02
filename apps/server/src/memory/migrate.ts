@@ -121,6 +121,16 @@ export const MIGRATIONS: readonly string[] = [
   // ── Phase D2: Theme Analysis — add theme_result column ──────────────────────
   `ALTER TABLE aso_listing_snapshots ADD COLUMN theme_result_json TEXT`,
 
+  // ── Phase D3: Function-grounded competitor seeds — add column ───────────────
+  // Stores the identity seeds (niche + category strings) used for AppKittie lookup
+  // so selectFunctionCompetitors can skip the API on unchanged identity.
+  `ALTER TABLE aso_listing_snapshots ADD COLUMN function_competitor_seeds_json TEXT`,
+
+  // ── Phase F-K2: Competitor review mining result — add column ────────────────
+  // Stores the mined competitor pain points so we can skip the LLM+review-fetch
+  // on re-audits with unchanged D3 competitors.
+  `ALTER TABLE aso_listing_snapshots ADD COLUMN competitor_mining_result_json TEXT`,
+
   // ── Phase E1: Source cache ────────────────────────────────────────────────────
   `CREATE TABLE IF NOT EXISTS aso_cache (
   key        TEXT PRIMARY KEY,

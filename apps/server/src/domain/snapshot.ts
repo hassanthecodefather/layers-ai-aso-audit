@@ -48,5 +48,10 @@ export const ListingSnapshotSchema = z.object({
    * Absent when D3 didn't run or returned no competitors.
    */
   functionCompetitorSeeds: z.array(z.string()).optional(),
+  /**
+   * F-K2 competitor review mining result. Stored so re-audits with the same
+   * D3 competitor set skip the LLM+review-fetch pass.
+   */
+  competitorMiningResult: z.unknown().optional(),
 });
 export type ListingSnapshot = z.infer<typeof ListingSnapshotSchema>;
