@@ -238,7 +238,7 @@ The interactive half of the spec's identity-escalation logic (the A2 line above 
 
 ---
 
-## Phase F · Net-new uplifts
+## Phase F · Net-new uplifts — ✅ built (475 tests, tsc clean) · F-K4 + ASA-activation deferred
 
 - **Storefront sweep** — N **sequential per-storefront sub-runs**, each its own audit under its own cap (not one monster run); observe-only, inherits the primary identity. Free iTunes only.
 - **Connect-to-measure honesty manifest** — pure-code map of each rec into the four proof regimes.
@@ -246,26 +246,16 @@ The interactive half of the spec's identity-escalation logic (the A2 line above 
 - **Review-vocabulary keyword miner** — counts the full sample in code, hands the ranked gap to the model.
 - **DoD:** one US URL → four storefronts back with one rec per gap + per-rec proof regime; `STATUS.md` refreshed.
 
-### Phase F · Keyword & Competitor Intelligence — ⬜ scoped
+### Phase F · Keyword & Competitor Intelligence — ✅ built (F-K1/K2/K3/K5); F-K4 ⏸ deferred
 
-*The through-line (from the keyword/competitor design discussion): make the "structured way" an **explicit, ranked deliverable**, and **tag every finding `observed | inferred | estimated`.** Most inputs already flow through the pipeline (identity, C2 candidates, AppKittie volume/difficulty, D3 competitors, D theme engine) — these steps are assembly + prioritization + honest labeling, not new fetching. Build in priority order.*
+*Delivered the "structured way" as explicit, ranked, provenance-labelled deliverables. **Cross-cutting rule held: every keyword/competitor finding carries `observed | inferred | estimated`** — F-K2 → `observed`, F-K3 → `estimated`.*
 
-- **F-K1 · Keyword opportunity ranking (highest leverage — the missing deliverable).** Turn candidates+volume+gaps from LLM-narrated facts into a deterministic **ranked target list**:
-  - Tag each candidate to the 4-tier mix (core-intent / problem / feature / competitor) — as *tags*, not fixed % weights.
-  - **Relevance-aware opportunity score** = `relevance(keyword ↔ resolved function) × volume ÷ difficulty`. The key upgrade over KEI: **add the relevance term KEI lacks**, using identity grounding. **Do not square volume** (fights the long-tail-for-young-apps strategy); **handle brand terms specially** (brand defense = high value at low raw volume).
-  - Output a ranked list (volume/difficulty/relevance/tier per keyword), each provenance-labeled. Score is a **heuristic, never "math that proves."**
-- **F-K2 · Competitor review mining (observable, reuses D).** Run `analyzeThemes` on top competitors' reviews → their 1–2★ complaints become **your** keyword/feature opportunities + positioning gaps. (Spec P4 secondary uplift; fully observable.)
-- **F-K3 · Competitor tiering + per-keyword mapping (assembly on D3).** Tag each D3 peer direct / indirect / organic-search; per target keyword, surface who ranks (`topApps`) + your gap — **labeled `estimated`** (Apple exposes no rank; AppKittie is panel data).
-- **F-K4 · Competitor visual benchmarking (the deferred B piece).** Wire competitor first-frames + icons into vision → first-value-prop / color-contrast comparison. Mind vision cost (E1 cache helps) + decision-#6 egress if sourcing images via AppKittie.
-- **F-K5 · Web-search corroboration [live — keys in `.env`] → activates the identity external-corroboration tier.** `TAVILY_API_KEY` + `EXA_API_KEY` are keyed. Implement `TavilyWebSearch` (primary) + `ExaWebSearch` (fallback) behind the existing `WebSearchProvider` seam (`sources/websearch/`, replacing `NoopWebSearch`), via a `getWebSearch()` factory (`TAVILY_API_KEY` → Tavily → else `EXA_API_KEY` → Exa → else `NoopWebSearch`).
-  - **REST, not MCP (decision).** Call the providers' **REST APIs** through `getGateway().fetch({kind:'app', upstream:'websearch'})` — so it's gateway-metered + cacheable. **Not the MCPs:** Exa's MCP is **OAuth/browser-only** ("opens a browser to sign in") → unusable in our headless/cron pipeline, and the Exa key is a REST key anyway; Tavily's MCP is keyable but bypasses the gateway and adds protocol overhead. And — same as AppKittie — corroboration is **code-orchestrated** (confidence-ladder-gated), never agent-exposed tools.
-  - Add `'websearch'` to the gateway `UpstreamKind` + `CACHEABLE_UPSTREAMS` + a TTL (~7d; corroboration is stable).
-  - **Tri-state honesty (contract):** map the REST response to `corroborated` / `searched_and_empty` / `errored` — never a fabricated footprint (the `NoopWebSearch` contract). This turns the world-knowledge *prior that never counts alone* into a **citable, counted** signal, raising the §E confidence ceiling — the grounding F-K1/K3 (and identity generally) depend on.
-  - **Test:** stubbed provider → tri-state mapping; factory precedence; a gated live smoke.
-- **Data activation (more setup):**
-  - **ASA account** → real volume/difficulty (free with account) → better opportunity-score inputs, less AppKittie credit spend. (Account enrolment is the cost; still `StubAsaClient` until then.)
-- **Cross-cutting (non-negotiable):** every keyword/competitor finding carries provenance — `observed` (their title/subtitle/screenshots/reviews), `inferred` (competitor keyword field — never observable), `estimated` (rankings/SoV/volume). This is the product's edge over confident-but-unlabeled competitor analyses.
-- **Sequence:** F-K1 → F-K2 → F-K3 → Tavily → (ASA activation, F-K4 later). *(F-K2 supersedes the "Review-vocabulary keyword miner" bullet above by extending it to competitor reviews.)*
+- ✅ **F-K1 · Keyword opportunity ranking** (`keywords/opportunity.ts`, wired into `prompt.ts` + `audit-workflow.ts`, 15 tests). Deterministic ranked list; score = `relevance(keyword ↔ resolved function) × volume ÷ difficulty` — **not squared** (the KEI critique: squaring fights long-tail + KEI omits relevance); **brand terms bypass the formula and rank first** (brand-defence); 4-tier mix tags; each finding provenance-labelled.
+- ✅ **F-K2 · Competitor review mining** (`keywords/competitor-mining.ts`). Runs `analyzeThemes` over top competitors' 1–2★ reviews → their complaints become your keyword/feature opportunities. **Provenance `observed`** (real cited reviews); **gated on D3 function-grounded competitors** (no genre-mismatch noise); bounded competitor/review counts for cost.
+- ✅ **F-K3 · Competitor tiering** (`sources/competitor-tiering.ts`). Tags each peer `direct | indirect | organic-search` (genre-match, pure code); per-keyword who-ranks mapping. **Provenance always `estimated`** (AppKittie panel, not Apple-authoritative).
+- ✅ **F-K5 · Web-search corroboration** (`sources/websearch/`: `TavilyWebSearch` primary + `ExaWebSearch` fallback + `getWebSearch()`/`setWebSearch()` factory; `'websearch'` upstream + 7d cache in `gateway.ts`). **REST through the gateway, not MCP** (Exa's MCP is OAuth/browser-only → headless-broken; Tavily's bypasses the gateway). **Tally mapping** (`resolve.ts`): `corroborated` → `fetched_and_cited` (weight 2, `agrees=true` — an independent signal that can lift past the on-store-only cap); `searched_and_empty` → non-agreeing entry; `errored` → **silent** (never masquerades as "no footprint"). Probe runs concurrently with the classifier. 22 tests.
+- ⏸ **F-K4 · Competitor visual benchmarking — deferred.** Wire competitor first-frames + icons into vision. Needs competitor image URLs wired + vision cost (E1 cache helps) + the decision-#6 egress review if sourcing images via AppKittie.
+- **Data activation (still open, more setup):** **ASA account** → real volume/difficulty (free with account) → better opportunity-score inputs, less AppKittie credit spend. Still `StubAsaClient` until enrolled.
 
 ---
 
