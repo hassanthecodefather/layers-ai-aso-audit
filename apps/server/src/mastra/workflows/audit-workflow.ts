@@ -34,6 +34,9 @@ import { analyzeThemes, selectThemeResult } from '../../reviews/themes';
 import { getEmbeddingProvider, resolveOtherThemeKey } from '../../reviews/embedding';
 import { AppKittieClient } from '../../keywords/appkittie-client';
 import { fetchFunctionGroundedCompetitors, selectFunctionCompetitors, seedKeywords } from '../../sources/function-competitors';
+import { rankOpportunities } from '../../keywords/opportunity';
+import { mineCompetitorReviews } from '../../keywords/competitor-mining';
+import { buildCompetitorTieringResult } from '../../sources/competitor-tiering';
 
 /**
  * The ASO audit workflow.
@@ -147,17 +150,17 @@ const confirmStep = createStep({
     appId: z.string(),
     country: z.string(),
     identityDecision: IdentityDecisionSchema.nullable(),
+    /** When true, the gather step bypasses the cache (--fresh mode, spec E1). */
+    fresh: z.boolean().optional(),
   }),
   suspendSchema: SummaryAndIdentitySchema,
   resumeSchema: z.object({
     confirmed: z.boolean(),
-    // Present only when the operator confirms/corrects/picks the identity.
     identityDecision: IdentityDecisionSchema.nullish(),
+    /** Set true to bypass all source caches for this run (--fresh, spec E1). */
+    fresh: z.boolean().optional(),
   }),
   execute: async ({ inputData, resumeData, suspend }) => {
-    // First pass: hand back the summary AND the resolved identity. When
-    // `identityNeedsConfirm` is true the UI widens the prompt to "here's what
-    // we think your app is — confirm, correct, or pick a candidate."
     if (!resumeData) {
       return suspend(inputData);
     }
@@ -168,6 +171,7 @@ const confirmStep = createStep({
       appId: inputData.summary.appId,
       country: inputData.summary.country,
       identityDecision: resumeData.identityDecision ?? null,
+      fresh: resumeData.fresh ?? false,
     };
   },
 });
@@ -317,7 +321,24 @@ const scoreStep = createStep({
       listing.reviews.length > 0 ? await analyzeThemes(listing.reviews, llm) : null
     );
 
-    const builtPrompt = buildAuditPrompt(listing, signals, priorContext, visionResult, candidateResult, themeResult);
+    // F-K2: competitor review mining — gated on D3 having provided function-grounded
+    // peers (prevents genre-mismatch noise from polluting the mining result).
+    const competitorMining = d3ProvidedCompetitors
+      ? await mineCompetitorReviews(listing.competitors, ref.country, llm)
+      : null;
+
+    // F-K3: competitor tiering + per-keyword gap mapping (pure, no new API calls).
+    const competitorTiering = d3ProvidedCompetitors
+      ? buildCompetitorTieringResult(
+          listing.competitors,
+          listing.primaryGenre,
+          candidateResult,
+          true,
+        )
+      : null;
+
+    const rankedKeywords = rankOpportunities(candidateResult, resolved, listing.name);
+    const builtPrompt = buildAuditPrompt(listing, signals, priorContext, visionResult, candidateResult, themeResult, rankedKeywords, competitorMining, competitorTiering);
     const promptHash = createHash('sha256')
       .update(builtPrompt)
       .digest('hex')

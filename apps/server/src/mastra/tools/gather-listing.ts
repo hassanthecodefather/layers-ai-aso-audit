@@ -12,15 +12,23 @@ import { getCache } from '../../cost/cache';
  * The plain `gatherListing` function is what the workflow's data step calls.
  */
 
-/** Assemble the complete listing for an app. Throws on failure. */
-export async function gatherListing(appId: string, country: string) {
-  // E1: reset cache hit counter so we can stamp provenance after the fetch fan-out.
+/**
+ * Assemble the complete listing for an app. Throws on failure.
+ *
+ * Provenance note: `observedFromCache` is set via `getCache().hitCount()`, which
+ * is incremented inside `LibSqlCache.get()` on every real cache hit. This is
+ * accurate for single-audit runs (the governor prevents re-entry, so concurrent
+ * hit-count bleed from other requests is not a real concern in practice).
+ *
+ * When `fresh` is true, all fetches bypass the cache (`skipCache: true` in every
+ * `GatewayCall`) — the documented --fresh post-release bypass (spec E1).
+ */
+export async function gatherListing(appId: string, country: string, fresh = false) {
   getCache().resetHitCount();
 
-  const listing = await resolveListing({ appId, country });
+  const listing = await resolveListing({ appId, country }, fresh ? { skipCache: true } : undefined);
   if (!listing.ok) throw new Error(listing.error);
 
-  // E1: stamp observedFromCache=true if every fetch was served from cache.
   const hits = getCache().hitCount();
   if (hits > 0) {
     return {
@@ -42,7 +50,9 @@ export const gatherListingTool = createTool({
   inputSchema: z.object({
     appId: z.string().describe('The numeric App Store app ID.'),
     country: z.string().describe('Two-letter storefront code, e.g. "us".'),
+    /** When true, all fetches bypass the cache (--fresh mode). */
+    fresh: z.boolean().optional().default(false),
   }),
   outputSchema: AppListingSchema,
-  execute: async ({ appId, country }) => gatherListing(appId, country),
+  execute: async ({ appId, country, fresh }) => gatherListing(appId, country, fresh),
 });

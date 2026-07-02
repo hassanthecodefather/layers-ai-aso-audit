@@ -13,6 +13,7 @@ import type { StorageClient } from './storage-client';
 import { computeRecKey, valueKeyFor, findContradiction, normalizeValueKey } from './dedup';
 import { newId } from './ids';
 import { toIdentityVersion } from '../mastra/tools/resolve-identity';
+import { assignProofRegime } from '../scoring/proof-regime';
 
 /**
  * The P1 memory service (spec P1 uplifts): turn a finished audit into ledger
@@ -22,18 +23,18 @@ import { toIdentityVersion } from '../mastra/tools/resolve-identity';
  * first, marks applied, never repeats" true end-to-end.
  */
 
-/** Per-dimension defaults for fields the model doesn't emit. */
-const DIMENSION_MAP: Record<DimensionId, { targetField: string | null; proofRegime: ProofRegime }> = {
-  title:        { targetField: 'title',        proofRegime: 'observable_now' },
-  subtitle:     { targetField: 'subtitle',     proofRegime: 'observable_now' },
-  keywordField: { targetField: 'keywordField', proofRegime: 'observable_now' },
-  description:  { targetField: 'description',  proofRegime: 'correlational'  },
-  screenshots:  { targetField: 'screenshots',  proofRegime: 'ppo_causal'     },
-  previewVideo: { targetField: null,            proofRegime: 'ppo_causal'     },
-  ratings:      { targetField: 'reviews',      proofRegime: 'correlational'  },
-  icon:         { targetField: 'icon',          proofRegime: 'ppo_causal'     },
-  conversion:   { targetField: null,            proofRegime: 'correlational'  },
-  competitive:  { targetField: null,            proofRegime: 'correlational'  },
+/** Per-dimension defaults for target field; proof regime is now intent-level (see assignProofRegime). */
+const DIMENSION_MAP: Record<DimensionId, { targetField: string | null }> = {
+  title:        { targetField: 'title'        },
+  subtitle:     { targetField: 'subtitle'     },
+  keywordField: { targetField: 'keywordField' },
+  description:  { targetField: 'description'  },
+  screenshots:  { targetField: 'screenshots'  },
+  previewVideo: { targetField: null           },
+  ratings:      { targetField: 'reviews'      },
+  icon:         { targetField: 'icon'         },
+  conversion:   { targetField: null           },
+  competitive:  { targetField: null           },
 };
 
 /** Intents that rewrite the app's *identity* — suppressed when ID is unconfirmed. */
@@ -112,7 +113,7 @@ export function toLedgerRec(
     firstSeenAt: ctx.now,
     lastSeenAt: ctx.now,
     appliedAt: null,
-    proofRegime: map.proofRegime,
+    proofRegime: assignProofRegime(rec.intent),
   };
 }
 

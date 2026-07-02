@@ -8,6 +8,22 @@
  * with no coupling to the server's dependency tree.
  */
 
+export interface ResolvedIdentity {
+  category: string;
+  categoryBand: 'high' | 'medium' | 'low';
+  niche: string | null;
+  nicheBand: 'high' | 'medium' | 'low' | null;
+  divergence: string;
+  escalate: boolean;
+  source: string;
+}
+
+export interface IdentityDecision {
+  action: 'confirm' | 'correct';
+  category?: string;
+  niche?: string | null;
+}
+
 export interface AppSummary {
   appId: string;
   country: string;
@@ -45,6 +61,7 @@ export interface Recommendation {
   evidence: string;
   before: string | null;
   after: string | null;
+  proofRegime?: 'observable_now' | 'correlational' | 'funnel_asc' | 'ppo_causal';
 }
 
 export interface CompetitorRow {

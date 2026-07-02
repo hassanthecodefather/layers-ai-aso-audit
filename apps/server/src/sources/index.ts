@@ -35,8 +35,8 @@ export async function resolveSummary(ref: AppRef): Promise<Result<AppSummary>> {
 }
 
 /** Full listing — every source merged into the canonical model. */
-export async function resolveListing(ref: AppRef): Promise<Result<AppListing>> {
-  const core = await fetchITunesCore(ref);
+export async function resolveListing(ref: AppRef, opts?: { skipCache?: boolean }): Promise<Result<AppListing>> {
+  const core = await fetchITunesCore(ref, opts);
   if (!core.ok) return err(core.error);
 
   const searchTerm =
@@ -45,8 +45,8 @@ export async function resolveListing(ref: AppRef): Promise<Result<AppListing>> {
 
   // Independent sources — fan out in parallel, none can fail the audit.
   const [reviews, competitors, extras] = await Promise.all([
-    fetchReviews(ref),
-    fetchCompetitors(ref, searchTerm),
+    fetchReviews(ref, 500, opts),
+    fetchCompetitors(ref, searchTerm, 4, opts),
     crawler.scrape(core.value.url),
   ]);
 

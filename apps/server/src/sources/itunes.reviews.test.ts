@@ -242,7 +242,8 @@ describe('fetchReviews — pagination', () => {
 
 describe('fetchReviews — error handling', () => {
   beforeEach(() => {
-    vi.spyOn(global, 'fetch');
+    // Default rejection prevents real HTTP on any unexpected/retry fetch call.
+    vi.spyOn(global, 'fetch').mockRejectedValue(new Error('fetch: unmocked call'));
   });
 
   afterEach(() => {

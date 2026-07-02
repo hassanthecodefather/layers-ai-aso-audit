@@ -25,7 +25,9 @@ interface FetchOptions {
   readonly timeoutMs?: number;
   readonly retries?: number;
   readonly init?: RequestInit;
-  readonly call?: GatewayCall; // NEW — passed to gateway.fetch()
+  readonly call?: GatewayCall;
+  /** When true, bypasses the cache for this call (--fresh mode). */
+  readonly skipCache?: boolean;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -37,7 +39,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  */
 export async function fetchWithRetry(
   url: string,
-  { source, timeoutMs = 12_000, retries = 2, init, call }: FetchOptions,
+  { source, timeoutMs = 12_000, retries = 2, init, call, skipCache }: FetchOptions,
 ): Promise<Response> {
   let lastError: unknown;
 
@@ -45,7 +47,11 @@ export async function fetchWithRetry(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const res = await getGateway().fetch(url, call ?? { kind: 'app', upstream: 'itunes' }, { ...init, signal: controller.signal });
+      const effectiveCall: GatewayCall = {
+        ...(call ?? { kind: 'app', upstream: 'itunes' }),
+        ...(skipCache ? { skipCache: true } : {}),
+      };
+      const res = await getGateway().fetch(url, effectiveCall, { ...init, signal: controller.signal });
       if (res.ok) return res;
 
       const retryable = res.status === 429 || res.status >= 500;

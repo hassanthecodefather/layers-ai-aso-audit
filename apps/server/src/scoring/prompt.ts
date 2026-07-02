@@ -5,6 +5,12 @@ import type { LinterResult } from '../keywords/linter';
 import type { CandidateResult } from '../keywords/candidates';
 import type { ThemeAnalysisResult } from '../reviews/themes';
 import { formatCandidatesForPrompt } from '../keywords/candidates';
+import type { RankedKeyword } from '../keywords/opportunity';
+import { formatOpportunitiesForPrompt } from '../keywords/opportunity';
+import type { CompetitorMiningResult } from '../keywords/competitor-mining';
+import { formatCompetitorMiningForPrompt } from '../keywords/competitor-mining';
+import type { CompetitorTieringResult } from '../sources/competitor-tiering';
+import { formatCompetitorTieringForPrompt } from '../sources/competitor-tiering';
 import { RUBRIC } from './rubric';
 import { codeScore, visionUsable } from './dimension-scorer';
 
@@ -359,7 +365,12 @@ export function buildAuditPrompt(
   visionResult?: VisionResult,
   candidateResult?: CandidateResult,
   themeResult?: ThemeAnalysisResult | null,
+  rankedKeywords?: RankedKeyword[],
+  competitorMining?: CompetitorMiningResult | null,
+  competitorTiering?: CompetitorTieringResult | null,
 ): string {
+  const competitorMiningSection = formatCompetitorMiningForPrompt(competitorMining);
+  const competitorTieringSection = formatCompetitorTieringForPrompt(competitorTiering);
   return [
     `Audit this App Store listing: "${listing.name}" by ${listing.developer}.`,
     `Store: ${listing.country.toUpperCase()} · ${listing.url}`,
@@ -380,13 +391,16 @@ export function buildAuditPrompt(
     keywordLinterFacts(signals.keywordLinter),
     '',
     ...(candidateResult ? [formatCandidatesForPrompt(candidateResult), ''] : []),
+    ...(rankedKeywords && rankedKeywords.length > 0 ? [formatOpportunitiesForPrompt(rankedKeywords), ''] : []),
     '## Category competitors',
     competitors(listing),
     '',
+    ...(competitorTieringSection ? [competitorTieringSection, ''] : []),
     '## Recent review sample',
     reviewSample(listing),
     '',
     ...(themeSection(themeResult) ? [themeSection(themeResult), ''] : []),
+    ...(competitorMiningSection ? [competitorMiningSection, ''] : []),
     '## Rubric — score each dimension 0-10 against these checks',
     rubricChecks(),
     '',

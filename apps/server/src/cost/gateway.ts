@@ -15,16 +15,18 @@ import { getCache } from './cache';
 export { GovernorDenialError } from './governor';
 
 export type EntityKind = 'app' | 'competitor' | 'asset';
-export type UpstreamKind = 'itunes' | 'crawler' | 'reviews' | 'vision' | 'appkittie' | 'embedding';
+export type UpstreamKind = 'itunes' | 'competitors' | 'crawler' | 'reviews' | 'vision' | 'appkittie' | 'embedding' | 'websearch';
 
 const CACHE_TTL_SECONDS: Partial<Record<UpstreamKind, number>> = {
-  itunes: 24 * 60 * 60,    // 24h
-  reviews: 2 * 60 * 60,    // 2h
-  crawler: 24 * 60 * 60,   // 24h
-  appkittie: 24 * 60 * 60, // 24h
+  itunes: 24 * 60 * 60,         // 24h  — core metadata changes slowly
+  competitors: 7 * 24 * 60 * 60, // 7d   — search results stable week-to-week
+  reviews: 2 * 60 * 60,          // 2h   — reviews accumulate fast
+  crawler: 24 * 60 * 60,         // 24h
+  appkittie: 24 * 60 * 60,       // 24h
+  websearch: 7 * 24 * 60 * 60,   // 7d   — corroboration is stable
 };
 
-const CACHEABLE_UPSTREAMS = new Set<UpstreamKind>(['itunes', 'reviews', 'crawler', 'appkittie']);
+const CACHEABLE_UPSTREAMS = new Set<UpstreamKind>(['itunes', 'competitors', 'reviews', 'crawler', 'appkittie', 'websearch']);
 
 export interface GatewayCall {
   kind: EntityKind;
@@ -44,58 +46,82 @@ export interface SourceGateway {
 }
 
 export class PassthroughGateway implements SourceGateway {
+  // In-run same-key coalescing: maps cache key → in-flight body-text promise.
+  // When two concurrent requests target the same cacheable entity, the second
+  // waits for the first's result rather than issuing a duplicate upstream call.
+  #inFlight = new Map<string, Promise<string>>();
+
   async fetch(url: string, call: GatewayCall, init?: RequestInit): Promise<Response> {
-    // 1. Cache lookup — happens BEFORE governor so cache hits are truly free:
-    //    no metered-call count, no pacer delay, no upstream call.
     const shouldCache =
       CACHEABLE_UPSTREAMS.has(call.upstream) &&
       call.kind !== 'asset' &&
       !call.skipCache;
 
-    if (shouldCache) {
-      const key = call.entityId
-        ? `${call.upstream}:${call.entityId}`
-        : `${call.upstream}:${createHash('sha256').update(url).digest('hex').slice(0, 16)}`;
+    // Compute the cache key once — used in both the lookup and the store.
+    const key = shouldCache
+      ? (call.entityId
+          ? `${call.upstream}:${call.entityId}`
+          : `${call.upstream}:${createHash('sha256').update(url).digest('hex').slice(0, 16)}`)
+      : null;
+
+    // 1. Cache lookup — happens BEFORE governor so cache hits are truly free.
+    if (key) {
       const hit = await getCache().get<string>(key);
       if (hit) {
         return new Response(hit.value, {
           status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Cache': 'HIT',
-            'X-Fetched-At': hit.fetchedAt,
-          },
+          headers: { 'Content-Type': 'application/json', 'X-Cache': 'HIT', 'X-Fetched-At': hit.fetchedAt },
         });
       }
     }
 
-    // 2. Governor preflight — counts only real upstream calls (cache misses)
+    // 2. In-flight coalescing — also free (no governor, no pacer).
+    if (key) {
+      const pending = this.#inFlight.get(key);
+      if (pending) {
+        const text = await pending; // rejects if the primary fetch failed; fetchWithRetry will retry
+        return new Response(text, {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', 'X-Cache': 'HIT-COALESCED' },
+        });
+      }
+    }
+
+    // 3. Governor preflight — counts only real upstream calls (cache misses).
     const denial = getGovernor().preflight();
     if (!denial.ok) {
       throw new GovernorDenialError(denial.error, url, call);
     }
 
-    // 3. Courtesy throttle — iTunes only (shared IP, ~20 calls/min ceiling)
+    // 4. Courtesy throttle — iTunes/reviews only (shared IP, ~20 calls/min ceiling).
     if (call.upstream === 'itunes' || call.upstream === 'reviews') {
       await getPacer().wait();
     }
 
-    // 4. Real fetch
-    const response = await fetch(url, init);
-
-    // 5. Cache the response body on success
-    if (shouldCache && response.ok) {
-      const key = call.entityId
-        ? `${call.upstream}:${call.entityId}`
-        : `${call.upstream}:${createHash('sha256').update(url).digest('hex').slice(0, 16)}`;
-      const text = await response.text();
-      const ttl = CACHE_TTL_SECONDS[call.upstream] ?? 3600;
-      await getCache().set(key, text, ttl);
-      const contentType = response.headers.get('Content-Type') ?? 'application/json';
-      return new Response(text, { status: response.status, headers: { 'Content-Type': contentType } });
+    // 5a. Cacheable path: register an in-flight promise BEFORE awaiting the fetch
+    //     so any concurrent caller that passes step 2 after us coalesces correctly.
+    if (key) {
+      const bodyPromise = fetch(url, init).then(async (response) => {
+        if (!response.ok) throw response; // non-OK: reject so the caller sees the real response
+        const text = await response.text();
+        const ttl = CACHE_TTL_SECONDS[call.upstream] ?? 3600;
+        await getCache().set(key, text, ttl);
+        return text;
+      });
+      this.#inFlight.set(key, bodyPromise); // synchronous — before any await
+      try {
+        const text = await bodyPromise;
+        return new Response(text, { status: 200, headers: { 'Content-Type': 'application/json' } });
+      } catch (e) {
+        if (e instanceof Response) return e; // non-OK HTTP: pass through to fetchWithRetry
+        throw e; // network / timeout error
+      } finally {
+        this.#inFlight.delete(key);
+      }
     }
 
-    return response;
+    // 5b. Non-cacheable path: plain pass-through.
+    return fetch(url, init);
   }
 }
 

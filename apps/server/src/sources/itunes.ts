@@ -111,12 +111,16 @@ function toCore(app: RawLookupApp, ref: AppRef): ITunesCore {
 }
 
 /** Fetch core metadata for one app. The cheap call behind the confirm step. */
-export async function fetchITunesCore(ref: AppRef): Promise<Result<ITunesCore>> {
+export async function fetchITunesCore(ref: AppRef, opts?: { skipCache?: boolean }): Promise<Result<ITunesCore>> {
   const url =
     `https://itunes.apple.com/lookup?id=${encodeURIComponent(ref.appId)}` +
     `&country=${encodeURIComponent(ref.country)}&entity=software`;
   try {
-    const data = await fetchJson<RawLookupResponse>(url, { source: 'iTunes Lookup' });
+    const data = await fetchJson<RawLookupResponse>(url, {
+      source: 'iTunes Lookup',
+      call: { kind: 'app', upstream: 'itunes', entityId: `${ref.appId}:${ref.country}` },
+      skipCache: opts?.skipCache,
+    });
     const app = data.results?.find(
       (r) => (r.kind ?? r.wrapperType) === 'software',
     );
@@ -172,7 +176,7 @@ function reviewContentId(e: RawRssEntry): string {
  * Paginates across up to 10 pages of 50 reviews each (Apple's public limit),
  * stopping early when a page returns no entries or on network error.
  */
-export async function fetchReviews(ref: AppRef, limit = 500): Promise<Review[]> {
+export async function fetchReviews(ref: AppRef, limit = 500, opts?: { skipCache?: boolean }): Promise<Review[]> {
   const all: Review[] = [];
   for (let page = 1; page <= 10 && all.length < limit; page++) {
     const url =
@@ -182,6 +186,8 @@ export async function fetchReviews(ref: AppRef, limit = 500): Promise<Review[]> 
       const data = await fetchJson<RawRssResponse>(url, {
         source: 'iTunes Reviews',
         retries: 1,
+        call: { kind: 'app', upstream: 'reviews', entityId: `${ref.appId}:${ref.country}:p${page}` },
+        skipCache: opts?.skipCache,
       });
       const raw = data.feed?.entry;
       const entries = Array.isArray(raw) ? raw : raw ? [raw] : [];
@@ -254,6 +260,7 @@ export async function fetchCompetitors(
   ref: AppRef,
   searchTerm: string,
   limit = 4,
+  opts?: { skipCache?: boolean },
 ): Promise<Competitor[]> {
   const term = searchTerm.trim();
   if (!term) return [];
@@ -264,6 +271,9 @@ export async function fetchCompetitors(
     const data = await fetchJson<RawLookupResponse>(url, {
       source: 'iTunes Search',
       retries: 1,
+      // 'competitors' upstream: 7d TTL (spec E1), separate from iTunes core 24h.
+      call: { kind: 'competitor', upstream: 'competitors', entityId: `${ref.country}:${term}` },
+      skipCache: opts?.skipCache,
     });
     return (data.results ?? [])
       .filter((r) => String(r.trackId) !== ref.appId && r.trackName)

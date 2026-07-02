@@ -5,6 +5,7 @@ import { ConfirmationCard } from './components/ConfirmationCard';
 import { ProgressTrace } from './components/ProgressTrace';
 import { ReportView } from './components/ReportView';
 import { fetchHealth, type Health } from './lib/api';
+import type { IdentityDecision } from './lib/types';
 
 /** Top-level chat shell: header, scrolling conversation, composer. */
 export function App() {
@@ -139,7 +140,7 @@ function EmptyState() {
 
 interface MessageRowProps {
   message: ChatMessage;
-  onConfirm: () => void;
+  onConfirm: (identityDecision: IdentityDecision | null) => void;
   onReject: () => void;
 }
 
@@ -171,6 +172,8 @@ function MessageRow({ message, onConfirm, onReject }: MessageRowProps) {
         <Agent>
           <ConfirmationCard
             summary={message.summary}
+            identity={message.identity}
+            identityNeedsConfirm={message.identityNeedsConfirm}
             decision={message.decision}
             onConfirm={onConfirm}
             onReject={onReject}

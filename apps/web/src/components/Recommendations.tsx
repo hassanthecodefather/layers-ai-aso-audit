@@ -120,10 +120,30 @@ function RecommendationCard({ rec }: { rec: Recommendation }) {
         </div>
       )}
 
-      <p className="mt-2.5 text-[11px] text-zinc-600">
-        <span className="text-zinc-500">Evidence:</span> {rec.evidence}
-      </p>
+      <div className="mt-2.5 flex items-center justify-between gap-2">
+        <p className="text-[11px] text-zinc-600">
+          <span className="text-zinc-500">Evidence:</span> {rec.evidence}
+        </p>
+        {rec.proofRegime && <ProofRegimeBadge regime={rec.proofRegime} />}
+      </div>
     </article>
+  );
+}
+
+const PROOF_REGIME_LABEL: Record<string, { label: string; cls: string }> = {
+  observable_now: { label: 'Observable',    cls: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400' },
+  correlational:  { label: 'Correlational', cls: 'border-sky-500/30 bg-sky-500/10 text-sky-400' },
+  funnel_asc:     { label: 'ASC funnel',    cls: 'border-amber-500/30 bg-amber-500/10 text-amber-400' },
+  ppo_causal:     { label: 'PPO test',      cls: 'border-violet-500/30 bg-violet-500/10 text-violet-400' },
+};
+
+function ProofRegimeBadge({ regime }: { regime: string }) {
+  const def = PROOF_REGIME_LABEL[regime];
+  if (!def) return null;
+  return (
+    <span title="How you can measure this rec's effect" className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-medium ${def.cls}`}>
+      {def.label}
+    </span>
   );
 }
 

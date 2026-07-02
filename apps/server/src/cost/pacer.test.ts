@@ -10,12 +10,15 @@ const MIN_INTERVAL_MS = 3500;
 
 beforeEach(() => {
   vi.useFakeTimers();
+  // Pin jitter to zero so timing assertions are deterministic regardless of JITTER_MS.
+  vi.spyOn(Math, 'random').mockReturnValue(0);
   // Reset singleton to a fresh pacer before each test
   setPacer(new SerialPacer());
   getPacer().reset();
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 

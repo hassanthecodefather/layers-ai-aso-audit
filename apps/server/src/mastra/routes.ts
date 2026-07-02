@@ -2,6 +2,10 @@ import { registerApiRoute } from '@mastra/core/server';
 import { streamSSE } from 'hono/streaming';
 import { getLlmProvider } from '../llm';
 import { getCrawler } from '../sources/crawler';
+import { fetchITunesCore } from '../sources/itunes';
+import { sweepStorefronts, DEFAULT_SWEEP_COUNTRIES } from '../sources/storefront-sweep';
+import { AuditReportSchema } from '../domain/audit';
+import { reportToMarkdown, markdownFilename } from '../export/markdown';
 
 /**
  * Custom HTTP routes that drive the audit workflow for the chat UI.
@@ -89,7 +93,38 @@ function progressFor(stepId: string): { phase: string; message: string } | null 
   }
 }
 
+// ── /audit/sweep — storefront sweep (observe-only, free iTunes) ───────────────
+
+/** ISO country codes we accept; keeps the endpoint from being a free proxy. */
+const ALLOWED_COUNTRIES = new Set([
+  'gb', 'au', 'ca', 'de', 'fr', 'es', 'it', 'jp', 'kr', 'br',
+  'mx', 'nl', 'se', 'no', 'dk', 'fi', 'pl', 'pt', 'tr', 'in',
+  'hk', 'sg', 'tw', 'nz', 'za', 'ar', 'cl', 'co', 'ru', 'cn',
+]);
+
 export const auditRoutes = [
+  // ── Portable Markdown export ──────────────────────────────────────────────
+  registerApiRoute('/audit/export/markdown', {
+    method: 'POST',
+    handler: async (c) => {
+      try {
+        const body = await c.req.json().catch(() => ({}));
+        const parsed = AuditReportSchema.safeParse(body?.report);
+        if (!parsed.success) {
+          return c.json({ error: 'Invalid report payload.' }, 400);
+        }
+        const md = reportToMarkdown(parsed.data);
+        const filename = markdownFilename(parsed.data);
+        c.header('Content-Type', 'text/markdown; charset=utf-8');
+        c.header('Content-Disposition', `attachment; filename="${filename}"`);
+        return c.body(md);
+      } catch (e) {
+        console.error('[export/markdown] failed:', e);
+        return c.json({ error: e instanceof Error ? e.message : 'Export failed.' }, 500);
+      }
+    },
+  }),
+
   // ── Capability probe — lets the UI tell the user what's configured ───────
   registerApiRoute('/audit/health', {
     method: 'GET',
@@ -160,6 +195,35 @@ export const auditRoutes = [
     },
   }),
 
+  // ── Storefront sweep — observe-only, free iTunes ──────────────────────────
+  registerApiRoute('/audit/sweep', {
+    method: 'POST',
+    handler: async (c) => {
+      try {
+        const body = await c.req.json().catch(() => ({}));
+        const appId = typeof body?.appId === 'string' ? body.appId.trim() : '';
+        if (!appId) return c.json({ error: 'Missing appId.' }, 400);
+
+        // Countries to sweep — default to the canonical four if not specified.
+        const requested: string[] = Array.isArray(body?.countries)
+          ? (body.countries as unknown[]).filter((c): c is string => typeof c === 'string').map((c) => c.toLowerCase())
+          : [...DEFAULT_SWEEP_COUNTRIES];
+        const countries = requested.filter((c) => ALLOWED_COUNTRIES.has(c));
+        if (countries.length === 0) return c.json({ error: 'No valid country codes provided.' }, 400);
+
+        // Fetch the primary (US) listing.
+        const primary = await fetchITunesCore({ appId, country: 'us' });
+        if (!primary.ok) return c.json({ error: `App not found in US store: ${primary.error}` }, 404);
+
+        const results = await sweepStorefronts(appId, primary.value, countries);
+        return c.json({ appId, primary: primary.value.name, results });
+      } catch (e) {
+        console.error('[sweep] failed:', e);
+        return c.json({ error: e instanceof Error ? e.message : 'Sweep failed.' }, 500);
+      }
+    },
+  }),
+
   // ── Turn 2: run the audit, streaming progress then the report ────────────
   registerApiRoute('/audit/run', {
     method: 'POST',
@@ -168,9 +232,10 @@ export const auditRoutes = [
       const body = await c.req.json().catch(() => ({}));
       const runId = typeof body?.runId === 'string' ? body.runId : '';
       if (!runId) return c.json({ error: 'Missing runId.' }, 400);
-      // Optional identity decision from the widened confirm prompt
-      // (confirm / correct / pick). Absent for the common no-ask case.
       const identityDecision = body?.identityDecision ?? null;
+      // When true, all source fetches in gather-listing bypass the cache.
+      // The documented --fresh post-release bypass (spec E1).
+      const fresh = typeof body?.fresh === 'boolean' ? body.fresh : false;
 
       const workflow = mastra.getWorkflow(WORKFLOW_ID);
       const run =
@@ -195,7 +260,7 @@ export const auditRoutes = [
         try {
           const wfStream = await run.resumeStream({
             step: 'confirm-app',
-            resumeData: { confirmed: true, identityDecision },
+            resumeData: { confirmed: true, identityDecision, fresh },
           });
 
           const seen = new Set<string>();

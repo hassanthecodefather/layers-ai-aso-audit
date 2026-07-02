@@ -5,7 +5,7 @@ contracts live elsewhere: [`specification.md`](specification.md) is the *what*,
 [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) is the *how-to-build*. This
 file is the *where-we-are* — read it first, trust the tests over the prose.
 
-_Last updated: 2026-07-02 · spec v1.3.2 · **Phase E complete (cache + governor + pacer, 400 tests)**_
+_Last updated: 2026-07-02 · spec v1.3.2 · **Phase E complete (400 tests); Phase F base DoD met + F-K5 shipped (437 tests); F-K2 ✅ + F-K3 ✅ shipped (475 tests); F-K4 pending**_
 
 Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferred (by design)
 
@@ -19,7 +19,7 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
 | **C** | P3 keyword research (160-char linter) | ✅ | tsc clean · 365 tests · linter deterministic · stub honest · gap analysis inferred · candidateResult reuse (C4 residual closed) |
 | **D** | P4 deep review analysis | ✅ | RSS→500, 15-bucket theme taxonomy + per-version delta, multi-instance graduation; **`other`-bucket embedding dedup** (cosine ≥ 0.85, merge bug fixed); **D3 function-grounded competitors** (identity-seeded → AppKittie topApps → iTunes listings, #1/#2 fixed). §F P4 both paths green. 1 carry-over (#3 re-embed cost) |
 | **E** | P5 cost & courtesy control | ✅ | Gateway chokepoint; governor (count 2000/hr, run-entry 2s, wall-clock 5min); pacer (iTunes ≥3.5s, Retry-After); LibSQL `aso_cache` (iTunes 24h, reviews 2h, appkittie 24h); `observedFromCache` provenance. 400 tests, tsc clean. |
-| **F** | Net-new uplifts (storefront sweep, export, …) | ⬜ | — |
+| **F** | Net-new uplifts (storefront sweep, export, …) | 🚧 | Base DoD met (415/418 tests): storefront sweep + proof regime + Markdown export + F-K1 keyword ranking. F-K2 (competitor review mining), F-K3 (competitor tiering), F-K4 (competitor visual benchmarking), F-K5 (web-search corroboration) still open. |
 | **P6+** | Multi-tenant, ASC, write-path, North Star | ⏸ | planned at their tier, not now |
 
 ## Phase D — detail
@@ -173,11 +173,28 @@ Phase A carry-overs: **all closed in B4** (applied-detection extended, escalate 
 - **Node ≥ 20.12 required** (vitest 4 / rolldown). The shell may default to Node
   18 — `nvm use 24` first, or `npm install` + tests fail on a missing native binding.
 
+## Phase F — detail
+
+| Task | Status | Lives in |
+|---|---|---|
+| F1 · Connect-to-measure proof regime | ✅ | `scoring/proof-regime.ts`, `domain/audit.ts`, `web/src/components/Recommendations.tsx` (badge) |
+| F-K1 · Keyword opportunity ranking | ✅ | `keywords/opportunity.ts`, `scoring/prompt.ts` (injected), `mastra/workflows/audit-workflow.ts` — 15 unit tests |
+| Storefront sweep | ✅ | `sources/storefront-sweep.ts`, `/audit/sweep` route, `web/src/components/StorefrontComparison.tsx` |
+| Portable Markdown export | ✅ | `export/markdown.ts`, `/audit/export/markdown` route, Export .md button in `ReportView.tsx` |
+| **F-K2 · Competitor review mining** | ✅ | `keywords/competitor-mining.ts` (`mineCompetitorReviews`, `formatCompetitorMiningForPrompt`); fetches ≤3 competitors × 50 reviews, filters 1–2★, runs combined `analyzeThemes`; gated on D3 (`d3ProvidedCompetitors`); prompt section injected after theme analysis; 15 tests |
+| **F-K3 · Competitor tiering + per-keyword mapping** | ✅ | `sources/competitor-tiering.ts` (`tierCompetitors`, `mapKeywordGapsToCompetitors`, `buildCompetitorTieringResult`, `formatCompetitorTieringForPrompt`); deterministic, no LLM; gated on D3; prompt section injected after competitors block; 23 tests |
+| **F-K4 · Competitor visual benchmarking** | ⬜ | Wire competitor first-frames + icons into vision → first-value-prop / color-contrast comparison |
+| **F-K5 · Web-search corroboration** | ✅ | `TavilyWebSearch` (primary) + `ExaWebSearch` (fallback) + factory (`TAVILY_API_KEY` → Tavily → `EXA_API_KEY` → Exa → Noop); probe wired into identity tally (`footprint` family); `websearch` added to gateway cache (7d TTL); 22 new tests |
+
+**Base DoD:** one US URL → four storefronts back with one rec per gap + per-rec proof regime badge. Met (415/418 tests, tsc clean).
+
+**F-K DoD (pending):** every keyword/competitor finding carries provenance (`observed | inferred | estimated`). F-K1 ships the ranking; F-K2/K3 add competitor intel; F-K5 activates web-search corroboration (keys already keyed). Sequence: F-K2 → F-K3 → F-K5 → F-K4 (most expensive, deferred).
+
 ## Next up
 
-- **Phases 0–E all complete (400 tests, tsc clean).** **Phase F (net-new uplifts) is next** — storefront sweep, connect-to-measure manifest, portable export, review-vocabulary keyword miner.
+- **F-K5 ✅ + F-K2 ✅ + F-K3 ✅ shipped (475 tests).** F-K4 (competitor visual benchmarking) deferred — requires competitor icon/screenshot URLs from D3 + vision cost. Add `TAVILY_API_KEY` or `EXA_API_KEY` to `.env` to activate real web-search corroboration.
 - **Phase D carry-over (non-blocking):** #3 — `resolveOtherThemeKey` re-embeds priors each call (store the vector + pin the embedding model id later).
-- **Competitor images** — `analyze.ts` still passes empty competitor icon/screenshot URLs; D3 now provides competitor app ids, so competitor visual benchmarking could be wired (Phase E/F, mind vision cost + decision-#6 egress).
+- **Competitor images** — `analyze.ts` still passes empty competitor icon/screenshot URLs; D3 now provides competitor app ids, so F-K4 competitor visual benchmarking could be wired after F-K5 (mind vision cost + decision-#6 egress).
 
 ## Key-arrival follow-ups (drop-in, one file each)
 

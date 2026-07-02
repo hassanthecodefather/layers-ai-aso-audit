@@ -6,6 +6,9 @@
  */
 
 const MIN_INTERVAL_MS = 3500; // ~17 calls/min — safely under Apple's ~20/min ceiling
+// Full-jitter: spread calls across [MIN_INTERVAL_MS, MIN_INTERVAL_MS + JITTER_MS]
+// so concurrent callers don't produce a synchronized burst after a shared wait.
+const JITTER_MS = 500;
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -29,8 +32,13 @@ export class SerialPacer implements Pacer {
 
     if (this.#lastCallMs !== null) {
       const elapsed = now - this.#lastCallMs;
-      const delay = Math.max(0, floor - elapsed);
-      if (delay > 0) await sleep(delay);
+      const baseDelay = Math.max(0, floor - elapsed);
+      // Jitter only applies when we are already waiting — it spreads bursts but
+      // never introduces a sleep where none was needed.
+      if (baseDelay > 0) {
+        const jitter = Math.floor(Math.random() * JITTER_MS);
+        await sleep(baseDelay + jitter);
+      }
     }
 
     this.#lastCallMs = Date.now();

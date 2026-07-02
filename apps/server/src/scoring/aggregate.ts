@@ -13,6 +13,7 @@ import { rubricFor } from './rubric';
 import type { ListingSignals } from './signals';
 import { deriveConfidence, codeScore, coarseOrdinalScore } from './dimension-scorer';
 import { replayOverallScore } from './replay';
+import { assignProofRegime } from './proof-regime';
 import type { VisionResult } from '../vision/types';
 import type { ThemeAnalysisResult } from '../reviews/themes';
 
@@ -102,7 +103,9 @@ export function assembleReport(
   const overallScore = replayOverallScore(dimensions, (id) => rubricFor(id).weight);
 
   const inCategory = (c: Recommendation['category']): Recommendation[] =>
-    draft.recommendations.filter((r) => r.category === c);
+    draft.recommendations
+      .filter((r) => r.category === c)
+      .map((r) => ({ ...r, proofRegime: assignProofRegime(r.intent) }));
 
   const sampleSize = themeResult
     ? new Set(themeResult.themes.flatMap((t) => t.reviewIds)).size

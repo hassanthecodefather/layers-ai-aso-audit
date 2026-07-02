@@ -128,12 +128,13 @@ export async function resolveAppIdentity(
   opts: { fetchedAt?: string } = {},
 ): Promise<ResolvedIdentity> {
   const signals = extractIdentitySignals(listing);
-  // The external-corroboration tier is stubbed (no key yet); a real footprint
-  // hit would add the `footprint` family. Until then it reports searched-empty
-  // and ID-lite simply starts lower on the ladder.
-  await getWebSearch().probe(buildFactSheet(signals));
-  const classification = await classify(buildFactSheet(signals));
-  return resolveIdentity(signals, classification, { fetchedAt: opts.fetchedAt });
+  const factSheet = buildFactSheet(signals);
+  const [probeResult, classification] = await Promise.all([
+    getWebSearch().probe(factSheet),
+    classify(factSheet),
+  ]);
+  const footprintProbe = probeResult.ok ? probeResult.value : undefined;
+  return resolveIdentity(signals, classification, { fetchedAt: opts.fetchedAt, footprintProbe });
 }
 
 /** Stamp a resolved identity into an append-ready `IdentityVersion` row (stage=lite). */

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { AppSummarySchema } from './listing';
-import { IntentTagSchema, ReferentSchema } from './recommendation';
+import { IntentTagSchema, ReferentSchema, ProofRegimeSchema } from './recommendation';
 
 /**
  * The ten ASO dimensions. The order here is the order they render in the
@@ -64,6 +64,8 @@ export const RecommendationSchema = z.object({
   evidence: z.string().describe('The specific data point that prompted this.'),
   before: z.string().nullable(),
   after: z.string().nullable(),
+  /** Which proof regime can ever measure this rec's effect (connect-to-measure manifest). */
+  proofRegime: ProofRegimeSchema.optional(),
 });
 export type Recommendation = z.infer<typeof RecommendationSchema>;
 
