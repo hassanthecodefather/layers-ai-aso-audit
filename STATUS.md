@@ -5,7 +5,7 @@ contracts live elsewhere: [`specification.md`](specification.md) is the *what*,
 [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) is the *how-to-build*. This
 file is the *where-we-are* — read it first, trust the tests over the prose.
 
-_Last updated: 2026-07-01 · spec v1.3.1 · **Phase E complete (cache + governor + pacer, 399 tests)**_
+_Last updated: 2026-07-02 · spec v1.3.2 · **Phase E complete (cache + governor + pacer, 400 tests)**_
 
 Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferred (by design)
 
@@ -18,7 +18,7 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
 | **B** | P2 image analysis + ID-full | ✅ | §F P2 green (vision confidence, zero-LLM reuse, pHash observed, promote-panel non-panoramic-only); ID-full stage=`full` augments identity without mutating ID-lite fields. **Live-verified on the real Rivian listing** (B5 hardening). |
 | **C** | P3 keyword research (160-char linter) | ✅ | tsc clean · 365 tests · linter deterministic · stub honest · gap analysis inferred · candidateResult reuse (C4 residual closed) |
 | **D** | P4 deep review analysis | ✅ | RSS→500, 15-bucket theme taxonomy + per-version delta, multi-instance graduation; **`other`-bucket embedding dedup** (cosine ≥ 0.85, merge bug fixed); **D3 function-grounded competitors** (identity-seeded → AppKittie topApps → iTunes listings, #1/#2 fixed). §F P4 both paths green. 1 carry-over (#3 re-embed cost) |
-| **E** | P5 cost & courtesy control | ✅ | Gateway chokepoint; governor (count 2000/hr, run-entry 2s, wall-clock 5min); pacer (iTunes ≥3.5s, Retry-After); LibSQL `aso_cache` (iTunes 24h, reviews 2h, appkittie 24h); `observedFromCache` provenance. 399 tests, tsc clean. |
+| **E** | P5 cost & courtesy control | ✅ | Gateway chokepoint; governor (count 2000/hr, run-entry 2s, wall-clock 5min); pacer (iTunes ≥3.5s, Retry-After); LibSQL `aso_cache` (iTunes 24h, reviews 2h, appkittie 24h); `observedFromCache` provenance. 400 tests, tsc clean. |
 | **F** | Net-new uplifts (storefront sweep, export, …) | ⬜ | — |
 | **P6+** | Multi-tenant, ASC, write-path, North Star | ⏸ | planned at their tier, not now |
 
@@ -175,7 +175,7 @@ Phase A carry-overs: **all closed in B4** (applied-detection extended, escalate 
 
 ## Next up
 
-- **Phases 0–E all complete (399 tests, tsc clean).** **Phase F (net-new uplifts) is next** — storefront sweep, connect-to-measure manifest, portable export, review-vocabulary keyword miner.
+- **Phases 0–E all complete (400 tests, tsc clean).** **Phase F (net-new uplifts) is next** — storefront sweep, connect-to-measure manifest, portable export, review-vocabulary keyword miner.
 - **Phase D carry-over (non-blocking):** #3 — `resolveOtherThemeKey` re-embeds priors each call (store the vector + pin the embedding model id later).
 - **Competitor images** — `analyze.ts` still passes empty competitor icon/screenshot URLs; D3 now provides competitor app ids, so competitor visual benchmarking could be wired (Phase E/F, mind vision cost + decision-#6 egress).
 
