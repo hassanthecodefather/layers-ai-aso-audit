@@ -246,6 +246,23 @@ The interactive half of the spec's identity-escalation logic (the A2 line above 
 - **Review-vocabulary keyword miner** — counts the full sample in code, hands the ranked gap to the model.
 - **DoD:** one US URL → four storefronts back with one rec per gap + per-rec proof regime; `STATUS.md` refreshed.
 
+### Phase F · Keyword & Competitor Intelligence — ⬜ scoped
+
+*The through-line (from the keyword/competitor design discussion): make the "structured way" an **explicit, ranked deliverable**, and **tag every finding `observed | inferred | estimated`.** Most inputs already flow through the pipeline (identity, C2 candidates, AppKittie volume/difficulty, D3 competitors, D theme engine) — these steps are assembly + prioritization + honest labeling, not new fetching. Build in priority order.*
+
+- **F-K1 · Keyword opportunity ranking (highest leverage — the missing deliverable).** Turn candidates+volume+gaps from LLM-narrated facts into a deterministic **ranked target list**:
+  - Tag each candidate to the 4-tier mix (core-intent / problem / feature / competitor) — as *tags*, not fixed % weights.
+  - **Relevance-aware opportunity score** = `relevance(keyword ↔ resolved function) × volume ÷ difficulty`. The key upgrade over KEI: **add the relevance term KEI lacks**, using identity grounding. **Do not square volume** (fights the long-tail-for-young-apps strategy); **handle brand terms specially** (brand defense = high value at low raw volume).
+  - Output a ranked list (volume/difficulty/relevance/tier per keyword), each provenance-labeled. Score is a **heuristic, never "math that proves."**
+- **F-K2 · Competitor review mining (observable, reuses D).** Run `analyzeThemes` on top competitors' reviews → their 1–2★ complaints become **your** keyword/feature opportunities + positioning gaps. (Spec P4 secondary uplift; fully observable.)
+- **F-K3 · Competitor tiering + per-keyword mapping (assembly on D3).** Tag each D3 peer direct / indirect / organic-search; per target keyword, surface who ranks (`topApps`) + your gap — **labeled `estimated`** (Apple exposes no rank; AppKittie is panel data).
+- **F-K4 · Competitor visual benchmarking (the deferred B piece).** Wire competitor first-frames + icons into vision → first-value-prop / color-contrast comparison. Mind vision cost (E1 cache helps) + decision-#6 egress if sourcing images via AppKittie.
+- **Data activations (free wins that strengthen all of the above):**
+  - **Tavily web search** (free tier, no CC) → identity external-corroboration tier (`NoopWebSearch` → `TavilyWebSearch`, one file, gateway-metered). Strengthens the function grounding F-K1/K3 depend on.
+  - **ASA account** → real volume/difficulty (free with account) → better opportunity-score inputs, less AppKittie credit spend.
+- **Cross-cutting (non-negotiable):** every keyword/competitor finding carries provenance — `observed` (their title/subtitle/screenshots/reviews), `inferred` (competitor keyword field — never observable), `estimated` (rankings/SoV/volume). This is the product's edge over confident-but-unlabeled competitor analyses.
+- **Sequence:** F-K1 → F-K2 → F-K3 → Tavily → (ASA activation, F-K4 later). *(F-K2 supersedes the "Review-vocabulary keyword miner" bullet above by extending it to competitor reviews.)*
+
 ---
 
 ## Deferred (planned at their tier, not now)
