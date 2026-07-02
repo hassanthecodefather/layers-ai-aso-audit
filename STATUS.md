@@ -166,7 +166,15 @@ Phase A carry-overs: **all closed in B4** (applied-detection extended, escalate 
   re-fetch" intent holds; documented as accepted.
 - **Resolved** — the pre-existing `mastra/routes.ts` Hono `Context` type-skew on
   `streamSSE` is fixed with a scoped `c as any`; **`tsc --noEmit` is now fully clean**
-  and can gate CI. `npm test` green (365).
+  and can gate CI. `npm test` green.
+- **#8 — pre-prod migration caveat (`respond_to_reviews` key scheme).** Phase D
+  graduated `respond_to_reviews` to multi-instance, so its `value_key` changed
+  from `''` to the `reviewId`. Fine on the **fresh beta dev DB** (old-scheme rows
+  are abandoned by design, per the plan's A3-fixup DoD). **But if ever promoted
+  against a *populated* DB**, previously-`applied` `respond_to_reviews` rows
+  (keyed `''`) won't match the new `recKey` → they'd be re-raised as `proposed`
+  (re-nagging the operator). Needs a one-time `value_key` migration before any
+  non-fresh promotion. (Same class applies to any future key-scheme change.)
 
 ## Gotchas
 
