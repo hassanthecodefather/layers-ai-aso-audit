@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   normalizeValueKey,
   computeRecKey,
@@ -6,6 +6,7 @@ import {
   findContradiction,
 } from './dedup';
 import type { LedgerRecommendation } from '../domain/recommendation';
+import { resolveOtherThemeKey, NoOpEmbeddingProvider } from '../reviews/embedding';
 
 describe('normalizeValueKey (spec §C pinned normalization)', () => {
   it('casefolds, trims, and collapses whitespace', () => {
@@ -92,5 +93,82 @@ describe('findContradiction (spec P1 contradiction guard)', () => {
       targetField: 'subtitle', valueKey: 'budget',
     });
     expect(hit).toBeNull();
+  });
+});
+
+describe('valueKeyFor — theme referent (§F P4)', () => {
+  it('theme referent with resolvedKey uses resolvedKey, not bucket', () => {
+    const key = valueKeyFor('fix_complaint_theme', {
+      kind: 'theme', bucket: 'other', text: 'map broken',
+      resolvedKey: 'other:abc123def456ab12',
+    });
+    expect(key).toBe('other:abc123def456ab12');
+  });
+
+  it('theme referent without resolvedKey falls back to bucket (named bucket path)', () => {
+    const key = valueKeyFor('fix_complaint_theme', {
+      kind: 'theme', bucket: 'crash_stability', text: 'crashes on launch',
+    });
+    expect(key).toBe('crash_stability');
+  });
+
+  it('other-bucket theme without resolvedKey falls back to "other" (legacy path)', () => {
+    const key = valueKeyFor('fix_complaint_theme', {
+      kind: 'theme', bucket: 'other', text: 'some complaint',
+    });
+    expect(key).toBe('other');
+  });
+});
+
+describe('§F P4 other-bucket embedding path', () => {
+  it('dismissed other complaint does not resurface when embedding matches (both-paths gate)', async () => {
+    // The prior dismissed 'other' rec
+    const priorValueKey = await resolveOtherThemeKey('map navigation broken', [], new NoOpEmbeddingProvider());
+    // Verify it's content-hashed
+    expect(priorValueKey).toMatch(/^other:/);
+
+    const dismissedRec: LedgerRecommendation = {
+      id: 'rec_001',
+      appId: 'app1', country: 'us',
+      recKey: 'some-hash-key',
+      valueKey: priorValueKey,
+      taxonomyVersion: 'theme-taxonomy@1',
+      dimension: 'ratings', intent: 'fix_complaint_theme',
+      targetField: null, title: 'Fix map complaints',
+      body: 'Address the navigation complaints surfaced in user reviews.',
+      // beforeText stores the raw theme complaint text (set by toLedgerRec for other-bucket recs).
+      beforeText: 'map navigation broken', afterText: null, evidence: [],
+      status: 'dismissed',
+      supersededBy: null, firstSeenAt: '2026-01-01', lastSeenAt: '2026-01-01', appliedAt: null,
+      proofRegime: 'correlational',
+    };
+
+    // Simulate: a LIVE embedder sees similar new complaint → matches prior → same valueKey
+    const stubEmb = {
+      isLive: true,
+      embed: vi.fn()
+        .mockResolvedValueOnce([1, 0, 0])       // new: "map is broken"
+        .mockResolvedValueOnce([0.95, 0.2, 0]), // prior beforeText: "map navigation broken" (cosine ≈ 0.98)
+    };
+    // Use beforeText (theme text), not body (rationale) — they embed very differently.
+    const newValueKey = await resolveOtherThemeKey('map is broken', [{ text: dismissedRec.beforeText!, valueKey: priorValueKey }], stubEmb);
+    expect(newValueKey).toBe(priorValueKey); // same key → same rec_key → dismissed row found
+
+    // With the same valueKey, computeRecKey would produce the same recKey, so findContradiction fires.
+    // We test this at the valueKey level: same valueKey → same recKey (proven by hash determinism).
+    expect(newValueKey).toBe(priorValueKey);
+  });
+
+  it('distinct other complaints produce different value_keys (distinct rows)', async () => {
+    const stubEmb = {
+      isLive: true,
+      embed: vi.fn()
+        .mockResolvedValueOnce([1, 0, 0])  // new: "customer support terrible"
+        .mockResolvedValueOnce([0, 1, 0]), // prior: "map broken" (orthogonal → cosine=0)
+    };
+    const priorKey = await resolveOtherThemeKey('map broken', [], new NoOpEmbeddingProvider());
+    const newKey = await resolveOtherThemeKey('customer support terrible', [{ text: 'map broken', valueKey: priorKey }], stubEmb);
+    expect(newKey).not.toBe(priorKey); // distinct → distinct rows
+    expect(newKey).toMatch(/^other:/);
   });
 });

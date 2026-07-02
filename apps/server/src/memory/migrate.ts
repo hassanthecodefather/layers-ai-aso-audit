@@ -106,6 +106,40 @@ export const MIGRATIONS: readonly string[] = [
     was_dismissed INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (rec_id, snapshot_id)
   )`,
+
+  // ── Phase B1: Vision Pass — add vision_result column ────────────────────────
+  // Append-only, idempotent: ALTER TABLE fails silently if the column already
+  // exists in SQLite (PRAGMA table_info guard would be more portable but SQLite
+  // does not support IF NOT EXISTS on ALTER TABLE). We rely on the try/catch in
+  // runMigrations to make this safe on repeated boots.
+  // NOTE: This migration is wrapped specially in runMigrations below.
+  `ALTER TABLE aso_listing_snapshots ADD COLUMN vision_result_json TEXT`,
+
+  // ── Phase C4: Keyword Candidates — add candidate_result column ──────────────
+  `ALTER TABLE aso_listing_snapshots ADD COLUMN candidate_result_json TEXT`,
+
+  // ── Phase D2: Theme Analysis — add theme_result column ──────────────────────
+  `ALTER TABLE aso_listing_snapshots ADD COLUMN theme_result_json TEXT`,
+
+  // ── Phase D3: Function-grounded competitor seeds — add column ───────────────
+  // Stores the identity seeds (niche + category strings) used for AppKittie lookup
+  // so selectFunctionCompetitors can skip the API on unchanged identity.
+  `ALTER TABLE aso_listing_snapshots ADD COLUMN function_competitor_seeds_json TEXT`,
+
+  // ── Phase F-K2: Competitor review mining result — add column ────────────────
+  // Stores the mined competitor pain points so we can skip the LLM+review-fetch
+  // on re-audits with unchanged D3 competitors.
+  `ALTER TABLE aso_listing_snapshots ADD COLUMN competitor_mining_result_json TEXT`,
+
+  // ── Phase E1: Source cache ────────────────────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS aso_cache (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  fetched_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+)`,
+  `CREATE INDEX IF NOT EXISTS aso_cache_expires
+  ON aso_cache (expires_at)`,
 ];
 
 /** Open a raw LibSQL client against the given url (defaults to the app DB). */
@@ -117,6 +151,10 @@ export function openDb(url = 'file:./aso-audit.db'): Client {
  * Run every pending migration. Idempotent — running it repeatedly is a no-op
  * once the tables exist. Accepts either a url (opens and closes its own
  * client) or an existing client (left open for the caller to manage).
+ *
+ * ALTER TABLE migrations (like adding a column) are executed with error
+ * suppression so they are safe to re-run if the column already exists.
+ * SQLite does not support `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`.
  */
 export async function runMigrations(
   target: string | Client = 'file:./aso-audit.db',
@@ -125,7 +163,18 @@ export async function runMigrations(
   const db = ownsClient ? openDb(target) : target;
   try {
     for (const stmt of MIGRATIONS) {
-      await db.execute(stmt);
+      if (stmt.trimStart().toUpperCase().startsWith('ALTER TABLE')) {
+        // ALTER TABLE is not idempotent in SQLite — ignore "duplicate column" errors.
+        try {
+          await db.execute(stmt);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          // SQLite error for duplicate column: "duplicate column name: ..."
+          if (!msg.toLowerCase().includes('duplicate column')) throw e;
+        }
+      } else {
+        await db.execute(stmt);
+      }
     }
   } finally {
     if (ownsClient) db.close();

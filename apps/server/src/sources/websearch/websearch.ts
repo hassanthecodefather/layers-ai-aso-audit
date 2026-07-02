@@ -1,16 +1,18 @@
+import { createHash } from 'node:crypto';
 import { ok, type Result } from '../../domain/result';
+import { getGateway } from '../../cost/gateway';
 
 /**
  * The external-corroboration tier of the identity ladder (spec ID "No
- * footprint? A confidence ladder, not a cliff"). It is built behind its seam
- * now and stubbed: no web-search key exists yet, so `NoopWebSearch` honestly
- * reports `searched-and-empty` and never fabricates a footprint. When an
- * Exa/Tavily key lands, the real client drops in here (one file) and ID-lite's
- * ladder ceiling rises — no rework elsewhere.
+ * footprint? A confidence ladder, not a cliff").
  *
- * The tri-state is the whole point (spec ID "Absence is information"): a probe
- * that genuinely found nothing is a small, honest confidence penalty, and is
- * never allowed to masquerade as a lookup that broke.
+ * Tri-state contract (spec ID "Absence is information"):
+ *   corroborated    — at least one off-store result found; raises confidence
+ *   searched_and_empty — genuinely queried, found nothing; small penalty
+ *   errored         — transport failure; never penalises (tool error ≠ absence)
+ *
+ * Keys land in .env → factory wires the real client; fallback is NoopWebSearch.
+ * REST over the gateway (metered + cached 7d), never MCP (browser-auth only).
  */
 export type WebSearchProbe =
   | { state: 'corroborated'; sources: { title: string; url: string }[] }
@@ -25,11 +27,107 @@ export interface WebSearchProvider {
   probe(query: string): Promise<Result<WebSearchProbe>>;
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function queryKey(query: string): string {
+  return createHash('sha256').update(query).digest('hex').slice(0, 16);
+}
+
+// ── Tavily ────────────────────────────────────────────────────────────────────
+
+const TAVILY_URL = 'https://api.tavily.com/search';
+
+export class TavilyWebSearch implements WebSearchProvider {
+  readonly id = 'tavily';
+  readonly available = true;
+  #apiKey: string;
+
+  constructor(apiKey: string) {
+    this.#apiKey = apiKey;
+  }
+
+  async probe(query: string): Promise<Result<WebSearchProbe>> {
+    try {
+      const body = JSON.stringify({
+        api_key: this.#apiKey,
+        query,
+        search_depth: 'basic',
+        max_results: 5,
+      });
+      const res = await getGateway().fetch(
+        TAVILY_URL,
+        { kind: 'app', upstream: 'websearch', entityId: `tavily:${queryKey(query)}` },
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+        },
+      );
+      if (!res.ok) {
+        return ok({ state: 'errored', reason: `HTTP ${res.status}` });
+      }
+      const json = await res.json() as { results?: { title: string; url: string }[] };
+      const results = json.results ?? [];
+      if (results.length === 0) return ok({ state: 'searched_and_empty' });
+      return ok({
+        state: 'corroborated',
+        sources: results.map((r) => ({ title: r.title, url: r.url })),
+      });
+    } catch (e) {
+      return ok({ state: 'errored', reason: e instanceof Error ? e.message : String(e) });
+    }
+  }
+}
+
+// ── Exa ──────────────────────────────────────────────────────────────────────
+
+const EXA_URL = 'https://api.exa.ai/search';
+
+export class ExaWebSearch implements WebSearchProvider {
+  readonly id = 'exa';
+  readonly available = true;
+  #apiKey: string;
+
+  constructor(apiKey: string) {
+    this.#apiKey = apiKey;
+  }
+
+  async probe(query: string): Promise<Result<WebSearchProbe>> {
+    try {
+      const body = JSON.stringify({ query, num_results: 5 });
+      const res = await getGateway().fetch(
+        EXA_URL,
+        { kind: 'app', upstream: 'websearch', entityId: `exa:${queryKey(query)}` },
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${this.#apiKey}`,
+          },
+          body,
+        },
+      );
+      if (!res.ok) {
+        return ok({ state: 'errored', reason: `HTTP ${res.status}` });
+      }
+      const json = await res.json() as { results?: { title: string; url: string }[] };
+      const results = json.results ?? [];
+      if (results.length === 0) return ok({ state: 'searched_and_empty' });
+      return ok({
+        state: 'corroborated',
+        sources: results.map((r) => ({ title: r.title, url: r.url })),
+      });
+    } catch (e) {
+      return ok({ state: 'errored', reason: e instanceof Error ? e.message : String(e) });
+    }
+  }
+}
+
+// ── Noop ──────────────────────────────────────────────────────────────────────
+
 /**
  * The keyless default: the lookup is defined to have run and found nothing.
- * `searched_and_empty` (not `errored`, not a fake corroboration) means ID-lite
- * simply starts one rung lower on the ladder — which the band logic already
- * models, since the footprint family just doesn't vote.
+ * `searched_and_empty` (not `errored`) — ID-lite simply starts one rung lower.
  */
 export class NoopWebSearch implements WebSearchProvider {
   readonly id = 'noop-websearch';
@@ -40,10 +138,35 @@ export class NoopWebSearch implements WebSearchProvider {
   }
 }
 
+// ── Factory ───────────────────────────────────────────────────────────────────
+
 let singleton: WebSearchProvider | null = null;
 
-/** The active web-search provider. Swap `NoopWebSearch` here when a key lands. */
+/**
+ * Active web-search provider.
+ * Precedence: TAVILY_API_KEY → TavilyWebSearch
+ *             EXA_API_KEY   → ExaWebSearch
+ *             (none)        → NoopWebSearch
+ */
 export function getWebSearch(): WebSearchProvider {
-  if (!singleton) singleton = new NoopWebSearch();
+  if (!singleton) singleton = createWebSearch();
   return singleton;
+}
+
+function createWebSearch(): WebSearchProvider {
+  const tavilyKey = process.env['TAVILY_API_KEY'];
+  if (tavilyKey) return new TavilyWebSearch(tavilyKey);
+  const exaKey = process.env['EXA_API_KEY'];
+  if (exaKey) return new ExaWebSearch(exaKey);
+  return new NoopWebSearch();
+}
+
+/** Replace the singleton — for tests. */
+export function setWebSearch(p: WebSearchProvider): void {
+  singleton = p;
+}
+
+/** Reset to factory default (re-reads env) — for tests. */
+export function resetWebSearch(): void {
+  singleton = null;
 }

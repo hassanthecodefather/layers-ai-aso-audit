@@ -1,4 +1,4 @@
-import type { AppSummary, AuditReport, ProgressEvent } from './types';
+import type { AppSummary, AuditReport, ProgressEvent, ResolvedIdentity, IdentityDecision } from './types';
 
 /**
  * The client side of the two audit endpoints. `/audit` is proxied to the
@@ -8,6 +8,8 @@ import type { AppSummary, AuditReport, ProgressEvent } from './types';
 export interface IdentifyResult {
   runId: string;
   summary: AppSummary;
+  identity: ResolvedIdentity | null;
+  identityNeedsConfirm: boolean;
 }
 
 /** Turn 1 — resolve a pasted URL to an app summary for confirmation. */
@@ -23,7 +25,12 @@ export async function identifyApp(url: string): Promise<IdentifyResult> {
   if (!res.ok || !data.runId || !data.summary) {
     throw new Error(data.error ?? 'Could not identify that app.');
   }
-  return { runId: data.runId, summary: data.summary };
+  return {
+    runId: data.runId,
+    summary: data.summary,
+    identity: data.identity ?? null,
+    identityNeedsConfirm: data.identityNeedsConfirm ?? false,
+  };
 }
 
 export interface AuditStreamHandlers {
@@ -39,11 +46,12 @@ export interface AuditStreamHandlers {
 export async function runAudit(
   runId: string,
   handlers: AuditStreamHandlers,
+  identityDecision?: IdentityDecision | null,
 ): Promise<void> {
   const res = await fetch('/audit/run', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ runId }),
+    body: JSON.stringify({ runId, identityDecision: identityDecision ?? null }),
   });
 
   if (!res.ok || !res.body) {

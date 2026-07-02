@@ -1,24 +1,64 @@
-import type { AppSummary } from '../lib/types';
+import { useState } from 'react';
+import type { AppSummary, ResolvedIdentity, IdentityDecision } from '../lib/types';
 import { formatCount, formatRating } from '../lib/format';
 
 interface ConfirmationCardProps {
   summary: AppSummary;
+  identity: ResolvedIdentity | null;
+  identityNeedsConfirm: boolean;
   decision: 'pending' | 'yes' | 'no';
-  onConfirm: () => void;
+  onConfirm: (identityDecision: IdentityDecision | null) => void;
   onReject: () => void;
 }
 
-/** "Is this the app you meant?" — the human-in-the-loop confirmation gate. */
+/** "Is this the app you meant?" — the human-in-the-loop confirmation gate.
+ *  When identityNeedsConfirm is true, also surfaces the resolved identity
+ *  so the operator can confirm, correct, or supply their own. */
 export function ConfirmationCard({
   summary,
+  identity,
+  identityNeedsConfirm,
   decision,
   onConfirm,
   onReject,
 }: ConfirmationCardProps) {
   const pending = decision === 'pending';
 
+  const [identityChoice, setIdentityChoice] = useState<'confirm' | 'correct'>('confirm');
+  const [correctedCategory, setCorrectedCategory] = useState(identity?.category ?? '');
+  const [correctedNiche, setCorrectedNiche] = useState(identity?.niche ?? '');
+
+  function handleConfirm() {
+    if (!identityNeedsConfirm) {
+      onConfirm(null);
+      return;
+    }
+    if (identityChoice === 'confirm') {
+      onConfirm({ action: 'confirm' });
+    } else {
+      const trimmed = correctedCategory.trim();
+      if (!trimmed) return;
+      onConfirm({
+        action: 'correct',
+        category: trimmed,
+        niche: correctedNiche.trim() || null,
+      });
+    }
+  }
+
+  const confirmDisabled =
+    identityNeedsConfirm &&
+    identityChoice === 'correct' &&
+    !correctedCategory.trim();
+
+  const divergenceNote =
+    identity?.divergence === 'cross_domain' && summary.primaryGenre
+      ? `App Store category "${summary.primaryGenre}" may not reflect what this app actually does.`
+      : "We identified this app's function with low confidence.";
+
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+      {/* App header */}
       <div className="flex items-center gap-4">
         {summary.iconUrl ? (
           <img
@@ -45,11 +85,77 @@ export function ConfirmationCard({
         </div>
       </div>
 
+      {/* Identity panel — only when the resolved identity needs human review */}
+      {pending && identityNeedsConfirm && identity && (
+        <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
+          <p className="text-xs font-medium text-amber-400">Identity uncertain</p>
+          <p className="mt-0.5 text-xs text-zinc-400">{divergenceNote}</p>
+
+          <div className="mt-2.5 space-y-0.5 text-xs">
+            <p>
+              <span className="text-zinc-500">We identified: </span>
+              <span className="text-zinc-200">{identity.category}</span>
+            </p>
+            {identity.niche && (
+              <p>
+                <span className="text-zinc-500">Niche: </span>
+                <span className="text-zinc-200">{identity.niche}</span>
+              </p>
+            )}
+          </div>
+
+          <div className="mt-3 space-y-2">
+            <label className="flex cursor-pointer items-center gap-2 text-xs text-zinc-300">
+              <input
+                type="radio"
+                name="identityChoice"
+                value="confirm"
+                checked={identityChoice === 'confirm'}
+                onChange={() => setIdentityChoice('confirm')}
+                className="accent-indigo-500"
+              />
+              That's correct
+            </label>
+            <label className="flex cursor-pointer items-center gap-2 text-xs text-zinc-300">
+              <input
+                type="radio"
+                name="identityChoice"
+                value="correct"
+                checked={identityChoice === 'correct'}
+                onChange={() => setIdentityChoice('correct')}
+                className="accent-indigo-500"
+              />
+              Let me correct it
+            </label>
+          </div>
+
+          {identityChoice === 'correct' && (
+            <div className="mt-3 space-y-2">
+              <input
+                type="text"
+                value={correctedCategory}
+                onChange={(e) => setCorrectedCategory(e.target.value)}
+                placeholder="Category (e.g. Electric vehicle companion)"
+                className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-indigo-500/50 focus:outline-none"
+              />
+              <input
+                type="text"
+                value={correctedNiche}
+                onChange={(e) => setCorrectedNiche(e.target.value)}
+                placeholder="Niche (optional)"
+                className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-indigo-500/50 focus:outline-none"
+              />
+            </div>
+          )}
+        </div>
+      )}
+
       {pending ? (
         <div className="mt-4 flex gap-2">
           <button
-            onClick={onConfirm}
-            className="flex-1 rounded-xl bg-indigo-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-400"
+            onClick={handleConfirm}
+            disabled={confirmDisabled}
+            className="flex-1 rounded-xl bg-indigo-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Yes, audit this app
           </button>

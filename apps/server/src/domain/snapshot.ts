@@ -26,5 +26,32 @@ export const ListingSnapshotSchema = z.object({
   /** Hash of the scoring prompt. */
   promptHash: z.string(),
   modelId: z.string(),
+  /**
+   * Vision analysis result from B1 (screenshot + icon quality from Gemini).
+   * Optional for backward compatibility with Phase A snapshots.
+   * Stored as an opaque JSON blob — validated by the vision module on use.
+   */
+  visionResult: z.unknown().optional(),
+  /**
+   * Keyword candidate + gap result from C2/C4. Optional for backward
+   * compatibility with pre-C snapshots. Validated by candidates.ts on use.
+   */
+  candidateResult: z.unknown().optional(),
+  /**
+   * Theme analysis result from D2. Optional for backward compatibility with
+   * pre-D snapshots. Validated by themes.ts on use.
+   */
+  themeResult: z.unknown().optional(),
+  /**
+   * Seeds used for D3 function-grounded competitor discovery (niche + category).
+   * Stored so selectFunctionCompetitors can skip AppKittie on unchanged identity.
+   * Absent when D3 didn't run or returned no competitors.
+   */
+  functionCompetitorSeeds: z.array(z.string()).optional(),
+  /**
+   * F-K2 competitor review mining result. Stored so re-audits with the same
+   * D3 competitor set skip the LLM+review-fetch pass.
+   */
+  competitorMiningResult: z.unknown().optional(),
 });
 export type ListingSnapshot = z.infer<typeof ListingSnapshotSchema>;

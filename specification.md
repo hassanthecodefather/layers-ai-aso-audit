@@ -1,12 +1,23 @@
-**ASO Agent · Planning · v1.3.1**
+**ASO Agent · Planning · v1.3.2**
 
 # The ASO Agent — Phased Build Plan
 
 The audit we have today is stateless — it runs, emits suggestions, and forgets. This plan turns it into a system that **remembers** what it told you, sees the listing more deeply, grounds advice in real data, and scales — deliberately, one wall at a time. We ground what the app actually is, then five phases prove the loop for a single user; the phases beyond scale it — 1K, 5K, 10K — and teach it to act on the store, all the way to the north star.
 
-*v1.3.1 · the phased ASO build plan · paired editions — specification.html (for a human to read) + specification.md (for an LLM/agent to execute)*
+*v1.3.2 · the phased ASO build plan · paired editions — specification.html (for a human to read) + specification.md (for an LLM/agent to execute)*
 
 ---
+
+## What's new in v1.3.2 — keyword & competitor intelligence
+
+Codifying the two ASO pillars (keyword research + competitor analysis) as explicit, ranked, honestly-labelled deliverables — and the provenance discipline that keeps them from becoming confident guesses:
+
+- **Relevance-aware keyword opportunity ranking.** P3's "ranked opportunity list" is now a defined artifact: `opportunity = relevance(keyword ↔ resolved function) × volume ÷ difficulty`, scored deterministically in code. Explicitly **not** raw volume, and **not** KEI's `volume² ÷ difficulty` — squaring over-weights volume and fights the long-tail strategy, and KEI omits **relevance** (its critical flaw). Brand terms handled specially (brand-defense = high value at low raw volume). The score is a **heuristic ranking, not a proof.**
+- **Four-tier keyword mix** (core-intent / problem-based / feature-specific / competitor) as candidate **tags** for coverage — not fixed percentage weights.
+- **Function-grounded competitor discovery, made concrete.** Competitors are sourced from the **resolved identity**, not the declared category: seed from the identity's function → the apps that actually rank for those terms (paid-provider `topApps`) → fetch their listings via free iTunes Lookup → tokenise; filtered through the app-scoped competitor tombstones. This is the load-bearing fix for cross-domain apps (Rivian → EV peers, not Travel apps).
+- **Competitor review mining** promoted to a first-class step: run the P4 theme engine over competitors' reviews → their complaints become your keyword/feature opportunities.
+- **Provenance extended to all keyword & competitor findings** — `observed` (a competitor's visible title/subtitle/screenshots/reviews), `inferred` (their keyword field — never observable), `estimated` (rankings / share-of-voice / search volume from paid panels; Apple exposes none). No estimated figure is ever presented as observed fact.
+- **Decision #6 resolved** (§H) — AppKittie accepted as the interim load-bearing competitor-discovery source, behind the swappable seam, on keyword-level egress only.
 
 ## What's new in v1.3.1 — review-hardening
 
@@ -264,12 +275,13 @@ The same paid-data integration also exposes **revenue, download, and growth esti
 **Uplift — now, not future**
 
 - **The 160-char indexed-surface linter — in pure code.** Run Apple's field mechanics deterministically over title (30) + subtitle (30) + keyword field (100): dedupe tokens across fields (Apple tokenises them together), flag plural-redundant candidates, and catch wasted words ("app", the brand, the category name) — emitting a per-term ledger with reclaimable characters. The keyword field is unobservable, so its findings are inferred and conditional; only title+subtitle overlap is observed. This is the shared, unit-tested engine the next three uplifts all call.
+- **The relevance-aware opportunity ranking (the ranked list, defined).** Score each candidate `opportunity = relevance(keyword ↔ resolved function) × volume ÷ difficulty` — deterministic, and a **heuristic ranking, not a proof.** Explicitly **not** KEI's `volume² ÷ difficulty`: squaring over-weights volume and fights the long-tail strategy, and KEI omits **relevance** — the critical flaw (a high-volume, low-competition but *irrelevant* term is a trap: installs that don't convert). **Relevance comes from the resolved identity** — the grounding a raw KEI can't use, and our edge. **Brand terms are handled specially** (brand-defense = high value at low raw volume). Candidates are tagged to a **four-tier mix** — core-intent / problem-based / feature-specific / competitor — for coverage (tags, not fixed weights).
 
-**Secondary uplifts:** keyword-gap buckets vs competitors (shared / yours-only / theirs-only, weighted by peer frequency); a brand-vs-category demand split of the observable surface; an Apple-free rank probe run as a **time series with a documented noise band** (an observed range, never a false-precise "position 7"); and a reclaim simulator that recounts the operator's own candidate copy live — deterministically, no model call.
+**Secondary uplifts:** keyword-gap buckets vs **function-grounded** competitors (shared / yours-only / theirs-only, weighted by peer frequency) — competitors sourced from the resolved identity's function (seed keywords → the apps that actually rank, via a paid provider's `topApps` → their listings via free iTunes Lookup → tokenise), **not** the declared category, and filtered through the app-scoped tombstones; **competitor review mining** (run the P4 theme engine over rivals' reviews → their complaints become your keyword/feature opportunities); a brand-vs-category demand split of the observable surface; an Apple-free rank probe run as a **time series with a documented noise band** (an observed range, never a false-precise "position 7"); and a reclaim simulator that recounts the operator's own candidate copy live — deterministically, no model call.
 
 **The hard part**
 
-A competitor's actual **keyword field is never observable** — we infer it, and we must label that clearly. Keyword wins are also correlational, not provable: there's no holdout test for metadata. We report this honestly rather than selling guesses as facts.
+A competitor's actual **keyword field is never observable** — we infer it, and we must label that clearly. Keyword wins are also correlational, not provable: there's no holdout test for metadata. **Every keyword & competitor finding therefore carries provenance: `observed`** (a competitor's visible title/subtitle/screenshots/reviews), **`inferred`** (their keyword field), **`estimated`** (rankings / share-of-voice / search volume — from paid panels; Apple exposes none). No `estimated` figure is ever shown as `observed` fact. We report this honestly rather than selling guesses as facts.
 
 **Script matters, too.** The linter's rules are **Latin-first** — its word-splitting assumes spaces and word length, which breaks for CJK (character-based, no spaces — Apple tokenises it differently) and for right-to-left scripts. Keyword mechanics, on-image-text reads (P2), and sentiment (P4) are all **per-script**; non-Latin storefronts fall back to a script-aware path and are labelled lower-confidence until it exists.
 
@@ -709,9 +721,10 @@ Escalation is asymmetric: a low *niche* under a high *category* adds a flag, nev
 | 3 | Beta dollar cap enforced or advisory? | **Advisory/post-hoc;** count-kill is enforced; tokens wired at P7. |
 | 4 | P6 one phase or split? | **Split 6a / 6b.** |
 | 5 | P8 stop-loss threshold | **Defended-set median > 5 positions beyond noise, held ≥5 days.** |
-| 6 | AppKittie competitor egress | **Query by public app id only, never customer-identifying batches; prefer non-competitor for load-bearing queries.** |
+| 6 | AppKittie competitor egress | **RESOLVED (v1.3.2):** AppKittie accepted as the **interim load-bearing competitor-discovery source** for the beta, behind the swappable seam — because egress is kept **keyword-level only** (seed terms → `topApps`; no customer-app-id batches), competitor **listings are fetched from iTunes, not AppKittie**, tombstones are honoured, and it stays trivially replaceable (swap to a non-competitor provider if intel-egress ever becomes material). |
 | 7 | Keep Ollama as LLM fallback? | **Keep as labelled dev fallback** (avoids a single-provider SPOF); Gemini is the default. |
+| 8 | Keyword opportunity score formula | **Relevance-aware: `relevance × volume ÷ difficulty`** (relevance from the resolved identity). **Not** KEI (`volume² ÷ difficulty`) — squaring fights long-tail and KEI omits relevance. A heuristic ranking, not a proof; brand terms handled specially. |
 
 ---
 
-*ASO Agent · phased build plan v1.3.1 · specification.html (human) + specification.md (LLM/agent)*
+*ASO Agent · phased build plan v1.3.2 · specification.html (human) + specification.md (LLM/agent)*

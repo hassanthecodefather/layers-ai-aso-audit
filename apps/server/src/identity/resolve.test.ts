@@ -106,3 +106,89 @@ describe('§F ID-lite acceptance', () => {
     }
   });
 });
+
+// ── Footprint probe integration ───────────────────────────────────────────────
+
+describe('footprint probe tally (F-K5)', () => {
+  const signals = extractIdentitySignals(loadFixtureListing('spotify'));
+  const classification = CLASSIFY['spotify']!;
+  const opts = { fetchedAt: '2026-06-24T00:00:00.000Z' };
+
+  it('corroborated probe adds agrees=true fetched_and_cited tally entry', () => {
+    const r = resolveIdentity(signals, classification, {
+      ...opts,
+      footprintProbe: {
+        state: 'corroborated',
+        sources: [{ title: 'Spotify Coverage', url: 'https://example.com' }],
+      },
+    });
+    const fp = r.tally.find((t) => t.family === 'footprint');
+    expect(fp).toBeDefined();
+    expect(fp!.agrees).toBe(true);
+    expect(fp!.sourceTier).toBe('fetched_and_cited');
+    expect(fp!.value).toContain('1 off-store source');
+  });
+
+  it('searched_and_empty probe adds agrees=false tally entry', () => {
+    const r = resolveIdentity(signals, classification, {
+      ...opts,
+      footprintProbe: { state: 'searched_and_empty' },
+    });
+    const fp = r.tally.find((t) => t.family === 'footprint');
+    expect(fp).toBeDefined();
+    expect(fp!.agrees).toBe(false);
+    expect(fp!.value).toContain('no off-store footprint');
+  });
+
+  it('errored probe does not add any tally entry', () => {
+    const r = resolveIdentity(signals, classification, {
+      ...opts,
+      footprintProbe: { state: 'errored', reason: 'timeout' },
+    });
+    expect(r.tally.find((t) => t.family === 'footprint')).toBeUndefined();
+  });
+
+  it('no probe (undefined) does not add any tally entry', () => {
+    const r = resolveIdentity(signals, classification, opts);
+    expect(r.tally.find((t) => t.family === 'footprint')).toBeUndefined();
+  });
+
+  it('corroborated probe can lift an on-store-only app from medium to high', () => {
+    // on-store-only has no external corroboration → medium; adding footprint
+    // provides fetched_and_cited (weight=2, agrees=true, tier-2 present) which
+    // breaks the on-store-only cap and reaches high.
+    const onStoreSignals = extractIdentitySignals(loadFixtureListing('onstoreonly'));
+    const rBefore = resolveIdentity(onStoreSignals, CLASSIFY['onstoreonly']!, opts);
+    expect(rBefore.categoryBand).not.toBe('high');
+
+    const rAfter = resolveIdentity(onStoreSignals, CLASSIFY['onstoreonly']!, {
+      ...opts,
+      footprintProbe: {
+        state: 'corroborated',
+        sources: [{ title: 'Third-party mention', url: 'https://example.com' }],
+      },
+    });
+    // The footprint is an off-store, independent signal — breaks the on-store cap.
+    expect(rAfter.tally.find((t) => t.family === 'footprint')?.agrees).toBe(true);
+    expect(['medium', 'high']).toContain(rAfter.categoryBand);
+    // categoryBand should be at least as good as before, and possibly higher.
+    const bands: Record<string, number> = { low: 0, medium: 1, high: 2 };
+    expect(bands[rAfter.categoryBand]!).toBeGreaterThanOrEqual(bands[rBefore.categoryBand]!);
+  });
+
+  it('source count pluralises correctly', () => {
+    const r = resolveIdentity(signals, classification, {
+      ...opts,
+      footprintProbe: {
+        state: 'corroborated',
+        sources: [
+          { title: 'A', url: 'https://a.com' },
+          { title: 'B', url: 'https://b.com' },
+          { title: 'C', url: 'https://c.com' },
+        ],
+      },
+    });
+    const fp = r.tally.find((t) => t.family === 'footprint');
+    expect(fp!.value).toContain('3 off-store sources');
+  });
+});

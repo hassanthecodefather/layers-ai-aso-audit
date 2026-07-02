@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { ok, err, type Result } from '../domain/result';
 import { appStoreUrl, type AppRef } from '../domain/app-url';
 import type { Competitor, Review } from '../domain/listing';
@@ -110,12 +111,16 @@ function toCore(app: RawLookupApp, ref: AppRef): ITunesCore {
 }
 
 /** Fetch core metadata for one app. The cheap call behind the confirm step. */
-export async function fetchITunesCore(ref: AppRef): Promise<Result<ITunesCore>> {
+export async function fetchITunesCore(ref: AppRef, opts?: { skipCache?: boolean }): Promise<Result<ITunesCore>> {
   const url =
     `https://itunes.apple.com/lookup?id=${encodeURIComponent(ref.appId)}` +
     `&country=${encodeURIComponent(ref.country)}&entity=software`;
   try {
-    const data = await fetchJson<RawLookupResponse>(url, { source: 'iTunes Lookup' });
+    const data = await fetchJson<RawLookupResponse>(url, {
+      source: 'iTunes Lookup',
+      call: { kind: 'app', upstream: 'itunes', entityId: `${ref.appId}:${ref.country}` },
+      skipCache: opts?.skipCache,
+    });
     const app = data.results?.find(
       (r) => (r.kind ?? r.wrapperType) === 'software',
     );
@@ -136,6 +141,8 @@ export async function fetchITunesCore(ref: AppRef): Promise<Result<ITunesCore>> 
 
 interface RawRssEntry {
   'im:rating'?: { label?: string };
+  'im:version'?: { label?: string };
+  id?: { label?: string };
   title?: { label?: string };
   content?: { label?: string };
   author?: { name?: { label?: string } };
@@ -147,37 +154,100 @@ interface RawRssResponse {
 }
 
 /**
+ * Stable per-review content ID, used when Apple's RSS <id> is absent.
+ * Hash of (title + body + rating + author) — all stable fields for a given
+ * review. Prefixed with 'rc:' to distinguish from real Apple numeric IDs.
+ */
+function reviewContentId(e: RawRssEntry): string {
+  const parts = [
+    e.title?.label ?? '',
+    e.content?.label ?? '',
+    e['im:rating']?.label ?? '0',
+    e.author?.name?.label ?? '',
+  ];
+  return 'rc:' + createHash('sha256').update(parts.join('\x00')).digest('hex').slice(0, 16);
+}
+
+/**
  * Recent customer reviews via the iTunes RSS feed. Best-effort: reviews are
  * one input to one dimension, so a feed failure returns `[]` rather than
  * aborting the whole audit.
+ *
+ * Paginates across up to 10 pages of 50 reviews each (Apple's public limit),
+ * stopping early when a page returns no entries or on network error.
  */
-export async function fetchReviews(ref: AppRef, limit = 25): Promise<Review[]> {
-  const url =
-    `https://itunes.apple.com/${encodeURIComponent(ref.country)}/rss/customerreviews/` +
-    `page=1/id=${encodeURIComponent(ref.appId)}/sortby=mostrecent/json`;
+export async function fetchReviews(ref: AppRef, limit = 500, opts?: { skipCache?: boolean }): Promise<Review[]> {
+  const all: Review[] = [];
+  for (let page = 1; page <= 10 && all.length < limit; page++) {
+    const url =
+      `https://itunes.apple.com/${encodeURIComponent(ref.country)}/rss/customerreviews/` +
+      `page=${page}/id=${encodeURIComponent(ref.appId)}/sortby=mostrecent/json`;
+    try {
+      const data = await fetchJson<RawRssResponse>(url, {
+        source: 'iTunes Reviews',
+        retries: 1,
+        call: { kind: 'app', upstream: 'reviews', entityId: `${ref.appId}:${ref.country}:p${page}` },
+        skipCache: opts?.skipCache,
+      });
+      const raw = data.feed?.entry;
+      const entries = Array.isArray(raw) ? raw : raw ? [raw] : [];
+      const pageReviews = entries
+        .filter((e): e is RawRssEntry => Boolean(e['im:rating']))
+        .map((e) => ({
+          author: e.author?.name?.label ?? 'Anonymous',
+          rating: Number(e['im:rating']?.label ?? 0),
+          title: e.title?.label ?? '',
+          body: e.content?.label ?? '',
+          updated: e.updated?.label ?? null,
+          id: e.id?.label || reviewContentId(e),
+          appVersion: e['im:version']?.label ?? null,
+        }));
+      if (pageReviews.length === 0) break; // no more pages
+      all.push(...pageReviews);
+    } catch (e) {
+      if (page === 1) throw e; // first-page failure is a real network error, not "end of pages"
+      break; // mid-pagination failure: return what we already have
+    }
+  }
+  return all.slice(0, limit);
+}
+
+// ── Competitors (Search) ───────────────────────────────────────────────────
+
+/**
+ * Batch iTunes Lookup — fetches up to N apps by their numeric trackIds.
+ * Used by D3 to turn AppKittie topApps (iTunes store IDs) into Competitor rows.
+ */
+export async function batchLookupCompetitors(
+  appStoreIds: string[],
+  country: string,
+  excludeAppId: string,
+  limit = 6,
+): Promise<Competitor[]> {
+  if (appStoreIds.length === 0) return [];
+  const ids = appStoreIds.slice(0, 20).join(',');   // iTunes batch cap
+  const url = `https://itunes.apple.com/lookup?id=${encodeURIComponent(ids)}&country=${encodeURIComponent(country)}&entity=software`;
   try {
-    const data = await fetchJson<RawRssResponse>(url, {
-      source: 'iTunes Reviews',
-      retries: 1,
-    });
-    const raw = data.feed?.entry;
-    const entries = Array.isArray(raw) ? raw : raw ? [raw] : [];
-    return entries
-      .filter((e): e is RawRssEntry => Boolean(e['im:rating']))
+    const data = await fetchJson<RawLookupResponse>(url, { source: 'iTunes Lookup (competitors)', retries: 1 });
+    return (data.results ?? [])
+      .filter((r) => String(r.trackId) !== excludeAppId && r.trackName)
       .slice(0, limit)
-      .map((e) => ({
-        author: e.author?.name?.label ?? 'Anonymous',
-        rating: Number(e['im:rating']?.label ?? 0),
-        title: e.title?.label ?? '',
-        body: e.content?.label ?? '',
-        updated: e.updated?.label ?? null,
+      .map((r) => ({
+        appId: String(r.trackId ?? ''),
+        name: r.trackName ?? 'Unknown',
+        developer: r.artistName ?? 'Unknown',
+        primaryGenre: r.primaryGenreName ?? null,
+        averageRating: num(r.averageUserRating),
+        ratingCount: num(r.userRatingCount),
+        formattedPrice: r.formattedPrice ?? null,
+        screenshotCount: (r.screenshotUrls ?? []).length,
+        hasPreviewVideo: false,
+        description: r.description ?? undefined,   // D3: tokenized in competitorTokens()
       }));
   } catch {
     return [];
   }
 }
-
-// ── Competitors (Search) ───────────────────────────────────────────────────
 
 /**
  * Category peers via the iTunes Search API.
@@ -191,6 +261,7 @@ export async function fetchCompetitors(
   ref: AppRef,
   searchTerm: string,
   limit = 4,
+  opts?: { skipCache?: boolean },
 ): Promise<Competitor[]> {
   const term = searchTerm.trim();
   if (!term) return [];
@@ -201,6 +272,9 @@ export async function fetchCompetitors(
     const data = await fetchJson<RawLookupResponse>(url, {
       source: 'iTunes Search',
       retries: 1,
+      // 'competitors' upstream: 7d TTL (spec E1), separate from iTunes core 24h.
+      call: { kind: 'competitor', upstream: 'competitors', entityId: `${ref.country}:${term}` },
+      skipCache: opts?.skipCache,
     });
     return (data.results ?? [])
       .filter((r) => String(r.trackId) !== ref.appId && r.trackName)

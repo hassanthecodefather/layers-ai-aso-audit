@@ -5,6 +5,8 @@ import { computeSignals, type ListingSignals } from './signals';
 import { buildAuditPrompt, buildRepairPrompt } from './prompt';
 import { extractJsonObject } from './extract';
 import { normalizeRecommendations } from './candidates';
+import type { VisionResult } from '../vision/types';
+import { getGovernor } from '../cost/governor';
 
 /**
  * The structured-output strategy: generate → validate → repair.
@@ -48,10 +50,16 @@ function parseDraft(text: string): ParseAttempt {
   return { draft: result.data, error: '', raw: json };
 }
 
-/** Run one plain-text generation and return its text. */
+/** Run one plain-text generation, return its text, and record a cost estimate. */
 async function generate(agent: Agent, prompt: string): Promise<string> {
   const result = await agent.generate(prompt, { modelSettings: { temperature: 0 } });
-  return typeof result.text === 'string' ? result.text : '';
+  const text = typeof result.text === 'string' ? result.text : '';
+  // Post-hoc dollar estimate (alert-only, spec E2). totalTokens from the AI SDK
+  // usage field when present; otherwise approximate from character count (÷4).
+  const totalTokens = (result as any).usage?.totalTokens ?? Math.round((prompt.length + text.length) / 4);
+  // Blended Gemini Flash rate: ~$0.15/1M tokens.
+  getGovernor().recordEstimate(totalTokens, (totalTokens / 1_000_000) * 0.15);
+  return text;
 }
 
 /**
@@ -70,8 +78,10 @@ export async function produceAuditDraft(
   listing: AppListing,
   signals: ListingSignals,
   priorContext?: string,
+  prebuiltPrompt?: string,     // B4: pass the prompt built for hashing
+  visionResult?: VisionResult, // fallback only — prebuiltPrompt already includes vision
 ): Promise<AuditDraft> {
-  const prompt = buildAuditPrompt(listing, signals, priorContext);
+  const prompt = prebuiltPrompt ?? buildAuditPrompt(listing, signals, priorContext, visionResult);
 
   let attempt = parseDraft(await generate(agent, prompt));
   if (attempt.draft) return normalizeRecommendations(attempt.draft, signals);

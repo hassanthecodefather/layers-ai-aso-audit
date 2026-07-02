@@ -4,6 +4,9 @@
  * adapters stay focused on *mapping* data, not on transport plumbing.
  */
 
+import { getGateway, type GatewayCall } from '../cost/gateway';
+import { getPacer } from '../cost/pacer';
+
 /** A failure from an external data source. Carries which source failed. */
 export class SourceError extends Error {
   constructor(
@@ -22,6 +25,9 @@ interface FetchOptions {
   readonly timeoutMs?: number;
   readonly retries?: number;
   readonly init?: RequestInit;
+  readonly call?: GatewayCall;
+  /** When true, bypasses the cache for this call (--fresh mode). */
+  readonly skipCache?: boolean;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -33,7 +39,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  */
 export async function fetchWithRetry(
   url: string,
-  { source, timeoutMs = 12_000, retries = 2, init }: FetchOptions,
+  { source, timeoutMs = 12_000, retries = 2, init, call, skipCache }: FetchOptions,
 ): Promise<Response> {
   let lastError: unknown;
 
@@ -41,7 +47,11 @@ export async function fetchWithRetry(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const res = await fetch(url, { ...init, signal: controller.signal });
+      const effectiveCall: GatewayCall = {
+        ...(call ?? { kind: 'app', upstream: 'itunes' }),
+        ...(skipCache ? { skipCache: true } : {}),
+      };
+      const res = await getGateway().fetch(url, effectiveCall, { ...init, signal: controller.signal });
       if (res.ok) return res;
 
       const retryable = res.status === 429 || res.status >= 500;
@@ -52,6 +62,15 @@ export async function fetchWithRetry(
           retryable,
         );
       }
+
+      // On 429, honour Retry-After header via the pacer and skip normal backoff.
+      if (res.status === 429 && attempt < retries) {
+        const retryAfterHeader = res.headers.get('Retry-After');
+        const retryAfterMs = retryAfterHeader ? parseFloat(retryAfterHeader) * 1000 : 0;
+        await getPacer().wait(retryAfterMs);
+        continue; // skip the normal exponential-backoff sleep below
+      }
+
       lastError = new SourceError(source, `HTTP ${res.status}`, true);
     } catch (cause) {
       if (cause instanceof SourceError && !cause.retryable) throw cause;

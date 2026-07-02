@@ -109,6 +109,13 @@ export function parseClassificationText(text: string): IdentityClassification {
 
 /** The production classifier: one Gemini generation over the fact sheet. */
 export const geminiClassifier: IdentityClassifier = async (factSheet) => {
+  const llm = getLlmProvider();
+  if (!(await llm.reachable())) {
+    throw new Error(
+      `Couldn't reach Gemini at ${llm.endpoint} during identity resolution. ` +
+      'Check that LLM_API_KEY is set in .env and the network is up.',
+    );
+  }
   const agent = getClassifierAgent();
   const result = await agent.generate(factSheet, { modelSettings: { temperature: 0 } });
   return parseClassificationText(typeof result.text === 'string' ? result.text : '');
@@ -121,12 +128,13 @@ export async function resolveAppIdentity(
   opts: { fetchedAt?: string } = {},
 ): Promise<ResolvedIdentity> {
   const signals = extractIdentitySignals(listing);
-  // The external-corroboration tier is stubbed (no key yet); a real footprint
-  // hit would add the `footprint` family. Until then it reports searched-empty
-  // and ID-lite simply starts lower on the ladder.
-  await getWebSearch().probe(buildFactSheet(signals));
-  const classification = await classify(buildFactSheet(signals));
-  return resolveIdentity(signals, classification, { fetchedAt: opts.fetchedAt });
+  const factSheet = buildFactSheet(signals);
+  const [probeResult, classification] = await Promise.all([
+    getWebSearch().probe(factSheet),
+    classify(factSheet),
+  ]);
+  const footprintProbe = probeResult.ok ? probeResult.value : undefined;
+  return resolveIdentity(signals, classification, { fetchedAt: opts.fetchedAt, footprintProbe });
 }
 
 /** Stamp a resolved identity into an append-ready `IdentityVersion` row (stage=lite). */

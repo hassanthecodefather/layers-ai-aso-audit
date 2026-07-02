@@ -94,6 +94,12 @@ function snapshot(over: Partial<ListingSnapshot> = {}): ListingSnapshot {
     rubricVersion: over.rubricVersion ?? 'rubric-abc',
     promptHash: over.promptHash ?? 'prompt-xyz',
     modelId: over.modelId ?? 'gemini-2.5-flash',
+    // Optional blobs — passed through explicitly so round-trip tests can set them.
+    visionResult: over.visionResult,
+    candidateResult: over.candidateResult,
+    themeResult: over.themeResult,
+    functionCompetitorSeeds: over.functionCompetitorSeeds,
+    competitorMiningResult: over.competitorMiningResult,
   };
 }
 
@@ -211,6 +217,89 @@ export function storageClientConformance(
       }
     });
 
+    // ── Snapshot optional blobs (visionResult / candidateResult) ────────────
+    it('round-trips visionResult through put/latest (B1 regression guard)', async () => {
+      const h = await makeClient();
+      try {
+        const vr = { screenshotSetVerdict: { coarseScore: 8, confidence: 'observed', critiques: [], competitorComparison: { value: null } } };
+        unwrap(await h.client.putSnapshot(snapshot({ visionResult: vr })));
+        const got = unwrap(await h.client.latestSnapshot('app1', 'us'));
+        expect(got?.visionResult).toEqual(vr);
+      } finally {
+        h.close();
+      }
+    });
+
+    it('round-trips candidateResult through put/latest (C4 regression guard)', async () => {
+      const h = await makeClient();
+      try {
+        const cr = { candidates: [{ term: 'charging', normalizedKey: 'charging', source: 'description', volumeLabel: 'popularity unavailable', volumeAvailable: false }], gap: [], popularityAvailable: false };
+        unwrap(await h.client.putSnapshot(snapshot({ candidateResult: cr })));
+        const got = unwrap(await h.client.latestSnapshot('app1', 'us'));
+        expect(got?.candidateResult).toEqual(cr);
+      } finally {
+        h.close();
+      }
+    });
+
+    it('round-trips themeResult through put/latest (D2 regression guard)', async () => {
+      const h = await makeClient();
+      try {
+        const tr = {
+          themes: [
+            { bucket: 'crash_stability', text: 'App crashes on launch', reviewIds: ['r1', 'r2'], isUnresolved: false },
+          ],
+          versionDelta: { olderVersion: '3.12.0', newerVersion: '3.13.0', olderAvgRating: 2.5, newerAvgRating: 3.8, delta: 1.3 },
+          featureRequests: ['Offline mode'],
+          taxonomyVersion: 'theme-taxonomy@1',
+        };
+        unwrap(await h.client.putSnapshot(snapshot({ themeResult: tr })));
+        const got = unwrap(await h.client.latestSnapshot('app1', 'us'));
+        expect(got?.themeResult).toEqual(tr);
+      } finally {
+        h.close();
+      }
+    });
+
+    it('round-trips functionCompetitorSeeds through put/latest (D3 regression guard)', async () => {
+      const h = await makeClient();
+      try {
+        const seeds = ['ev charging', 'electric vehicle'];
+        unwrap(await h.client.putSnapshot(snapshot({ functionCompetitorSeeds: seeds })));
+        const got = unwrap(await h.client.latestSnapshot('app1', 'us'));
+        expect(got?.functionCompetitorSeeds).toEqual(seeds);
+      } finally {
+        h.close();
+      }
+    });
+
+    it('round-trips competitorMiningResult through put/latest (F-K2 regression guard)', async () => {
+      const h = await makeClient();
+      try {
+        const mining = { painPoints: [{ bucket: 'crash_stability', text: 'App crashes', reviewCount: 5, competitors: ['CompA'] }], competitorsCovered: ['CompA'], lowRatingReviewCount: 5 };
+        unwrap(await h.client.putSnapshot(snapshot({ competitorMiningResult: mining })));
+        const got = unwrap(await h.client.latestSnapshot('app1', 'us'));
+        expect(got?.competitorMiningResult).toEqual(mining);
+      } finally {
+        h.close();
+      }
+    });
+
+    it('leaves visionResult, candidateResult, themeResult, functionCompetitorSeeds, and competitorMiningResult undefined when absent', async () => {
+      const h = await makeClient();
+      try {
+        unwrap(await h.client.putSnapshot(snapshot()));
+        const got = unwrap(await h.client.latestSnapshot('app1', 'us'));
+        expect(got?.visionResult).toBeUndefined();
+        expect(got?.candidateResult).toBeUndefined();
+        expect(got?.themeResult).toBeUndefined();
+        expect(got?.functionCompetitorSeeds).toBeUndefined();
+        expect(got?.competitorMiningResult).toBeUndefined();
+      } finally {
+        h.close();
+      }
+    });
+
     // ── Recommendations + dedup-by-rec_key ───────────────────────────────
     it('inserts a recommendation and reads it back from the ledger', async () => {
       const h = await makeClient();
@@ -288,6 +377,35 @@ export function storageClientConformance(
         expect(got?.stage).toBe('full');
         // Tally (a nested array) survives the round-trip.
         expect(got?.tally[0]?.family).toBe('developer');
+      } finally {
+        h.close();
+      }
+    });
+
+    it('latestIdentity prefers the full row even when a newer lite row exists', async () => {
+      const h = await makeClient();
+      try {
+        unwrap(await h.client.appendIdentity(identity({ id: 'v0', version: 0 })));
+        unwrap(await h.client.appendIdentity(identity({ id: 'v1', version: 1, stage: 'full', category: 'Navigation' })));
+        unwrap(await h.client.appendIdentity(identity({ id: 'v2', version: 2, stage: 'lite', category: 'Updated' })));
+        const got = unwrap(await h.client.latestIdentity('app1', 'us'));
+        // v2 is newest by version but full row (v1) should win.
+        expect(got?.stage).toBe('full');
+        expect(got?.version).toBe(1);
+        expect(got?.category).toBe('Navigation');
+      } finally {
+        h.close();
+      }
+    });
+
+    it('maxIdentityVersion returns the true MAX regardless of stage', async () => {
+      const h = await makeClient();
+      try {
+        expect(unwrap(await h.client.maxIdentityVersion('app1', 'us'))).toBe(-1); // empty
+        unwrap(await h.client.appendIdentity(identity({ id: 'v0', version: 0 })));
+        unwrap(await h.client.appendIdentity(identity({ id: 'v1', version: 1, stage: 'full' })));
+        unwrap(await h.client.appendIdentity(identity({ id: 'v2', version: 2, stage: 'lite' })));
+        expect(unwrap(await h.client.maxIdentityVersion('app1', 'us'))).toBe(2);
       } finally {
         h.close();
       }

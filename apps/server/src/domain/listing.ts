@@ -18,6 +18,8 @@ export const ReviewSchema = z.object({
   title: z.string(),
   body: z.string(),
   updated: z.string().nullable(),
+  id: z.string().optional(),        // Apple's stable review ID from RSS id.label
+  appVersion: z.string().nullable().optional(), // app version from im:version.label
 });
 export type Review = z.infer<typeof ReviewSchema>;
 
@@ -32,6 +34,7 @@ export const CompetitorSchema = z.object({
   formattedPrice: z.string().nullable(),
   screenshotCount: z.number(),
   hasPreviewVideo: z.boolean(),
+  description: z.string().optional(),   // from iTunes Lookup; inferred-only gap source
 });
 export type Competitor = z.infer<typeof CompetitorSchema>;
 
@@ -45,7 +48,11 @@ export const ProvenanceSchema = z.object({
   /** Whether the page crawler contributed (subtitle, promo text, video). */
   crawler: z.boolean(),
   reviews: z.boolean(),
+  /** True when the reviews fetch failed (network/429) rather than returning empty cleanly. */
+  reviewsFetchFailed: z.boolean().optional(),
   competitors: z.boolean(),
+  /** True when all listing data was served from the HTTP response cache (E1). */
+  observedFromCache: z.boolean().optional().default(false),
 });
 export type Provenance = z.infer<typeof ProvenanceSchema>;
 

@@ -80,7 +80,7 @@ export const RUBRIC: readonly RubricDimension[] = [
     checks: [
       'All 10 slots used',
       'First 2-3 communicate core value',
-      'Readable on-image text (Apple OCR-indexes it)',
+      'Readable on-image text (conversion lever; keyword indexing value a hypothesis)',
       'Cohesive design language',
     ],
   },

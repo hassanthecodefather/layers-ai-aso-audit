@@ -1,4 +1,5 @@
 import type { AppListing } from '../domain/listing';
+import { runLinter, type LinterResult } from '../keywords/linter';
 
 /**
  * Deterministic signals — every fact about a listing that is *arithmetic*,
@@ -32,6 +33,7 @@ export interface ListingSignals {
     observable: false;
     note: string;
   };
+  keywordLinter: LinterResult;
   description: {
     charCount: number;
     lineCount: number;
@@ -154,6 +156,11 @@ export function computeSignals(listing: AppListing): ListingSignals {
       wordsSharedWithTitle: sharedWords,
     },
     keywordField: { observable: false, note: KEYWORD_FIELD_NOTE },
+    keywordLinter: runLinter({
+      title: listing.name,
+      subtitle: listing.provenance.crawler ? (listing.subtitle ?? null) : null,
+      keywordField: null,
+    }),
     description: {
       charCount: listing.description.length,
       lineCount: listing.description.split('\n').filter((l) => l.trim()).length,

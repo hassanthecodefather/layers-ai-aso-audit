@@ -10,9 +10,10 @@ import {
   type IntentTag,
 } from '../domain/recommendation';
 import type { StorageClient } from './storage-client';
-import { computeRecKey, valueKeyFor, findContradiction } from './dedup';
+import { computeRecKey, valueKeyFor, findContradiction, normalizeValueKey } from './dedup';
 import { newId } from './ids';
 import { toIdentityVersion } from '../mastra/tools/resolve-identity';
+import { assignProofRegime } from '../scoring/proof-regime';
 
 /**
  * The P1 memory service (spec P1 uplifts): turn a finished audit into ledger
@@ -22,22 +23,55 @@ import { toIdentityVersion } from '../mastra/tools/resolve-identity';
  * first, marks applied, never repeats" true end-to-end.
  */
 
-/** Per-dimension defaults for fields the model doesn't emit. */
-const DIMENSION_MAP: Record<DimensionId, { targetField: string | null; proofRegime: ProofRegime }> = {
-  title:        { targetField: 'title',        proofRegime: 'observable_now' },
-  subtitle:     { targetField: 'subtitle',     proofRegime: 'observable_now' },
-  keywordField: { targetField: 'keywordField', proofRegime: 'observable_now' },
-  description:  { targetField: 'description',  proofRegime: 'correlational'  },
-  screenshots:  { targetField: 'screenshots',  proofRegime: 'ppo_causal'     },
-  previewVideo: { targetField: null,            proofRegime: 'ppo_causal'     },
-  ratings:      { targetField: 'reviews',      proofRegime: 'correlational'  },
-  icon:         { targetField: 'icon',          proofRegime: 'ppo_causal'     },
-  conversion:   { targetField: null,            proofRegime: 'correlational'  },
-  competitive:  { targetField: null,            proofRegime: 'correlational'  },
+/** Per-dimension defaults for target field; proof regime is now intent-level (see assignProofRegime). */
+const DIMENSION_MAP: Record<DimensionId, { targetField: string | null }> = {
+  title:        { targetField: 'title'        },
+  subtitle:     { targetField: 'subtitle'     },
+  keywordField: { targetField: 'keywordField' },
+  description:  { targetField: 'description'  },
+  screenshots:  { targetField: 'screenshots'  },
+  previewVideo: { targetField: null           },
+  ratings:      { targetField: 'reviews'      },
+  icon:         { targetField: 'icon'         },
+  conversion:   { targetField: null           },
+  competitive:  { targetField: null           },
 };
 
 /** Intents that rewrite the app's *identity* — suppressed when ID is unconfirmed. */
 const IDENTITY_REWRITING: ReadonlySet<IntentTag> = new Set<IntentTag>(['reposition_identity']);
+
+/**
+ * Expand a single `add_keyword` rec whose referent value is a comma-joined
+ * list (e.g. "electric,vehicle") into one rec per keyword.
+ *
+ * The LLM sometimes packs multiple keywords into one referent despite the
+ * single-keyword rule. A comma-joined value produces one `rec_key` for the
+ * whole group, breaking per-keyword dedup and belief-accumulation. This
+ * expansion is the code-side fix: code always derives the key, never trusts
+ * the model.
+ *
+ * Split on comma only — NOT on space. A space-separated phrase like
+ * "electric vehicle" is a legitimate single keyphrase and must stay intact.
+ *
+ * Deduplicates within the split (same normalizedKey → keep first occurrence).
+ * For all other intents, returns a 1-element array unchanged.
+ */
+export function expandAddKeywordRec(rec: ReportRec): ReportRec[] {
+  if (rec.intent !== 'add_keyword' || rec.referent.kind !== 'keyword') return [rec];
+  const raw = rec.referent.value ?? '';
+  const parts = raw.split(',').map((s) => s.trim()).filter(Boolean);
+  if (parts.length <= 1) return [rec];
+
+  const seen = new Set<string>();
+  const expanded: ReportRec[] = [];
+  for (const part of parts) {
+    const key = normalizeValueKey(part);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    expanded.push({ ...rec, referent: { kind: 'keyword', value: part } });
+  }
+  return expanded.length > 0 ? expanded : [rec];
+}
 
 /** Map one report recommendation to a ledger row (rec_key, value_key, evidence). */
 export function toLedgerRec(
@@ -71,7 +105,11 @@ export function toLedgerRec(
     targetField: map.targetField,
     title: rec.title,
     body: rec.rationale,
-    beforeText: rec.before,
+    // For other-bucket complaint themes, store the raw theme text in beforeText so
+    // priorOtherThemes can embed it on the next audit (r.body = rationale prose ≠ theme text).
+    beforeText: (rec.intent === 'fix_complaint_theme' && rec.referent.kind === 'theme' && rec.referent.bucket === 'other')
+      ? (rec.referent.text ?? rec.before ?? null)
+      : (rec.before ?? null),
     afterText: rec.after,
     evidence,
     status: 'proposed',
@@ -79,7 +117,7 @@ export function toLedgerRec(
     firstSeenAt: ctx.now,
     lastSeenAt: ctx.now,
     appliedAt: null,
-    proofRegime: map.proofRegime,
+    proofRegime: assignProofRegime(rec.intent),
   };
 }
 
@@ -105,7 +143,18 @@ export function detectApplied(
 ): LedgerRecommendation[] {
   const flipped: LedgerRecommendation[] = [];
   for (const rec of prior) {
-    if (rec.status !== 'proposed' || !rec.afterText) continue;
+    if (rec.status !== 'proposed') continue;
+
+    // Non-text applied detection (no afterText — check observable state change).
+    // Only for intents whose result is deterministic: a video either exists or doesn't.
+    if (rec.intent === 'add_preview_video' && newListing.hasPreviewVideo) {
+      flipped.push({ ...rec, status: 'applied', appliedAt: now });
+      continue;
+    }
+    // For screenshots/icon: not auto-detectable (creative changes need vision diff).
+    // Skip — the user will confirm manually or the rec re-appears on the next audit.
+
+    if (!rec.afterText) continue;
     const field = listingField(newListing, rec.targetField);
     if (field && field.toLowerCase().includes(rec.afterText.toLowerCase())) {
       flipped.push({ ...rec, status: 'applied', appliedAt: now });
@@ -146,7 +195,7 @@ export function buildPriorContext(input: {
   lines.push('### Resolved identity (function-grounded)');
   lines.push(`Category: ${identity.category} (confidence: ${identity.categoryBand})`);
   if (identity.niche) lines.push(`Niche: ${identity.niche} (confidence: ${identity.nicheBand})`);
-  if (identity.divergence === 'cross_domain') {
+  if (identity.escalate && identity.source !== 'human_confirmed') {
     lines.push(
       `⚠ The store category and the app's true function diverge (cross-domain). Identity is unconfirmed — do not rewrite the listing's core positioning.`,
     );
@@ -167,6 +216,20 @@ export interface PersistInput {
   promptHash: string;
   modelId: string;
   now: string;
+  /** B1: vision result to persist with the snapshot. Optional for backward compat. */
+  visionResult?: unknown;
+  /** C4: keyword candidate result to persist with the snapshot. Optional for backward compat. */
+  candidateResult?: unknown;
+  /** D3: seeds used for function-grounded competitor discovery. Stored for selectFunctionCompetitors reuse. */
+  functionCompetitorSeeds?: string[];
+  /** D-UI: theme analysis result for snapshot storage + reuse. */
+  themeResult?: unknown;
+  /** F-K2: competitor review mining result for snapshot storage + reuse. */
+  competitorMiningResult?: unknown;
+  /** B4: Pre-fetched prior snapshot (avoids a duplicate storage read). */
+  priorSnapshot?: ListingSnapshot | null;
+  /** B4: Pre-fetched prior ledger (avoids a duplicate storage read). */
+  priorLedger?: LedgerRecommendation[];
 }
 
 /** Result of persisting an audit — surfaces what memory did, for the report. */
@@ -191,12 +254,28 @@ export async function persistAudit(
   const appId = listing.appId;
   const country = listing.country;
 
-  const priorSnapshotR = await storage.latestSnapshot(appId, country);
-  const priorSnapshot = priorSnapshotR.ok ? priorSnapshotR.value : null;
-  const priorLedgerR = await storage.ledger(appId, country);
-  const priorLedger = priorLedgerR.ok ? priorLedgerR.value : [];
-  const priorIdentityR = await storage.latestIdentity(appId, country);
-  const priorVersion = priorIdentityR.ok && priorIdentityR.value ? priorIdentityR.value.version : -1;
+  // B4: use pre-fetched values if provided (avoids duplicate storage reads).
+  let priorSnapshot: ListingSnapshot | null;
+  if (input.priorSnapshot !== undefined) {
+    priorSnapshot = input.priorSnapshot;
+  } else {
+    const priorSnapshotR = await storage.latestSnapshot(appId, country);
+    priorSnapshot = priorSnapshotR.ok ? priorSnapshotR.value : null;
+  }
+
+  let priorLedger: LedgerRecommendation[];
+  if (input.priorLedger !== undefined) {
+    priorLedger = input.priorLedger;
+  } else {
+    const priorLedgerR = await storage.ledger(appId, country);
+    priorLedger = priorLedgerR.ok ? priorLedgerR.value : [];
+  }
+
+  // Use the true MAX version (not latestIdentity which prefers full rows) to
+  // ensure monotonic version numbers even when the full-preferred read returns
+  // an older full row as the semantic head.
+  const maxVersionR = await storage.maxIdentityVersion(appId, country);
+  const priorVersion = maxVersionR.ok ? maxVersionR.value : -1;
 
   // 1. Write the immutable snapshot first — evidence chips freeze to its id.
   const snapshotId = newId('snap');
@@ -211,6 +290,11 @@ export async function persistAudit(
     rubricVersion: input.rubricVersion,
     promptHash: input.promptHash,
     modelId: input.modelId,
+    visionResult: input.visionResult,
+    candidateResult: input.candidateResult,
+    functionCompetitorSeeds: input.functionCompetitorSeeds,
+    themeResult: input.themeResult,
+    competitorMiningResult: input.competitorMiningResult,
   };
   await storage.putSnapshot(snapshot);
 
@@ -238,7 +322,8 @@ export async function persistAudit(
   // id, not the freshly-minted one in rec. Without this map, a re-raised rec
   // would log its occurrence against an id that doesn't exist in aso_recommendations.
   const priorIdByRecKey = new Map(priorLedger.map((r) => [r.recKey, r.id]));
-  for (const reportRec of report.quickWins.concat(report.highImpact, report.strategic)) {
+  for (const rawReportRec of report.quickWins.concat(report.highImpact, report.strategic)) {
+    for (const reportRec of expandAddKeywordRec(rawReportRec)) {
     const rec = toLedgerRec(reportRec, { appId, country, snapshotId, now });
     // Suppress identity-rewriting recs when the identity is unconfirmed (spec ID).
     if (identityUnconfirmed && IDENTITY_REWRITING.has(rec.intent)) continue;
@@ -262,6 +347,7 @@ export async function persistAudit(
     await storage.upsertRecommendation(rec);
     // Use the stored row's id — on re-raises the original row survives ON CONFLICT.
     await storage.recordOccurrence(priorIdByRecKey.get(rec.recKey) ?? rec.id, snapshotId, false);
+    } // end expandAddKeywordRec inner loop
   }
 
   return {

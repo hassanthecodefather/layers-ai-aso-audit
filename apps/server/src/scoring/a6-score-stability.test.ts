@@ -86,7 +86,7 @@ function makeListing(overrides: Partial<AppListing> = {}): AppListing {
         hasPreviewVideo: true,
       },
     ],
-    provenance: { itunes: true, crawler: true, reviews: true, competitors: true },
+    provenance: { itunes: true, crawler: true, reviews: true, competitors: true, observedFromCache: false },
     ...overrides,
   };
 }
@@ -192,7 +192,7 @@ describe('assembleReport — code overrides win over model scores', () => {
   it('previewVideo not observable (crawler=false): confidence=unavailable, model score ignored', () => {
     const listing = makeListing({
       hasPreviewVideo: false,
-      provenance: { itunes: true, crawler: false, reviews: false, competitors: false },
+      provenance: { itunes: true, crawler: false, reviews: false, competitors: false, observedFromCache: false },
     });
     const signals = computeSignals(listing);
     const report = assembleReport(APP, makeDraft({ previewVideo: 7 }), signals);
@@ -203,7 +203,7 @@ describe('assembleReport — code overrides win over model scores', () => {
 
   it('subtitle not crawled: confidence=unavailable, excluded from weighted total', () => {
     const listing = makeListing({
-      provenance: { itunes: true, crawler: false, reviews: false, competitors: false },
+      provenance: { itunes: true, crawler: false, reviews: false, competitors: false, observedFromCache: false },
     });
     const signals = computeSignals(listing);
     const report = assembleReport(APP, makeDraft(), signals);

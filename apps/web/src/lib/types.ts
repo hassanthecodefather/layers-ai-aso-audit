@@ -8,6 +8,22 @@
  * with no coupling to the server's dependency tree.
  */
 
+export interface ResolvedIdentity {
+  category: string;
+  categoryBand: 'high' | 'medium' | 'low';
+  niche: string | null;
+  nicheBand: 'high' | 'medium' | 'low' | null;
+  divergence: string;
+  escalate: boolean;
+  source: string;
+}
+
+export interface IdentityDecision {
+  action: 'confirm' | 'correct';
+  category?: string;
+  niche?: string | null;
+}
+
 export interface AppSummary {
   appId: string;
   country: string;
@@ -38,11 +54,14 @@ export type RecommendationCategory = 'quick-win' | 'high-impact' | 'strategic';
 export interface Recommendation {
   category: RecommendationCategory;
   dimension: string;
+  intent: string;
+  referent: { kind: string; value?: string; bucket?: string; text?: string };
   title: string;
   rationale: string;
   evidence: string;
   before: string | null;
   after: string | null;
+  proofRegime?: 'observable_now' | 'correlational' | 'funnel_asc' | 'ppo_causal';
 }
 
 export interface CompetitorRow {
@@ -50,6 +69,29 @@ export interface CompetitorRow {
   rating: string;
   positioning: string;
   edge: string;
+}
+
+export interface VersionDelta {
+  olderVersion: string;
+  newerVersion: string;
+  olderAvgRating: number;
+  newerAvgRating: number;
+  delta: number;
+}
+
+export interface ThemeRow {
+  bucket: string;
+  text: string;
+  reviewCount: number;
+  isUnresolved: boolean;
+}
+
+export interface ThemeResult {
+  themes: ThemeRow[];
+  versionDelta: VersionDelta | null;
+  featureRequests: string[];
+  sampleSize: number;
+  taxonomyVersion: 'theme-taxonomy@1';
 }
 
 export interface AuditReport {
@@ -63,6 +105,7 @@ export interface AuditReport {
   strategic: Recommendation[];
   competitorComparison: { summary: string; rows: CompetitorRow[] };
   limitations: string[];
+  themeResult?: ThemeResult | null;
 }
 
 export interface ProgressEvent {

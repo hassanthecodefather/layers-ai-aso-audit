@@ -12,6 +12,7 @@ import {
 } from '../domain/identity';
 import type { RawIdentitySignals } from './signals';
 import { divergenceBetween } from './domains';
+import type { WebSearchProbe } from '../sources/websearch/websearch';
 
 /**
  * The function-grounded interpretation of the signals — what the app actually
@@ -53,6 +54,14 @@ export interface ResolveOptions {
   minReviewSample?: number;
   /** When the signals were observed — the freshness reuse reads through to. */
   fetchedAt?: string;
+  /**
+   * Off-store footprint probe result from the web-search tier (spec ID §E).
+   * `corroborated` adds a `fetched_and_cited` tally entry (weight=2, agrees=true).
+   * `searched_and_empty` adds an entry with agrees=false — excluded from S and distinct,
+   *   so it contributes nothing to the band score (arithmetically neutral, not a deduction).
+   * `errored` is silently ignored — a tool error is not an identity signal.
+   */
+  footprintProbe?: WebSearchProbe;
 }
 
 /** Loose brand match: shared substring of ≥3 chars (rivian ↔ rivian.com). */
@@ -129,6 +138,25 @@ export function resolveIdentity(
       value: hit ? 'function vocabulary present' : 'no function vocabulary',
       sourceTier: 'review_inferred',
       agrees: hit,
+      fetchedAt,
+    });
+  }
+
+  // footprint — off-store web-search corroboration (spec ID §E "footprint family").
+  // `corroborated` is an independent third-party signal (fetched_and_cited, weight=2).
+  // `searched_and_empty` is an honest negative — agrees=false is excluded from S/distinct,
+  // so it doesn't change the band score (neutral, not a deduction).
+  // `errored` means the tool broke; we don't penalise for that.
+  if (opts.footprintProbe && opts.footprintProbe.state !== 'errored') {
+    const probe = opts.footprintProbe;
+    tally.push({
+      family: 'footprint',
+      value:
+        probe.state === 'corroborated'
+          ? `Web search: ${probe.sources.length} off-store source${probe.sources.length === 1 ? '' : 's'}`
+          : 'Web search: no off-store footprint found',
+      sourceTier: 'fetched_and_cited',
+      agrees: probe.state === 'corroborated',
       fetchedAt,
     });
   }

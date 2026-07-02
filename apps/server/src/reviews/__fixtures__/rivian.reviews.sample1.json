@@ -1,0 +1,182 @@
+[
+  {
+    "id": "14209690246",
+    "author": "comeonnownocensor",
+    "rating": 5,
+    "title": "Amazing App",
+    "body": "Great app",
+    "updated": "2026-06-21T09:30:53-07:00",
+    "appVersion": "3.13.1"
+  },
+  {
+    "id": "14199210988",
+    "author": "hgddyrfghg",
+    "rating": 1,
+    "title": "Terrible app",
+    "body": "I\u2019m in the Yosemite valley. I need a charge. This garbage app only makes me \u201cplan a trip\u201d I don\u2019t need to plan Shht! I need a charge!",
+    "updated": "2026-06-18T16:39:52-07:00",
+    "appVersion": "3.13.0"
+  },
+  {
+    "id": "14173459591",
+    "author": "JohnGalt1717",
+    "rating": 3,
+    "title": "Key support is horrible",
+    "body": "Effectively always gets who\u2019s in the drive seat wrong. Moves the seat if you get out of the driver\u2019s seat to whomever is in the passenger seat, doesn\u2019t return your seat to you when you get in on the driver\u2019s door. Basically everything that UWB was supposed to solve is worse, not better. \n\nAlso needs the ability to change AC charging amps directly in the app.",
+    "updated": "2026-06-12T04:28:22-07:00",
+    "appVersion": "3.13.0"
+  },
+  {
+    "id": "14144534383",
+    "author": "Acrahen",
+    "rating": 4,
+    "title": "Live activities not working after update",
+    "body": "Good app, but the charging status on live activities needs to refresh more often after the recent update.",
+    "updated": "2026-06-04T15:11:27-07:00",
+    "appVersion": "3.12.1"
+  },
+  {
+    "id": "14127268178",
+    "author": "Michael Santarcangelo",
+    "rating": 3,
+    "title": "apple watch app / key issues",
+    "body": "the apple watch car key functionality seems to have broken in the latest update. i previously was able to open the apple watch key and use the lock / unlock button, which was useful at home where i have passive entry set to lock only. now when i open the key on apple watch there is no lock/unlock button so i cannot use the watch to unlock my car at home. furthermore it seems like it is not possible to add a complication to the watch face that will simply open the rivian watch app - which would be very useful for quick access to the app on the watch without having to scroll the apps list.",
+    "updated": "2026-05-31T06:27:07-07:00",
+    "appVersion": "3.12.1"
+  },
+  {
+    "id": "14101149943",
+    "author": "JudyPGoods",
+    "rating": 2,
+    "title": "Now slower and buggier",
+    "body": "The Rivian app has always been a bit mid. This reached a whole new level of issue since the Rivian \u201cintelligence\u201d rollout. I got a buggy AI assistant I don\u2019t want in exchange for:\n- painful 30s-1min wake-ups to unlock the car I am standing next to and just locked \n- even more unreliable multi-factor drive\n- constant nags to connect data my car should never need\n- a slow and poorly animated \u201cAI\u201d to incorrectly search for Spotify songs",
+    "updated": "2026-05-24T09:14:01-07:00",
+    "appVersion": "3.12.1"
+  },
+  {
+    "id": "14070923956",
+    "author": "Mark Bobster",
+    "rating": 3,
+    "title": "I wish it had CarPlay",
+    "body": "The Rivian is a great car. My only big gripe is that without CarPlay it\u2019s like going back in time ten years on the media experience. \n\nThey\u2019ve built their own versions of Maps, Spotify, etc, and none of them are very good. AND they charge you $15/month to use them.\n\nMy only other big gripe with the car is the doors don\u2019t open when you walk up to it. You have to touch your phone to the door.",
+    "updated": "2026-05-16T06:14:50-07:00",
+    "appVersion": "3.12.0"
+  },
+  {
+    "id": "14061203496",
+    "author": "8675309ZZTOP",
+    "rating": 1,
+    "title": "BEWARE!",
+    "body": "I downloaded the latest app update as well as the vehicle 2026.15.0 update within the last 48 hours. By coincidence I also bought a new smart phone. I now am able to access and drive the vehicle ONLY with a physical key card. I cannot add or delete a digital key through either the app or the Apple wallet. It seems Rivian failed to do all the quality control work on the back end to make sure the little things still worked before rolling out major software updates. What a crock.",
+    "updated": "2026-05-13T13:59:58-07:00",
+    "appVersion": "3.12.0"
+  },
+  {
+    "id": "14048550864",
+    "author": "MikeNYIM",
+    "rating": 3,
+    "title": "Fix 3.11.1",
+    "body": "App shows car not charging on phone Home Screen. App shows car unplugged in app energy.",
+    "updated": "2026-05-10T04:04:26-07:00",
+    "appVersion": "3.11.1"
+  },
+  {
+    "id": "14035117138",
+    "author": "hairypothead",
+    "rating": 1,
+    "title": "Buggy",
+    "body": "The app is basically useless on Gen1 vehicles, which is an obvious sign of how Rivian will run in the future with forced obsolescence. Proximity is buggy and aggressive - sometimes it responds to proximity, other times it doesn\u2019t. If you have proximity on, you CANNOT use any of the remote functions when you\u2019re not close to the vehicle. If you have proximity turned off, the remote app is hit or miss. I have prompted for a frunk open, and the app sent the request 10 minutes later.",
+    "updated": "2026-05-06T09:55:15-07:00",
+    "appVersion": "3.11.1"
+  },
+  {
+    "id": "13997040111",
+    "author": "Brad Fitzpatrick",
+    "rating": 2,
+    "title": "Widget broke",
+    "body": "This recent update broke my home screen widget which was the primary way I had used the app. Now I just see a black box.",
+    "updated": "2026-04-25T16:14:59-07:00",
+    "appVersion": "3.11.0"
+  },
+  {
+    "id": "13978653558",
+    "author": "jpkrinoid",
+    "rating": 1,
+    "title": "Latest update broke public charging",
+    "body": "Latest update broke public charging.  Nothing happens after selecting the charger.  App is completely useless.  Actually do QA before you release and break public charging at Rivian chargers!",
+    "updated": "2026-04-20T08:37:19-07:00",
+    "appVersion": "3.11.0"
+  },
+  {
+    "id": "13972486771",
+    "author": "VegasCF",
+    "rating": 1,
+    "title": "Why is it so hard to charge with low level chargers?",
+    "body": "It says \u201cplug in to charge\u201d ok, plug in, won\u2019t charge. Says \u201cselect charger to start charging\u201d ok, I select the charger no option to start just says \u201ccharger available\u201d \n\nCan\u2019t you just be like charge point and just let us tap and plug in? Why these extra steps that most of the time DON\u2019T WORK? Location: Las Vegas Town Square\n\nThis app/charger for low level is almost always terrible but now it\u2019s just unusable.",
+    "updated": "2026-04-18T14:37:18-07:00",
+    "appVersion": "3.11.0"
+  },
+  {
+    "id": "13966016384",
+    "author": "Darkavich",
+    "rating": 4,
+    "title": "Bugs in this version",
+    "body": "The latest version no longer updates on the iPhone lock screen. It shows time to charge and state of charge but never updates.",
+    "updated": "2026-04-16T20:16:44-07:00",
+    "appVersion": "3.11.0"
+  },
+  {
+    "id": "13953665831",
+    "author": "csandman9",
+    "rating": 1,
+    "title": "Pathetic",
+    "body": "Just when you thought Tesla had the worst customer service on earth, Rivian now takes the prize.",
+    "updated": "2026-04-13T06:52:06-07:00",
+    "appVersion": "3.10.0"
+  },
+  {
+    "id": "13886385026",
+    "author": "Roger Peterson",
+    "rating": 1,
+    "title": "Latest update brings back annoying bug",
+    "body": "For several months, the Rivian app finally removed the notification every single time you closed the app \u201cto use your phone as a key, you\u2019ll need the app open\u201d\n\nWell, now that notification is back, every SINGLE time you close the app. \n\nI know for a fact you don\u2019t need the app open to use your phone as a key! Please fix this Rivian it\u2019s SO annoying.",
+    "updated": "2026-03-25T11:58:04-07:00",
+    "appVersion": "3.10.0"
+  },
+  {
+    "id": "13872797336",
+    "author": "Origreenberg",
+    "rating": 1,
+    "title": "Bad experience",
+    "body": "Barcode on the charging station cannot be scanned, I need to search for the station on the map, and couldn\u2019t find mine. They place them intentionally near places with bad signal, Yosemite for example, where the whole experience relies on having solid internet connection. Bad user experience",
+    "updated": "2026-03-21T13:45:56-07:00",
+    "appVersion": "3.10.0"
+  },
+  {
+    "id": "13871701333",
+    "author": "ACDaniel777",
+    "rating": 1,
+    "title": "Work restricted",
+    "body": "AC Transit in Bay Area CA allows employees access to Tesla accounts app on their work phones but restricts employees to access Rivian accounts. What\u2019s up with that?",
+    "updated": "2026-03-21T07:28:13-07:00",
+    "appVersion": "3.10.0"
+  },
+  {
+    "id": "13843071741",
+    "author": "mjhns2",
+    "rating": 2,
+    "title": "Haven\u2019t Taken Delivery, But",
+    "body": "As the title says, I haven\u2019t taken delivery yet, but so far I\u2019m a little disappointed with the app coming from a Tesla. With the Tesla app, I could see how much I charged at home over the last 30 days and use that amount to pay toward the electric bill. The Rivian app doesn\u2019t seem to have that option.\n\nEdit: The app should have a way to filter compatible charging stations by my vehicle and adapters I have.",
+    "updated": "2026-03-13T02:44:36-07:00",
+    "appVersion": "3.9.0"
+  },
+  {
+    "id": "13825598283",
+    "author": "vince allan",
+    "rating": 2,
+    "title": "Have a backup plan",
+    "body": "Sometimes it lets me into the car. Other times I get a ride with friends and that\u2019s cool too.",
+    "updated": "2026-03-07T20:49:35-07:00",
+    "appVersion": "3.9.0"
+  }
+]

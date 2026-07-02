@@ -23,6 +23,20 @@ import {
   IdentityDecisionSchema,
 } from '../../identity/human-confirm';
 import { buildPriorContext, persistAudit } from '../../memory/audit-memory';
+import { getVisionClient, runVision, selectVisionResult } from '../../vision';
+import { getGovernor, GovernorDenialError } from '../../cost/governor';
+import { runIdFull } from '../../identity/id-full';
+import { getIdentityVisionClient } from '../../identity/identity-vision-client';
+import { runSecondaryUplifts } from '../../vision/secondary-uplifts';
+import { generateCandidates, selectCandidateResult, suppressCompetitorGapTerms } from '../../keywords/candidates';
+import { getKeywordProvider } from '../../keywords/asa-client';
+import { analyzeThemes, selectThemeResult } from '../../reviews/themes';
+import { getEmbeddingProvider, resolveOtherThemeKey } from '../../reviews/embedding';
+import { AppKittieClient } from '../../keywords/appkittie-client';
+import { fetchFunctionGroundedCompetitors, selectFunctionCompetitors, seedKeywords } from '../../sources/function-competitors';
+import { rankOpportunities } from '../../keywords/opportunity';
+import { mineCompetitorReviews, selectCompetitorMining } from '../../keywords/competitor-mining';
+import { buildCompetitorTieringResult } from '../../sources/competitor-tiering';
 
 /**
  * The ASO audit workflow.
@@ -93,7 +107,7 @@ function coreToIdentityListing(core: ITunesCore) {
     currentVersionReleaseDate: core.currentVersionReleaseDate,
     reviews: [],
     competitors: [],
-    provenance: { itunes: true, crawler: false, reviews: false, competitors: false },
+    provenance: { itunes: true, crawler: false, reviews: false, competitors: false, observedFromCache: false },
   });
 }
 
@@ -136,17 +150,17 @@ const confirmStep = createStep({
     appId: z.string(),
     country: z.string(),
     identityDecision: IdentityDecisionSchema.nullable(),
+    /** When true, the gather step bypasses the cache (--fresh mode, spec E1). */
+    fresh: z.boolean().optional(),
   }),
   suspendSchema: SummaryAndIdentitySchema,
   resumeSchema: z.object({
     confirmed: z.boolean(),
-    // Present only when the operator confirms/corrects/picks the identity.
     identityDecision: IdentityDecisionSchema.nullish(),
+    /** Set true to bypass all source caches for this run (--fresh, spec E1). */
+    fresh: z.boolean().optional(),
   }),
   execute: async ({ inputData, resumeData, suspend }) => {
-    // First pass: hand back the summary AND the resolved identity. When
-    // `identityNeedsConfirm` is true the UI widens the prompt to "here's what
-    // we think your app is — confirm, correct, or pick a candidate."
     if (!resumeData) {
       return suspend(inputData);
     }
@@ -157,6 +171,7 @@ const confirmStep = createStep({
       appId: inputData.summary.appId,
       country: inputData.summary.country,
       identityDecision: resumeData.identityDecision ?? null,
+      fresh: resumeData.fresh ?? false,
     };
   },
 });
@@ -170,6 +185,12 @@ const scoreStep = createStep({
   inputSchema: AppListingSchema,
   outputSchema: AuditReportSchema,
   execute: async ({ inputData, mastra, getStepResult }) => {
+    const runResult = getGovernor().startRun();
+    if (!runResult.ok) {
+      // Reentrant run — refuse immediately rather than burning budget
+      throw new GovernorDenialError('reentrant', 'audit-run', { kind: 'app', upstream: 'itunes' });
+    }
+    try {
     const llm = getLlmProvider();
     if (!(await llm.reachable())) {
       throw new Error(
@@ -182,7 +203,7 @@ const scoreStep = createStep({
     const agent = mastra?.getAgent('asoAuditor');
     if (!agent) throw new Error('ASO auditor agent is not registered.');
 
-    const listing = inputData;
+    let listing = inputData;
     const storage = await getStorage();
     const now = new Date().toISOString();
 
@@ -205,35 +226,127 @@ const scoreStep = createStep({
 
     const identityFactSheet = buildFactSheet(extractIdentitySignals(listing));
 
-    // ── P1: read prior history for reconciliation (NOT injected into generation) ─
+    // ── P1: read prior history before D3 so the reuse check has priorSnap ────
     // Generation is a pure function of (listing + identity); the ledger is read
     // after generation, in the memory reconciliation layer (persistAudit). Injecting
     // the ledger into the prompt caused the model to diversify away from past recs,
     // growing the ledger every run instead of stabilising it.
+    const ref = { appId: listing.appId, country: listing.country };
     const priorSnapR = await storage.latestSnapshot(listing.appId, listing.country);
     const priorLedgerR = await storage.ledger(listing.appId, listing.country);
+    const priorSnap = priorSnapR.ok ? priorSnapR.value : null;
+
     const priorContext = buildPriorContext({
       identity: resolved,
-      priorSnapshot: priorSnapR.ok ? priorSnapR.value : null,
+      priorSnapshot: priorSnap,
       identityFactSheet,
     });
+
+    // ── D3: function-grounded competitor discovery — identity-seeded, not genre-based.
+    // Reuse path (selectFunctionCompetitors): if identity seeds are unchanged since
+    // the prior snapshot, reuse the stored competitors — no AppKittie call.
+    // Live path: AppKittie getTopApps → tombstone filter → batchLookupCompetitors.
+    // Falls back silently when AppKittie is not keyed — listing.competitors stays as-is.
+    // Per-audit credit cap (live path only): MAX_SEEDS=2 queries.
+    const d3Seeds = seedKeywords(resolved);
+    let d3ProvidedCompetitors = false;
+
+    const reusedCompetitors = selectFunctionCompetitors(resolved, priorSnap);
+    if (reusedCompetitors) {
+      listing = { ...listing, competitors: reusedCompetitors };
+      d3ProvidedCompetitors = true;
+    } else {
+      const appKittieKey = process.env['APP_KITTI_API_KEY'];
+      if (appKittieKey) {
+        const functionCompetitors = await fetchFunctionGroundedCompetitors(
+          ref,
+          resolved,
+          new AppKittieClient(appKittieKey),
+          storage,
+        );
+        if (functionCompetitors.length > 0) {
+          listing = { ...listing, competitors: functionCompetitors };
+          d3ProvidedCompetitors = true;
+        }
+      }
+    }
 
     // Signals computed once — passed to generation (for prompt + normalization)
     // and reused for hashing / persistence below.
     const signals = computeSignals(listing);
 
+    // ── B1: vision analysis — runs BEFORE prompt construction so the vision
+    //    facts (per-slot critiques, icon assessment) can be included in the
+    //    prompt and the LLM can cite them in findings and evidence.
+    //    getVisionClient() returns a no-op stub when no API key is set.
+    //    selectVisionResult returns the cached result when screenshot/icon URLs
+    //    are unchanged (zero additional LLM calls).
+    const visionClient = getVisionClient();
+    const priorVisionResult = selectVisionResult(listing, signals, priorSnap);
+    const visionResult = priorVisionResult ?? (await runVision(listing, visionClient));
+    // Track whether vision ran fresh (i.e., no cached result was available).
+    // B2 and B3 are gated on this: they only add value when vision ran fresh —
+    // if images are unchanged, the prior vision-grounded identity and uplift
+    // findings remain valid, and re-running would make unnecessary LLM calls.
+    const visionWasFresh = priorVisionResult === null;
+
     // ── A6: reuse-not-recompute ──────────────────────────────────────────────
-    // Hash the exact prompt string BEFORE calling the LLM. If the prior
-    // snapshot was produced from the identical prompt (same listing + signals +
-    // identity), calling the model again can only introduce noise — skip it and
-    // return the cached report. This eliminates the 46→30 score swing on
-    // re-audits of unchanged listings and avoids unnecessary Gemini cost.
+    // Hash the exact prompt string BEFORE calling the LLM. Vision is now part
+    // of the prompt so a vision change (new images) correctly invalidates the
+    // cached report. B4: build once and pass to produceAuditDraft to avoid a
+    // second buildAuditPrompt call inside that function.
+    // C4: keyword candidate generation + gap analysis. selectCandidateResult
+    // returns the stored result (zero AppKittie calls, stable promptHash) when
+    // listing text + competitor set are unchanged — mirroring selectVisionResult.
+    const priorCandidateResult = selectCandidateResult(listing, priorSnap);
+    const rawCandidateResult =
+      priorCandidateResult ?? (await generateCandidates(
+        listing,
+        getKeywordProvider(),
+      ));
+
+    // C-FU2: suppress competitor gap terms for cross-domain/escalated apps, but
+    // ONLY when D3 didn't provide function-grounded peers. When D3 ran, competitors
+    // are identity-matched (e.g. EVgo/PlugShare for Rivian) — suppressing their
+    // gap terms would undo D3's benefit for exactly the apps it was built to fix.
+    const candidateResult =
+      (resolved.escalate || resolved.divergence === 'cross_domain') && !d3ProvidedCompetitors
+        ? suppressCompetitorGapTerms(rawCandidateResult)
+        : rawCandidateResult;
+
+    // D2: theme analysis — reuse if reviews unchanged; otherwise one LLM pass
+    const priorThemeResult = selectThemeResult(listing.reviews, priorSnap);
+    const themeResult = priorThemeResult ?? (
+      listing.reviews.length > 0 ? await analyzeThemes(listing.reviews, llm) : null
+    );
+
+    // F-K2: competitor review mining — gated on D3 having provided function-grounded
+    // peers (prevents genre-mismatch noise from polluting the mining result).
+    // Reuse stored result when the D3 competitor set is unchanged (mirrors selectCandidateResult).
+    const priorMiningResult = d3ProvidedCompetitors
+      ? selectCompetitorMining(listing.competitors, priorSnap)
+      : null;
+    const competitorMining = d3ProvidedCompetitors
+      ? (priorMiningResult ?? await mineCompetitorReviews(listing.competitors, ref.country, llm))
+      : null;
+
+    // F-K3: competitor tiering + per-keyword gap mapping (pure, no new API calls).
+    const competitorTiering = d3ProvidedCompetitors
+      ? buildCompetitorTieringResult(
+          listing.competitors,
+          listing.primaryGenre,
+          candidateResult,
+          true,
+        )
+      : null;
+
+    const rankedKeywords = rankOpportunities(candidateResult, resolved, listing.name);
+    const builtPrompt = buildAuditPrompt(listing, signals, priorContext, visionResult, candidateResult, themeResult, rankedKeywords, competitorMining, competitorTiering);
     const promptHash = createHash('sha256')
-      .update(buildAuditPrompt(listing, signals, priorContext))
+      .update(builtPrompt)
       .digest('hex')
       .slice(0, 16);
 
-    const priorSnap = priorSnapR.ok ? priorSnapR.value : null;
     // `rubricVersion` is the scoring fingerprint — rubric weights + SCORER_VERSION
     // (scoring/version.ts) — so a weight retune OR a scorer-code bump changes it and
     // invalidates this whole-snapshot cache even when the listing/identity match.
@@ -254,7 +367,7 @@ const scoreStep = createStep({
       // 0-100 total are pure, deterministic code in `assembleReport`.
       let draft;
       try {
-        draft = await produceAuditDraft(agent, listing, signals, priorContext);
+        draft = await produceAuditDraft(agent, listing, signals, priorContext, builtPrompt);
       } catch (e) {
         throw new Error(
           `The auditor model (${llm.modelId}) failed: ` +
@@ -294,7 +407,33 @@ const scoreStep = createStep({
         };
       }
 
-      report = assembleReport(toSummary(listing), draft, signals);
+      // ── §F P4: enrich 'other'-bucket fix_complaint_theme recs with stable resolved keys ──
+      // Done after per-dimension reuse splice (draft is final) and before assembleReport.
+      // priorLedgerR was read above for persistAudit; reuse here for prior 'other' themes.
+      // draft.recommendations is a flat array of Recommendation; quickWins/highImpact/strategic
+      // are assembled by assembleReport from this flat list.
+      const priorLedger = priorLedgerR.ok ? priorLedgerR.value : [];
+      // beforeText holds the raw theme complaint text for other-bucket recs (set by toLedgerRec).
+      // r.body is the recommendation rationale — a different string that produces wrong cosine scores.
+      const priorOtherThemes = priorLedger
+        .filter((r) => r.intent === 'fix_complaint_theme' && r.valueKey.startsWith('other:'))
+        .map((r) => ({ text: r.beforeText ?? '', valueKey: r.valueKey }));
+
+      const embedder = getEmbeddingProvider();
+
+      const enrichedRecommendations = await Promise.all(
+        draft.recommendations.map(async (rec) => {
+          if (rec.intent !== 'fix_complaint_theme' || rec.referent.kind !== 'theme' || rec.referent.bucket !== 'other') {
+            return rec;
+          }
+          const resolvedKey = await resolveOtherThemeKey(rec.referent.text, priorOtherThemes, embedder);
+          return { ...rec, referent: { ...rec.referent, resolvedKey } };
+        }),
+      );
+
+      draft = { ...draft, recommendations: enrichedRecommendations };
+
+      report = assembleReport(toSummary(listing), draft, signals, visionResult, themeResult);
       usedModelId = llm.modelId;
     }
 
@@ -309,10 +448,51 @@ const scoreStep = createStep({
       promptHash,
       modelId: usedModelId,
       now,
+      visionResult, // B1: persist vision result for future reuse
+      candidateResult: rawCandidateResult, // C4: persist raw (suppressCompetitorGapTerms is a per-audit view, not stored state)
+      functionCompetitorSeeds: d3ProvidedCompetitors ? d3Seeds : undefined, // D3: seeds for reuse on unchanged identity
+      themeResult, // D-UI: persist for selectThemeResult reuse + wire shape
+      competitorMiningResult: competitorMining ?? undefined, // F-K2: persist for selectCompetitorMining reuse
+      // B4: pass pre-fetched values to avoid duplicate storage reads in persistAudit.
+      priorSnapshot: priorSnap,
+      priorLedger: priorLedgerR.ok ? priorLedgerR.value : [],
     });
+
+    // ── B2: ID-full — vision-grounded identity augmentation ────────────────
+    // Run after persistAudit (so memo.identityVersion is available), before
+    // notes are finalised. getIdentityVisionClient() returns a no-op stub when
+    // no API key is set — all hermetic tests are unaffected.
+    // Gated on visionWasFresh: if images haven't changed, the prior vision-grounded
+    // identity row is still valid — skip the LLM call and the new identity row.
+    const identityVisionClient = getIdentityVisionClient();
+    let idFullResult: Awaited<ReturnType<typeof runIdFull>> | null = null;
+    if (visionWasFresh) {
+      idFullResult = await runIdFull(
+        listing,
+        resolved,        // the ID-lite identity already resolved at top of step
+        identityVisionClient,
+        memo.identityVersion + 1,  // next version (lite is memo.identityVersion)
+        now,
+      );
+      // Write the new stage='full' version row.
+      await storage.appendIdentity(idFullResult.identityVersion);
+    }
+
+    // ── B3: secondary uplifts — screenshot intelligence, cross-device matrix, PPO brief ──
+    // Run after B2; getVisionClient() already returned above. NoOpVisionClient has
+    // safe defaults so hermetic tests are unaffected (no LLM call without API key).
+    // Gated on visionWasFresh: if images haven't changed, the prior uplift findings
+    // remain valid — skip the LLM call.
+    let secondaryUplifts: Awaited<ReturnType<typeof runSecondaryUplifts>> | null = null;
+    if (visionWasFresh) {
+      secondaryUplifts = await runSecondaryUplifts(listing, visionClient);
+    }
 
     // Surface what memory observed, honestly, in the report's limitations.
     const notes: string[] = [];
+    if (listing.provenance.reviewsFetchFailed) {
+      notes.push('Review fetch failed (network error or Apple rate-limit) — the Review Insights section is missing. Re-run the audit to include reviews.');
+    }
     if (resolved.escalate) {
       notes.push(
         `Identity unconfirmed — the store category ("${listing.primaryGenre ?? 'unknown'}") and the app's apparent function ("${resolved.category}") diverge, and no human confirmation was given. Identity-rewriting recommendations were withheld.`,
@@ -334,10 +514,45 @@ const scoreStep = createStep({
       notes.push(`Change since last audit: ${memo.changeDiff.join(' ')}`);
     }
     if (listingUnchanged) {
-      notes.push('Listing unchanged since last audit — scores and recommendations returned from cache (no LLM call).');
+      // Images are also unchanged when the whole snapshot is cached (same
+      // screenshot/icon URLs → visionWasFresh is false), so B2/B3 are also skipped.
+      notes.push('Listing unchanged since last audit — report returned from cache. Vision analysis, ID-full, secondary uplifts, and keyword candidates also skipped (inputs unchanged).');
+    }
+    if (idFullResult?.visionEscalation) {
+      notes.push(
+        "Creative mismatch: the icon and first screenshot don't clearly match the resolved function category. Consider updating the creative assets.",
+      );
+    }
+
+    // ── B3: surface secondary uplift findings ────────────────────────────────
+    if (secondaryUplifts) {
+      const { screenshotSetAnalysis, deviceMatrix, ppoBrief } = secondaryUplifts;
+      if (screenshotSetAnalysis.hasDuplicateMessages && screenshotSetAnalysis.duplicateSlots.length > 0) {
+        notes.push(
+          `Screenshots [${screenshotSetAnalysis.duplicateSlots.join(', ')}] appear to duplicate the same message — consider differentiating.`,
+        );
+      }
+      if (screenshotSetAnalysis.promoteCandidateSlot !== null) {
+        notes.push(
+          `Consider promoting screenshot ${screenshotSetAnalysis.promoteCandidateSlot} into the first 3 search-visible positions.`,
+        );
+      }
+      if (ppoBrief.exceeded) {
+        notes.push(
+          `Found ${ppoBrief.treatmentCount} distinct creative treatments (max recommended: 3 for independent measurability).`,
+        );
+      }
+      if (deviceMatrix.ipadMissing) {
+        notes.push(
+          `iPad screenshot count (${deviceMatrix.ipad.slotsUsed}) is significantly fewer than iPhone (${deviceMatrix.iphone.slotsUsed}) — consider filling iPad slots.`,
+        );
+      }
     }
 
     return { ...report, limitations: [...report.limitations, ...notes] };
+    } finally {
+      getGovernor().endRun();
+    }
   },
 });
 

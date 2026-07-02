@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { openDb, runMigrations } from './migrate';
 import { LibSqlStorageClient } from './libsql-storage-client';
-import { persistAudit, toLedgerRec, detectApplied, changeDiff } from './audit-memory';
+import { persistAudit, toLedgerRec, detectApplied, changeDiff, buildPriorContext, expandAddKeywordRec } from './audit-memory';
 import { loadFixtureListing } from '../identity/__fixtures__/load';
 import type { AppListing } from '../domain/listing';
 import type { AuditReport, Recommendation as ReportRec } from '../domain/audit';
 import type { ResolvedIdentity } from '../identity/resolve';
+import type { IdentityVersion } from '../domain/identity';
 
 /**
  * §F P1 end-to-end (no model in the loop): "audit the same app twice — the
@@ -267,5 +268,189 @@ describe('detectApplied + changeDiff units', () => {
 
   it('changeDiff reports first-audit and score movement', () => {
     expect(changeDiff(null, { report: { overallScore: 50 } } as any)[0]).toMatch(/First audit/);
+  });
+});
+
+describe('detectApplied — non-text (Fix 1)', () => {
+  it('marks add_preview_video applied when new listing has a preview video', () => {
+    const previewRec = toLedgerRec(
+      rec({ dimension: 'previewVideo', intent: 'add_preview_video', referent: { kind: 'none' }, after: null }),
+      { appId: '1', country: 'us', snapshotId: 's1', now: 't0' },
+    );
+    const flipped = detectApplied([previewRec], listingWith({ hasPreviewVideo: true }), 't1');
+    expect(flipped).toHaveLength(1);
+    expect(flipped[0]!.status).toBe('applied');
+    expect(flipped[0]!.appliedAt).toBe('t1');
+  });
+
+  it('does NOT mark add_preview_video applied when new listing has no preview video', () => {
+    const previewRec = toLedgerRec(
+      rec({ dimension: 'previewVideo', intent: 'add_preview_video', referent: { kind: 'none' }, after: null }),
+      { appId: '1', country: 'us', snapshotId: 's1', now: 't0' },
+    );
+    const flipped = detectApplied([previewRec], listingWith({ hasPreviewVideo: false }), 't1');
+    expect(flipped).toHaveLength(0);
+  });
+});
+
+describe('buildPriorContext — escalate gate (Fix 2)', () => {
+  const baseInput = {
+    priorSnapshot: null,
+    identityFactSheet: 'fact sheet',
+  };
+
+  it('shows the warning note when escalate=true and source=resolved', () => {
+    const identity: ResolvedIdentity = {
+      ...CONFIDENT,
+      escalate: true,
+      divergence: 'cross_domain',
+      source: 'resolved',
+    };
+    const ctx = buildPriorContext({ ...baseInput, identity });
+    expect(ctx).toMatch(/do not rewrite.*positioning/i);
+  });
+
+  it('does NOT show the warning note when escalate=true but source=human_confirmed', () => {
+    const identity: ResolvedIdentity = {
+      ...CONFIDENT,
+      escalate: true,
+      divergence: 'cross_domain',
+      source: 'human_confirmed',
+    };
+    const ctx = buildPriorContext({ ...baseInput, identity });
+    expect(ctx).not.toMatch(/do not rewrite.*positioning/i);
+  });
+
+  it('does NOT show the warning note when escalate=false even if divergence=cross_domain (old bug)', () => {
+    const identity: ResolvedIdentity = {
+      ...CONFIDENT,
+      escalate: false,
+      divergence: 'cross_domain',
+      source: 'resolved',
+    };
+    const ctx = buildPriorContext({ ...baseInput, identity });
+    expect(ctx).not.toMatch(/do not rewrite.*positioning/i);
+  });
+});
+
+describe('identity version monotonicity — Fix 3 regression', () => {
+  // Three consecutive unchanged re-audits must not produce duplicate version
+  // numbers, and latestIdentity must still return the stage='full' row written
+  // by B2 as the semantic head.
+  it('no duplicate versions after three re-audits; latestIdentity stays full', async () => {
+    const h = await fresh();
+    try {
+      const l = listingWith({});
+
+      // Audit 1: persistAudit writes lite v0.
+      const memo1 = await persistAudit(h.client, persistArgs(l, report([]), '2026-06-01T00:00:00.000Z'));
+      expect(memo1.identityVersion).toBe(0);
+
+      // B2 simulation: append full v1 (as the workflow does when visionWasFresh=true).
+      const fullRow: IdentityVersion = {
+        id: 'full-v1', appId: '1', country: 'us',
+        version: memo1.identityVersion + 1, stage: 'full',
+        category: 'Productivity to-do list', categoryBand: 'high',
+        niche: 'to-do list', nicheBand: 'high',
+        audience: { description: 'Task managers', segments: ['professionals'] },
+        tally: [], divergence: 'none', escalate: false, source: 'resolved',
+        createdAt: '2026-06-01T00:01:00.000Z',
+      };
+      unwrap(await h.client.appendIdentity(fullRow));
+
+      // Audit 2 (images unchanged, visionWasFresh=false → B2 skipped).
+      const memo2 = await persistAudit(h.client, persistArgs(l, report([]), '2026-06-15T00:00:00.000Z'));
+      expect(memo2.identityVersion).toBe(2); // must advance past full v1
+
+      // Audit 3 (unchanged again).
+      const memo3 = await persistAudit(h.client, persistArgs(l, report([]), '2026-06-20T00:00:00.000Z'));
+      expect(memo3.identityVersion).toBe(3); // must advance past lite v2
+
+      // No duplicates: all four written versions are distinct.
+      const versions = [0, 1, 2, 3];
+      expect(new Set(versions).size).toBe(versions.length);
+
+      // latestIdentity returns the full row (v1), not the most-recent lite (v3).
+      const latest = unwrap(await h.client.latestIdentity('1', 'us'));
+      expect(latest?.stage).toBe('full');
+      expect(latest?.version).toBe(1);
+      expect(latest?.audience).toMatchObject({ description: 'Task managers' });
+    } finally {
+      h.close();
+    }
+  });
+});
+
+// ── expandAddKeywordRec — C-FU3 multi-keyword split ───────────────────────────
+
+describe('expandAddKeywordRec', () => {
+  it('splits a comma-joined value into one rec per keyword', () => {
+    const r = rec({ referent: { kind: 'keyword', value: 'electric,vehicle' } });
+    const result = expandAddKeywordRec(r);
+    expect(result).toHaveLength(2);
+    expect(result[0]!.referent).toEqual({ kind: 'keyword', value: 'electric' });
+    expect(result[1]!.referent).toEqual({ kind: 'keyword', value: 'vehicle' });
+  });
+
+  it('deduplicates within the split (same normalizedKey)', () => {
+    const r = rec({ referent: { kind: 'keyword', value: 'a,a,b' } });
+    const result = expandAddKeywordRec(r);
+    expect(result).toHaveLength(2);
+  });
+
+  it('a singular and its plural collapse to one row (normalizeValueKey)', () => {
+    // "tracker" and "trackers" share the same normalizedKey after depluralize
+    const r = rec({ referent: { kind: 'keyword', value: 'tracker,trackers' } });
+    const result = expandAddKeywordRec(r);
+    expect(result).toHaveLength(1);
+  });
+
+  it('a space-separated phrase stays as one rec (split on comma only)', () => {
+    const r = rec({ referent: { kind: 'keyword', value: 'electric vehicle' } });
+    const result = expandAddKeywordRec(r);
+    expect(result).toHaveLength(1);
+    expect(result[0]!.referent).toEqual({ kind: 'keyword', value: 'electric vehicle' });
+  });
+
+  it('a single keyword (no comma) returns the original rec unchanged', () => {
+    const r = rec({ referent: { kind: 'keyword', value: 'charging' } });
+    const result = expandAddKeywordRec(r);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toBe(r); // exact same reference
+  });
+
+  it('non-add_keyword intents are returned as-is', () => {
+    const r = rec({ intent: 'add_preview_video', referent: { kind: 'none' } });
+    const result = expandAddKeywordRec(r);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toBe(r);
+  });
+
+  it('each split rec collapses against an existing standalone rec (dedup contract)', async () => {
+    // Persisting "a,b" then standalone "a" must both land on the same rec_key row.
+    const h = await fresh();
+    try {
+      const l = listingWith({});
+
+      // Audit 1: rec with "a,b" referent → splits into two rows ("a", "b").
+      await persistAudit(h.client, persistArgs(l, report([
+        rec({ referent: { kind: 'keyword', value: 'a,b' } }),
+      ]), '2026-06-01T00:00:00.000Z'));
+      const ledger1 = unwrap(await h.client.ledger('1', 'us'));
+      expect(ledger1).toHaveLength(2);
+      const keyA = ledger1.find((r) => r.valueKey === 'a');
+      const keyB = ledger1.find((r) => r.valueKey === 'b');
+      expect(keyA).toBeDefined();
+      expect(keyB).toBeDefined();
+
+      // Audit 2: standalone "a" rec → must upsert onto the existing "a" row (no new row).
+      await persistAudit(h.client, persistArgs(l, report([
+        rec({ referent: { kind: 'keyword', value: 'a' } }),
+      ]), '2026-06-02T00:00:00.000Z'));
+      const ledger2 = unwrap(await h.client.ledger('1', 'us'));
+      expect(ledger2).toHaveLength(2); // still 2, not 3
+    } finally {
+      h.close();
+    }
   });
 });

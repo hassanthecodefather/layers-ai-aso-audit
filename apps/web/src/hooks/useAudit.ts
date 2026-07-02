@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { identifyApp, runAudit } from '../lib/api';
-import type { AppSummary, AuditReport, ProgressEvent } from '../lib/types';
+import type { AppSummary, AuditReport, ProgressEvent, ResolvedIdentity, IdentityDecision } from '../lib/types';
 
 /**
  * The chat's state machine.
@@ -19,6 +19,8 @@ export type ChatMessage =
       id: string;
       kind: 'confirmation';
       summary: AppSummary;
+      identity: ResolvedIdentity | null;
+      identityNeedsConfirm: boolean;
       decision: 'pending' | 'yes' | 'no';
     }
   | { id: string; kind: 'progress'; events: ProgressEvent[]; complete: boolean }
@@ -38,7 +40,7 @@ export interface UseAudit {
   /** True while a network turn is in flight — the composer is locked. */
   busy: boolean;
   submitUrl: (url: string) => void;
-  confirm: () => void;
+  confirm: (identityDecision?: IdentityDecision | null) => void;
   reject: () => void;
 }
 
@@ -87,7 +89,7 @@ export function useAudit(): UseAudit {
       });
 
       identifyApp(url)
-        .then(({ runId: id, summary }) => {
+        .then(({ runId: id, summary, identity, identityNeedsConfirm }) => {
           setRunId(id);
           patch(thinkingId, () => ({
             id: thinkingId,
@@ -98,6 +100,8 @@ export function useAudit(): UseAudit {
             id: nextId(),
             kind: 'confirmation',
             summary,
+            identity,
+            identityNeedsConfirm,
             decision: 'pending',
           });
           setStatus('confirming');
@@ -114,7 +118,7 @@ export function useAudit(): UseAudit {
     [status, add, patch],
   );
 
-  const confirm = useCallback(() => {
+  const confirm = useCallback((identityDecision?: IdentityDecision | null) => {
     if (status !== 'confirming' || !runId) return;
     decideConfirmation('yes');
     setStatus('auditing');
@@ -148,7 +152,7 @@ export function useAudit(): UseAudit {
         setStatus('idle');
         setRunId(null);
       },
-    });
+    }, identityDecision ?? null);
   }, [status, runId, add, patch, decideConfirmation]);
 
   const reject = useCallback(() => {

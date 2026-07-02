@@ -43,11 +43,13 @@ export interface StorageClient {
 
   /** Append a new identity version (monotonic per app+storefront). */
   appendIdentity(v: IdentityVersion): Promise<Result<void>>;
-  /** The most recent identity version, or null if none. */
+  /** The most recent identity version, or null if none. Full rows preferred over lite. */
   latestIdentity(
     appId: string,
     country: string,
   ): Promise<Result<IdentityVersion | null>>;
+  /** The true maximum version number across all stages (for computing next version). */
+  maxIdentityVersion(appId: string, country: string): Promise<Result<number>>;
 
   /** Tombstone a human-rejected competitor (app-scoped, version-independent). */
   tombstoneCompetitor(

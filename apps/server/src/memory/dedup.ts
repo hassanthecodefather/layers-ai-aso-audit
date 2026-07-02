@@ -77,7 +77,8 @@ export function computeRecKey(input: RecKeyInput): string {
  */
 export function valueKeyFor(intent: IntentTag, referent: Referent): string {
   if (SINGLE_INSTANCE_INTENTS.has(intent) || referent.kind === 'none') return '';
-  return normalizeValueKey(referent.value);
+  if (referent.kind === 'theme') return referent.resolvedKey ?? referent.bucket; // resolvedKey used for 'other' bucket; named buckets fall back to bucket
+  return normalizeValueKey(referent.value); // keyword, country, reviewId
 }
 
 /** Intents that directly reverse one another (spec §C contradiction guard). */

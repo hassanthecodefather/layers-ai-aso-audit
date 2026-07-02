@@ -3,6 +3,7 @@ import type { AppListing } from '../domain/listing';
 import type { DimensionId, Confidence } from '../domain/audit';
 import { DIMENSION_IDS } from '../domain/audit';
 import type { ListingSignals } from './signals';
+import type { VisionResult } from '../vision/types';
 
 /**
  * Bump when codeScore or coarseOrdinalScore logic changes so that the
@@ -10,7 +11,19 @@ import type { ListingSignals } from './signals';
  * predate the change. Without this, old snapshots would serve stale scores
  * for dimensions whose scoring formula changed between Phase A and B.
  */
-export const SCORER_VERSION = 'phase-a-v1';
+export const SCORER_VERSION = 'phase-b-v2';
+
+/**
+ * True when a VisionResult contains real Gemini-produced critiques.
+ *
+ * A parse failure (backward-scan recovery returning {}) leaves critiques
+ * empty even though the client is live. This guard is the single shared
+ * source of truth used by deriveConfidence, codeScore, and the two prompt
+ * sites — all four must change together whenever the definition changes.
+ */
+export function visionUsable(v: VisionResult | undefined): v is VisionResult {
+  return !!v && v.screenshotSetVerdict.critiques.length > 0;
+}
 
 /**
  * Returns the subset of listing/signal fields that each dimension depends on.
@@ -114,10 +127,13 @@ export function allDimensionHashes(
 /**
  * Derive the confidence level for a dimension purely in code — never from the
  * model. The model is unreliable at assessing its own observability.
+ *
+ * @param visionResult - Optional B1 vision result; upgrades screenshots/icon to 'observed'.
  */
 export function deriveConfidence(
   id: DimensionId,
   signals: ListingSignals,
+  visionResult?: VisionResult,
 ): Confidence {
   switch (id) {
     case 'subtitle':
@@ -130,9 +146,9 @@ export function deriveConfidence(
       return signals.previewVideo.observable ? 'inferred' : 'unavailable';
 
     case 'screenshots':
-      // Slot count is observed, but 3 of the 4 checks (value communication,
-      // readability, cohesion) need vision (P2). Inferred until B1 upgrades it.
-      return 'inferred';
+      // 'observed' only when Gemini produced real critiques. A parse failure
+      // (empty critiques) must not fabricate an observed confidence.
+      return visionUsable(visionResult) ? 'observed' : 'inferred';
 
     case 'keywordField':
       // The iOS keyword field is never public — always inferred.
@@ -144,6 +160,8 @@ export function deriveConfidence(
     // title, description, ratings, icon, competitive — observable from public data.
     // (ratings: the average is genuinely observed; complaint themes / developer
     // responses are deferred to P4 and surface as recommendations, not the score.)
+    // icon: B1 includes vision quality assessment — always 'observed' (presence is
+    // already observable; vision adds quality signal).
     case 'title':
     case 'description':
     case 'ratings':
@@ -155,25 +173,30 @@ export function deriveConfidence(
 
 /**
  * Returns a deterministic 0-10 score for dimensions that are fully
- * code-computable at Phase A. Returns `null` for dimensions that still require
+ * code-computable at Phase A/B. Returns `null` for dimensions that still require
  * model judgment.
+ *
+ * @param visionResult - Optional B1 vision result; supersedes slot-count for screenshots.
  */
 export function codeScore(
   id: DimensionId,
   signals: ListingSignals,
+  visionResult?: VisionResult,
 ): number | null {
   switch (id) {
     case 'previewVideo':
       // Phase-A placeholder: existence only (present → 8, absent → 0). The
       // quality checks (hook / length / works-without-sound) need vision —
-      // B1 supersedes this with a quality-aware score.
+      // B1 supersedes this with a quality-aware score (not B1 scope, kept here).
       if (!signals.previewVideo.observable) return null;
       return signals.previewVideo.present ? 8 : 0;
 
     case 'screenshots':
-      // Phase-A placeholder: slot utilisation only (0–10 = slots used of 10).
-      // Visual quality (value-comm / readability / cohesion) needs vision —
-      // B1 supersedes this with a quality-weighted score.
+      // B1: real critiques present → use vision quality score.
+      // Parse failure (empty critiques) → honest slot-count fallback.
+      if (visionUsable(visionResult)) {
+        return visionResult.screenshotSetVerdict.coarseScore;
+      }
       return signals.screenshots.slotsUsedOf10;
 
     case 'ratings': {
