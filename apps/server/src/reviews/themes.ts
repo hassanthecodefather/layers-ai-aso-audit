@@ -6,6 +6,7 @@
  * ThemeAnalysisResult out.
  */
 
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { Agent } from '@mastra/core/agent';
 import type { Review } from '../domain/listing';
@@ -232,9 +233,14 @@ export function selectThemeResult(
   const parsed = StoredThemeResultSchema.safeParse(priorSnapshot.themeResult);
   if (!parsed.success) return null;
 
-  const currentIds = reviews.map((r) => r.id ?? '').sort().join('|');
+  // reviewContentId() guarantees every Review has an .id, but ?? fallback guards
+  // against any future path that skips the RSS normaliser.
+  const reviewId = (r: { id?: string | null; rating?: number; author?: string; body?: string }) =>
+    r.id ?? createHash('sha256').update(`${r.rating ?? ''}\x00${r.author ?? ''}\x00${r.body ?? ''}`).digest('hex').slice(0, 16);
+
+  const currentIds = reviews.map(reviewId).sort().join('|');
   const priorIds = (priorSnapshot.listing.reviews ?? [])
-    .map((r) => (r as { id?: string }).id ?? '')
+    .map((r) => reviewId(r as { id?: string }))
     .sort()
     .join('|');
   if (currentIds !== priorIds) return null;
