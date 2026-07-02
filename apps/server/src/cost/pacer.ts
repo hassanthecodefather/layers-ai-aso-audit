@@ -37,7 +37,12 @@ export class SerialPacer implements Pacer {
       // never introduces a sleep where none was needed.
       if (baseDelay > 0) {
         const jitter = Math.floor(Math.random() * JITTER_MS);
+        // Claim the slot BEFORE awaiting — concurrent callers that enter after
+        // this line will read the updated timestamp and compute their own delay
+        // from here, serialising the burst instead of all firing at once.
+        this.#lastCallMs = now + baseDelay + jitter;
         await sleep(baseDelay + jitter);
+        return;
       }
     }
 

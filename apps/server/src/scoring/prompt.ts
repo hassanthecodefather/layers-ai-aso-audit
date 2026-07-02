@@ -61,7 +61,11 @@ function textFields(listing: AppListing): string {
 }
 
 function reviewSample(listing: AppListing): string {
-  if (listing.reviews.length === 0) return 'No reviews available.';
+  if (listing.reviews.length === 0) {
+    return listing.provenance.reviewsFetchFailed
+      ? 'Review fetch failed (network error) — retry the audit to include reviews.'
+      : 'No reviews available.';
+  }
   return listing.reviews
     .slice(0, 15)
     .map(

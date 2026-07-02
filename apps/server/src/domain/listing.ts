@@ -48,6 +48,8 @@ export const ProvenanceSchema = z.object({
   /** Whether the page crawler contributed (subtitle, promo text, video). */
   crawler: z.boolean(),
   reviews: z.boolean(),
+  /** True when the reviews fetch failed (network/429) rather than returning empty cleanly. */
+  reviewsFetchFailed: z.boolean().optional(),
   competitors: z.boolean(),
   /** True when all listing data was served from the HTTP response cache (E1). */
   observedFromCache: z.boolean().optional().default(false),

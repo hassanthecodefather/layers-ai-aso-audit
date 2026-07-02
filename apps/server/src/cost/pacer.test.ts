@@ -122,6 +122,35 @@ describe('SerialPacer', () => {
     expect(resolved).toBe(true);
   });
 
+  it('two concurrent calls are serialized — second fires ≥MIN_INTERVAL_MS after the first (slot-claim-before-await regression guard)', async () => {
+    const pacer = new SerialPacer();
+
+    // Establish #lastCallMs with a first call.
+    const first = pacer.wait();
+    await vi.runAllTimersAsync();
+    await first;
+
+    // Launch B and C without awaiting either — both enter wait() before either resolves.
+    // With the fix, B sets #lastCallMs synchronously before its await, so C reads the
+    // updated value and queues itself MIN_INTERVAL_MS after B. Without the fix, both read
+    // the same stale #lastCallMs and fire simultaneously at the same time.
+    let bResolved = false;
+    let cResolved = false;
+    const b = pacer.wait().then(() => { bResolved = true; });
+    const c = pacer.wait().then(() => { cResolved = true; });
+
+    // After one interval: B should be done, C should still be waiting.
+    await vi.advanceTimersByTimeAsync(MIN_INTERVAL_MS);
+    await Promise.resolve(); // flush .then callbacks
+    expect(bResolved).toBe(true);
+    expect(cResolved).toBe(false); // fails without the slot-claim fix
+
+    // After a second interval: C should now resolve.
+    await vi.advanceTimersByTimeAsync(MIN_INTERVAL_MS);
+    await c;
+    expect(cResolved).toBe(true);
+  });
+
   it('reset() causes the next wait() to act as first call (no sleep)', async () => {
     const pacer = new SerialPacer();
 

@@ -204,8 +204,9 @@ export async function fetchReviews(ref: AppRef, limit = 500, opts?: { skipCache?
         }));
       if (pageReviews.length === 0) break; // no more pages
       all.push(...pageReviews);
-    } catch {
-      break; // treat fetch error as end of pages
+    } catch (e) {
+      if (page === 1) throw e; // first-page failure is a real network error, not "end of pages"
+      break; // mid-pagination failure: return what we already have
     }
   }
   return all.slice(0, limit);

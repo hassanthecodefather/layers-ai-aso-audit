@@ -250,12 +250,10 @@ describe('fetchReviews — error handling', () => {
     vi.restoreAllMocks();
   });
 
-  it('returns [] on fetch error', async () => {
+  it('throws on first-page fetch error (caller distinguishes failed vs empty)', async () => {
     vi.mocked(global.fetch).mockRejectedValue(new Error('Network error'));
 
-    const reviews = await fetchReviews(ref, 500);
-
-    expect(reviews).toEqual([]);
+    await expect(fetchReviews(ref, 500)).rejects.toThrow();
   });
 
   it('returns results collected so far when a later page errors', async () => {

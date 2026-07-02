@@ -44,31 +44,40 @@ export class LibSqlCache implements Cache {
 
   async get<T>(key: EntityKey): Promise<CacheEntry<T> | null> {
     const now = new Date().toISOString();
-    const res = await this.#db.execute({
-      sql: 'SELECT value, fetched_at FROM aso_cache WHERE key = ? AND expires_at > ?',
-      args: [key, now],
-    });
-    const row = res.rows[0];
-    if (!row) return null;
-    this.#hits++;
-    return {
-      value: JSON.parse(String(row.value)) as T,
-      fetchedAt: String(row.fetched_at),
-    };
+    try {
+      const res = await this.#db.execute({
+        sql: 'SELECT value, fetched_at FROM aso_cache WHERE key = ? AND expires_at > ?',
+        args: [key, now],
+      });
+      const row = res.rows[0];
+      if (!row) return null;
+      this.#hits++;
+      return {
+        value: JSON.parse(String(row.value)) as T,
+        fetchedAt: String(row.fetched_at),
+      };
+    } catch {
+      // Degrade gracefully — table may not exist yet if migrations are still running.
+      return null;
+    }
   }
 
   async set<T>(key: EntityKey, value: T, ttlSeconds: number): Promise<void> {
     const now = new Date().toISOString();
     const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
-    await this.#db.execute({
-      sql: `INSERT INTO aso_cache (key, value, fetched_at, expires_at)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT (key) DO UPDATE SET
-              value = excluded.value,
-              fetched_at = excluded.fetched_at,
-              expires_at = excluded.expires_at`,
-      args: [key, JSON.stringify(value), now, expiresAt],
-    });
+    try {
+      await this.#db.execute({
+        sql: `INSERT INTO aso_cache (key, value, fetched_at, expires_at)
+              VALUES (?, ?, ?, ?)
+              ON CONFLICT (key) DO UPDATE SET
+                value = excluded.value,
+                fetched_at = excluded.fetched_at,
+                expires_at = excluded.expires_at`,
+        args: [key, JSON.stringify(value), now, expiresAt],
+      });
+    } catch {
+      // Best-effort — a failed cache write is not fatal; the next request will re-fetch.
+    }
   }
 
   hitCount(): number { return this.#hits; }
@@ -79,7 +88,8 @@ let _cache: Cache | null = null;
 
 export function getCache(): Cache {
   if (!_cache) {
-    const db = openDb(); // same 'file:./aso-audit.db'
+    const url = process.env.ASO_DB_URL?.trim() || 'file:./aso-audit.db';
+    const db = openDb(url);
     _cache = new LibSqlCache(db);
   }
   return _cache;

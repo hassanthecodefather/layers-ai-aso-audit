@@ -490,6 +490,9 @@ const scoreStep = createStep({
 
     // Surface what memory observed, honestly, in the report's limitations.
     const notes: string[] = [];
+    if (listing.provenance.reviewsFetchFailed) {
+      notes.push('Review fetch failed (network error or Apple rate-limit) — the Review Insights section is missing. Re-run the audit to include reviews.');
+    }
     if (resolved.escalate) {
       notes.push(
         `Identity unconfirmed — the store category ("${listing.primaryGenre ?? 'unknown'}") and the app's apparent function ("${resolved.category}") diverge, and no human confirmation was given. Identity-rewriting recommendations were withheld.`,

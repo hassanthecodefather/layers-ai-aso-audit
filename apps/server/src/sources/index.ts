@@ -44,8 +44,9 @@ export async function resolveListing(ref: AppRef, opts?: { skipCache?: boolean }
   const crawler = getCrawler();
 
   // Independent sources — fan out in parallel, none can fail the audit.
+  let reviewsFetchFailed = false;
   const [reviews, competitors, extras] = await Promise.all([
-    fetchReviews(ref, 500, opts),
+    fetchReviews(ref, 500, opts).catch((_e) => { reviewsFetchFailed = true; return []; }),
     fetchCompetitors(ref, searchTerm, 4, opts),
     crawler.scrape(core.value.url),
   ]);
@@ -62,6 +63,7 @@ export async function resolveListing(ref: AppRef, opts?: { skipCache?: boolean }
       itunes: true,
       crawler: extras !== null,
       reviews: reviews.length > 0,
+      reviewsFetchFailed,
       competitors: competitors.length > 0,
       observedFromCache: false,
     },
