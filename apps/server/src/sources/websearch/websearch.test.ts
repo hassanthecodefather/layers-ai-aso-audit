@@ -162,6 +162,37 @@ describe('ExaWebSearch', () => {
     expect(result.value.state).toBe('searched_and_empty');
   });
 
+  it('only-mirror results → searched_and_empty (Fix 3: mirror-domain filtering)', async () => {
+    vi.stubGlobal('fetch', mockFetch({
+      results: [
+        { title: 'App on App Store', url: 'https://apps.apple.com/us/app/example/id123' },
+        { title: 'App on Apptopia', url: 'https://apptopia.com/ios/app/id123' },
+      ],
+    }));
+    const client = new ExaWebSearch('test-key');
+    const result = await client.probe('example app');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.state).toBe('searched_and_empty');
+  });
+
+  it('mixed results → corroborated with only non-mirror sources (Fix 3)', async () => {
+    vi.stubGlobal('fetch', mockFetch({
+      results: [
+        { title: 'App on App Store', url: 'https://apps.apple.com/us/app/example/id123' },
+        { title: 'Independent coverage', url: 'https://news.example.com/app-review' },
+      ],
+    }));
+    const client = new ExaWebSearch('test-key');
+    const result = await client.probe('example app');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.state).toBe('corroborated');
+    if (result.value.state !== 'corroborated') return;
+    expect(result.value.sources).toHaveLength(1);
+    expect(result.value.sources[0]!.url).toBe('https://news.example.com/app-review');
+  });
+
   it('returns errored on non-OK HTTP status', async () => {
     vi.stubGlobal('fetch', mockFetch({ error: 'rate limited' }, 429));
     const client = new ExaWebSearch('test-key');

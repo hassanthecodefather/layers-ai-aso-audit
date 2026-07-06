@@ -172,6 +172,18 @@ describe('footprint probe tally (F-K5)', () => {
     expect(r.tally.find((t) => t.family === 'footprint')).toBeUndefined();
   });
 
+  it('Fix 3 regression: mirror-only probe (→ searched_and_empty) does not lift on-store-only band above medium', () => {
+    // "Amit Verma" scenario: Tavily returned 3 App-Store-mirror pages which
+    // isMirrorUrl() now strips, so the probe arrives here as searched_and_empty.
+    // The on-store-only cap must hold — the band should stay ≤ medium.
+    const onStoreSignals = extractIdentitySignals(loadFixtureListing('onstoreonly'));
+    const r = resolveIdentity(onStoreSignals, CLASSIFY['onstoreonly']!, {
+      ...opts,
+      footprintProbe: { state: 'searched_and_empty' },
+    });
+    expect(r.categoryBand).not.toBe('high');
+  });
+
   it('corroborated probe can lift an on-store-only app from medium to high', () => {
     // on-store-only has no external corroboration → medium; adding footprint
     // provides fetched_and_cited (weight=2, agrees=true, tier-2 present) which
