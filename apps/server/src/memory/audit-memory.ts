@@ -196,8 +196,11 @@ export function buildPriorContext(input: {
   lines.push(`Category: ${identity.category} (confidence: ${identity.categoryBand})`);
   if (identity.niche) lines.push(`Niche: ${identity.niche} (confidence: ${identity.nicheBand})`);
   if (identity.escalate && identity.source !== 'human_confirmed') {
+    const cause = identity.divergence === 'cross_domain'
+      ? 'The store category and the app\'s true function diverge (cross-domain).'
+      : 'The app\'s function category or niche could not be confirmed with sufficient confidence.';
     lines.push(
-      `⚠ The store category and the app's true function diverge (cross-domain). Identity is unconfirmed — do not rewrite the listing's core positioning.`,
+      `⚠ ${cause} Identity is unconfirmed — do not rewrite the listing's core positioning.`,
     );
   }
   lines.push('');

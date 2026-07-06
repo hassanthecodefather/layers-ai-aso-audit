@@ -193,12 +193,13 @@ export function resolveIdentity(
     ? 'medium'
     : 'low';
 
-  // The hard gate (spec ID "Bands"): the category itself is low (covers a
-  // cross-domain conflict and S ≤ 1), or a high observed function sits over an
-  // inferred-only (low) niche. A low niche under a *non-low* category only
-  // flags — escalation is asymmetric, to keep the gate rare.
-  const escalate =
-    categoryBand === 'low' || (categoryBand === 'high' && nicheBand === 'low');
+  // The hard gate (spec ID "Bands"): escalate when the category itself is low
+  // (covers cross-domain conflict and S ≤ 1). A low niche under a high,
+  // non-divergent category flags but does not escalate — niche is inferred-only
+  // at ID-lite (no vision), so requiring human confirmation at this stage is
+  // premature. Reserve niche-driven escalation for ID-full where niche is
+  // vision-observable.
+  const escalate = categoryBand === 'low';
 
   return {
     category: classification.functionCategory,

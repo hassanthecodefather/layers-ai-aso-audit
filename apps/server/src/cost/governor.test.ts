@@ -63,11 +63,11 @@ describe('InProcessGovernor', () => {
     expect(result.ok).toBe(true);
   });
 
-  it('preflight() returns err("wallclock_cap") when run exceeds 5 minutes', () => {
+  it('preflight() returns err("wallclock_cap") when run exceeds 10 minutes', () => {
     vi.useFakeTimers();
     governor.startRun();
-    // Advance just past the 5-minute wall-clock cap
-    vi.advanceTimersByTime(5 * 60 * 1000 + 1);
+    // Advance just past the 10-minute wall-clock cap
+    vi.advanceTimersByTime(10 * 60 * 1000 + 1);
     const result = governor.preflight();
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -84,7 +84,7 @@ describe('InProcessGovernor', () => {
     // Start a run so wall-clock timer is armed
     governor.startRun();
     // Advance past wall-clock cap
-    vi.advanceTimersByTime(5 * 60 * 1000 + 1);
+    vi.advanceTimersByTime(10 * 60 * 1000 + 1);
 
     // Verify both caps are hit
     expect(governor.preflight().ok).toBe(false);

@@ -124,7 +124,7 @@ export function reportToMarkdown(report: AuditReport): string {
     sections.push('');
     for (const theme of report.themeResult.themes) {
       const unresolved = theme.isUnresolved ? ' _(unresolved)_' : '';
-      sections.push(`- **${theme.bucket}**${unresolved} (${theme.reviewCount} reviews): ${theme.text}`);
+      sections.push(`- **${theme.bucket}**${unresolved} (${theme.count} reviews): ${theme.summary}`);
     }
     sections.push('');
   }
