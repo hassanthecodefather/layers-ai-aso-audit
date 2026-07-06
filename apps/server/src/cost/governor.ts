@@ -25,7 +25,7 @@ export interface Governor {
 
 const METERED_CALL_CEILING = 2000; // per rolling hour
 const RUN_ENTRY_WINDOW_MS = 2000; // re-entrant if another run started < 2s ago
-const RUN_WALL_CLOCK_CAP_MS = 5 * 60 * 1000; // 5 minutes
+const RUN_WALL_CLOCK_CAP_MS = 10 * 60 * 1000; // 10 minutes
 
 export class InProcessGovernor implements Governor {
   // Rolling call log: timestamps of recent metered calls (within the last hour)
