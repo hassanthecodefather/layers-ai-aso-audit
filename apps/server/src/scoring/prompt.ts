@@ -136,9 +136,11 @@ export const AUDIT_JSON_SHAPE = `{
 REFERENT RULES — the referent field pins the recommendation's identity for deduplication:
 - intent is add_keyword or remove_wasted_term  → {"kind":"keyword","value":"<the single keyword, lowercase>"}
 - intent is localise_storefront               → {"kind":"country","value":"<2-letter ISO country code>"}
+- intent is fix_complaint_theme               → {"kind":"theme","bucket":"<bucket name from Classified complaint themes section above>","text":"<one-sentence specific complaint>"}
+- intent is respond_to_reviews               → {"kind":"reviewId","value":"<an exemplar review ID from the Classified complaint themes section above>"}
 - ALL other intents                           → {"kind":"none"}
 There is at most ONE recommendation per (dimension, intent, referent) combination. For example,
-two add_keyword suggestions for the subtitle must have different referent.value keywords.`;
+two fix_complaint_theme suggestions must use different referent.bucket values.`;
 
 
 /**

@@ -37,6 +37,7 @@ import { fetchFunctionGroundedCompetitors, selectFunctionCompetitors, seedKeywor
 import { rankOpportunities } from '../../keywords/opportunity';
 import { mineCompetitorReviews, selectCompetitorMining } from '../../keywords/competitor-mining';
 import { buildCompetitorTieringResult } from '../../sources/competitor-tiering';
+import { enrichThemeReferents } from '../../memory/enrich-referents';
 
 /**
  * The ASO audit workflow.
@@ -407,11 +408,18 @@ const scoreStep = createStep({
         };
       }
 
+      // ── D2 CORRECTION: populate theme/reviewId referents from themeResult ──────
+      // fix_complaint_theme and respond_to_reviews are multi-instance (removed from
+      // SINGLE_INSTANCE_INTENTS), but the LLM may still emit {kind:'none'} when it
+      // misses the REFERENT RULES. enrichThemeReferents assigns the correct typed
+      // referents — preserving a valid LLM-supplied bucket, falling back to positional
+      // assignment from themeResult. Text always comes from themeResult.summary so
+      // re-audits on unchanged reviews produce stable rec_keys (not LLM prose).
+      const recsWithTypedReferents = enrichThemeReferents(draft.recommendations, themeResult);
+
       // ── §F P4: enrich 'other'-bucket fix_complaint_theme recs with stable resolved keys ──
-      // Done after per-dimension reuse splice (draft is final) and before assembleReport.
-      // priorLedgerR was read above for persistAudit; reuse here for prior 'other' themes.
-      // draft.recommendations is a flat array of Recommendation; quickWins/highImpact/strategic
-      // are assembled by assembleReport from this flat list.
+      // Runs after D2 CORRECTION so referent.kind==='theme' is now guaranteed for
+      // fix_complaint_theme recs (the guard below can actually fire).
       const priorLedger = priorLedgerR.ok ? priorLedgerR.value : [];
       // beforeText holds the raw theme complaint text for other-bucket recs (set by toLedgerRec).
       // r.body is the recommendation rationale — a different string that produces wrong cosine scores.
@@ -422,7 +430,7 @@ const scoreStep = createStep({
       const embedder = getEmbeddingProvider();
 
       const enrichedRecommendations = await Promise.all(
-        draft.recommendations.map(async (rec) => {
+        recsWithTypedReferents.map(async (rec) => {
           if (rec.intent !== 'fix_complaint_theme' || rec.referent.kind !== 'theme' || rec.referent.bucket !== 'other') {
             return rec;
           }
