@@ -75,6 +75,38 @@ describe('TavilyWebSearch', () => {
     expect(result.value.state).toBe('searched_and_empty');
   });
 
+  it('only-mirror results → searched_and_empty (Fix 3: mirror-domain filtering)', async () => {
+    vi.stubGlobal('fetch', mockFetch({
+      results: [
+        { title: 'Rivian on App Store', url: 'https://apps.apple.com/us/app/rivian/id1570215232' },
+        { title: 'Rivian on SensorTower', url: 'https://sensortower.com/ios/us/rivian/id1570215232' },
+        { title: 'Rivian on AppAdvice', url: 'https://appadvice.com/app/rivian/1570215232' },
+      ],
+    }));
+    const client = new TavilyWebSearch('test-key');
+    const result = await client.probe('Rivian electric truck app');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.state).toBe('searched_and_empty');
+  });
+
+  it('mixed results → corroborated with only non-mirror sources (Fix 3)', async () => {
+    vi.stubGlobal('fetch', mockFetch({
+      results: [
+        { title: 'Rivian on App Store', url: 'https://apps.apple.com/us/app/rivian/id1570215232' },
+        { title: 'Rivian App Review', url: 'https://techcrunch.com/rivian-app-review' },
+      ],
+    }));
+    const client = new TavilyWebSearch('test-key');
+    const result = await client.probe('Rivian electric truck app');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.state).toBe('corroborated');
+    if (result.value.state !== 'corroborated') return;
+    expect(result.value.sources).toHaveLength(1);
+    expect(result.value.sources[0]!.url).toBe('https://techcrunch.com/rivian-app-review');
+  });
+
   it('returns errored on non-OK HTTP status', async () => {
     vi.stubGlobal('fetch', mockFetch({ error: 'Unauthorized' }, 401));
     const client = new TavilyWebSearch('bad-key');

@@ -98,6 +98,25 @@ describe('§F ID-lite acceptance', () => {
     expect(r.tally.find((t) => t.family === 'marketing_domain')).toBeUndefined();
   });
 
+  it('Fix 4: high-category, non-divergent, niche:null → flag but not escalate (niche inferred-only at ID-lite)', () => {
+    // Mirrors the TikTok/Spotify pattern but with functionNiche:null — the LLM
+    // returned no niche (common at ID-lite where vision isn't available yet).
+    // nicheBand is 'low' by definition, but that should not trigger a human-
+    // confirmation ask: niche is definitionally uncertain at this stage.
+    const signals = extractIdentitySignals(loadFixtureListing('spotify'));
+    const classificationNoNiche: IdentityClassification = {
+      functionCategory: 'Music streaming',
+      functionNiche: null,
+      functionTerms: ['music', 'song', 'playlist'],
+    };
+    const r = resolveIdentity(signals, classificationNoNiche, {
+      fetchedAt: '2026-06-24T00:00:00.000Z',
+    });
+    expect(r.categoryBand).toBe('high');
+    expect(r.nicheBand).toBe('low');
+    expect(r.escalate).toBe(false);
+  });
+
   it('every tally entry resolves to a citable source tier and freshness', () => {
     const r = resolveFixture('spotify');
     for (const entry of r.tally) {

@@ -33,6 +33,30 @@ function queryKey(query: string): string {
   return createHash('sha256').update(query).digest('hex').slice(0, 16);
 }
 
+// App Store mirrors and aggregator sites — their pages are reposts of Apple's
+// own data, not independent third-party coverage, so they must not count as
+// off-store corroboration.
+const MIRROR_DOMAINS = new Set([
+  'apps.apple.com',
+  'apptopia.com',
+  'appadvice.com',
+  'justuseapp.com',
+  'sensortower.com',
+  'appfigures.com',
+  'mobileaction.co',
+  'appannie.com',
+  'data.ai',
+]);
+
+function isMirrorUrl(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
+    return MIRROR_DOMAINS.has(hostname);
+  } catch {
+    return false;
+  }
+}
+
 // ── Tavily ────────────────────────────────────────────────────────────────────
 
 const TAVILY_URL = 'https://api.tavily.com/search';
@@ -69,11 +93,12 @@ export class TavilyWebSearch implements WebSearchProvider {
       }
       const json = await res.json() as { results?: { title: string; url: string }[] };
       const results = json.results ?? [];
-      console.log(`[tavily] results=${results.length} → ${results.length === 0 ? 'searched_and_empty' : 'corroborated'}`);
-      if (results.length === 0) return ok({ state: 'searched_and_empty' });
+      const genuine = results.filter((r) => !isMirrorUrl(r.url));
+      console.log(`[tavily] results=${results.length} raw (${results.length - genuine.length} mirror-filtered) → ${genuine.length === 0 ? 'searched_and_empty' : 'corroborated'}`);
+      if (genuine.length === 0) return ok({ state: 'searched_and_empty' });
       return ok({
         state: 'corroborated',
-        sources: results.map((r) => ({ title: r.title, url: r.url })),
+        sources: genuine.map((r) => ({ title: r.title, url: r.url })),
       });
     } catch (e) {
       return ok({ state: 'errored', reason: e instanceof Error ? e.message : String(e) });
@@ -114,10 +139,11 @@ export class ExaWebSearch implements WebSearchProvider {
       }
       const json = await res.json() as { results?: { title: string; url: string }[] };
       const results = json.results ?? [];
-      if (results.length === 0) return ok({ state: 'searched_and_empty' });
+      const genuine = results.filter((r) => !isMirrorUrl(r.url));
+      if (genuine.length === 0) return ok({ state: 'searched_and_empty' });
       return ok({
         state: 'corroborated',
-        sources: results.map((r) => ({ title: r.title, url: r.url })),
+        sources: genuine.map((r) => ({ title: r.title, url: r.url })),
       });
     } catch (e) {
       return ok({ state: 'errored', reason: e instanceof Error ? e.message : String(e) });
