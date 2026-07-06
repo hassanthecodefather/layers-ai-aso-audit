@@ -21,10 +21,12 @@ import type { ListingSnapshot } from '../domain/snapshot';
 export interface ClassifiedTheme {
   /** The canonical taxonomy bucket. 'other' means no named bucket matched. */
   bucket: ComplaintTheme;
-  /** Short description of what reviewers complained about in this theme. */
-  text: string;
-  /** Apple review IDs associated with this theme. */
-  reviewIds: string[];
+  /** One-sentence synthesis of what reviewers complained about in this bucket. */
+  summary: string;
+  /** Number of reviews attributed to this bucket (= deduplicated memberReviewIds.length). */
+  count: number;
+  /** Up to 3 representative review IDs chosen by the LLM, capped in parseThemeResponse. */
+  exemplarReviewIds: string[];
   /** True when bucket='other' and no embedding similarity resolved it. */
   isUnresolved: boolean;
 }
@@ -45,6 +47,8 @@ export interface ThemeAnalysisResult {
   versionDelta: VersionDelta | null;
   /** Feature requests — disjoint from complaints; human hand-off, never ledgered. */
   featureRequests: string[];
+  /** Number of reviews passed to analyzeThemes; used as the sharePct denominator in aggregate. */
+  sampleSize: number;
   /** Taxonomy version stamped for traceability. */
   taxonomyVersion: 'theme-taxonomy@1';
 }
@@ -54,8 +58,9 @@ export interface ThemeAnalysisResult {
 const LlmThemeResponseSchema = z.object({
   themes: z.array(z.object({
     bucket: ComplaintThemeSchema,
-    text: z.string(),
-    reviewIds: z.array(z.string()),
+    summary: z.string(),
+    memberReviewIds: z.array(z.string()),
+    exemplarReviewIds: z.array(z.string()),
   })),
   featureRequests: z.array(z.string()),
 });
@@ -138,12 +143,19 @@ function buildThemePrompt(reviews: Review[]): string {
     `Return JSON:`,
     `{`,
     `  "themes": [`,
-    `    { "bucket": "crash_stability", "text": "App crashes when searching for chargers", "reviewIds": ["14209690246", "14199210988"] }`,
+    `    {`,
+    `      "bucket": "ads_intrusive",`,
+    `      "summary": "Users complain about excessive video ads that interrupt playback every 2–3 songs.",`,
+    `      "memberReviewIds": ["14209690246", "14199210988", "14205001123"],`,
+    `      "exemplarReviewIds": ["14209690246", "14199210988"]`,
+    `    }`,
     `  ],`,
     `  "featureRequests": ["Offline mode", "Dark mode"]`,
     `}`,
-    `Use 'other' only when no named bucket fits. Never group multiple distinct complaints under one theme.`,
+    `Output EXACTLY ONE entry per bucket present. Combine all complaints of the same type into one entry.`,
+    `Use 'other' only when no named bucket fits.`,
     `Do not include themes with zero associated reviews.`,
+    `exemplarReviewIds must be a 2–3 item subset of memberReviewIds.`,
     ``,
     `Reviews:`,
     formatted,
@@ -152,13 +164,8 @@ function buildThemePrompt(reviews: Review[]): string {
 
 // ── Empty result helper ───────────────────────────────────────────────────────
 
-function emptyResult(versionDelta: VersionDelta | null = null): ThemeAnalysisResult {
-  return {
-    themes: [],
-    versionDelta,
-    featureRequests: [],
-    taxonomyVersion: 'theme-taxonomy@1',
-  };
+function emptyResult(versionDelta: VersionDelta | null = null, sampleSize = 0): ThemeAnalysisResult {
+  return { themes: [], versionDelta, featureRequests: [], sampleSize, taxonomyVersion: 'theme-taxonomy@1' };
 }
 
 // ── Parse and validate an LLM text response ──────────────────────────────────
@@ -166,35 +173,55 @@ function emptyResult(versionDelta: VersionDelta | null = null): ThemeAnalysisRes
 function parseThemeResponse(
   rawText: string,
   versionDelta: VersionDelta | null,
+  sampleSize: number,
 ): ThemeAnalysisResult {
   const json = extractJsonObject(rawText);
-  if (!json) return emptyResult(versionDelta);
+  if (!json) return emptyResult(versionDelta, sampleSize);
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(json);
   } catch {
-    return emptyResult(versionDelta);
+    return emptyResult(versionDelta, sampleSize);
   }
 
   const validated = LlmThemeResponseSchema.safeParse(parsed);
-  if (!validated.success) return emptyResult(versionDelta);
+  if (!validated.success) return emptyResult(versionDelta, sampleSize);
 
   const { themes: rawThemes, featureRequests } = validated.data;
 
-  const themes: ClassifiedTheme[] = rawThemes.map((t) => ({
-    bucket: t.bucket,
-    text: t.text,
-    reviewIds: t.reviewIds,
-    isUnresolved: t.bucket === 'other',
-  }));
+  // Merge duplicate buckets (LLM may still emit duplicates despite instruction)
+  const bucketMap = new Map<string, { summary: string; memberIds: Set<string>; exemplarIds: string[] }>();
+  for (const t of rawThemes) {
+    const existing = bucketMap.get(t.bucket);
+    if (existing) {
+      for (const id of t.memberReviewIds) existing.memberIds.add(id);
+      // Accumulate exemplars (will be capped to 3 below)
+      for (const id of t.exemplarReviewIds) {
+        if (!existing.exemplarIds.includes(id)) existing.exemplarIds.push(id);
+      }
+    } else {
+      bucketMap.set(t.bucket, {
+        summary: t.summary,
+        memberIds: new Set(t.memberReviewIds),
+        exemplarIds: [...t.exemplarReviewIds],
+      });
+    }
+  }
 
-  return {
-    themes,
-    versionDelta,
-    featureRequests,
-    taxonomyVersion: 'theme-taxonomy@1',
-  };
+  const themes: ClassifiedTheme[] = [];
+  for (const [bucket, data] of bucketMap) {
+    const memberReviewIds = [...data.memberIds]; // deduped
+    themes.push({
+      bucket: bucket as ComplaintTheme,
+      summary: data.summary,
+      count: memberReviewIds.length,
+      exemplarReviewIds: data.exemplarIds.slice(0, 3), // cap at 3
+      isUnresolved: bucket === 'other',
+    });
+  }
+
+  return { themes, versionDelta, featureRequests, sampleSize, taxonomyVersion: 'theme-taxonomy@1' };
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
@@ -204,8 +231,9 @@ function parseThemeResponse(
 const StoredThemeResultSchema = z.object({
   themes: z.array(z.object({
     bucket: ComplaintThemeSchema,
-    text: z.string(),
-    reviewIds: z.array(z.string()),
+    summary: z.string(),
+    count: z.number(),
+    exemplarReviewIds: z.array(z.string()),
     isUnresolved: z.boolean(),
   })),
   versionDelta: z.object({
@@ -216,6 +244,7 @@ const StoredThemeResultSchema = z.object({
     delta: z.number(),
   }).nullable(),
   featureRequests: z.array(z.string()),
+  sampleSize: z.number(),
   taxonomyVersion: z.literal('theme-taxonomy@1'),
 });
 
@@ -279,7 +308,7 @@ export async function analyzeThemes(
     try {
       rawText = await _generateOverride(prompt);
     } catch {
-      return emptyResult(versionDelta);
+      return emptyResult(versionDelta, reviews.length);
     }
   } else {
     // Production path: build a temporary agent for the one-shot classification call
@@ -296,9 +325,9 @@ export async function analyzeThemes(
       });
       rawText = typeof result.text === 'string' ? result.text : '';
     } catch {
-      return emptyResult(versionDelta);
+      return emptyResult(versionDelta, reviews.length);
     }
   }
 
-  return parseThemeResponse(rawText, versionDelta);
+  return parseThemeResponse(rawText, versionDelta, reviews.length);
 }

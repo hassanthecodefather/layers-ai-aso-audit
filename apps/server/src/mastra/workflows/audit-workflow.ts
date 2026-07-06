@@ -433,7 +433,7 @@ const scoreStep = createStep({
 
       draft = { ...draft, recommendations: enrichedRecommendations };
 
-      report = assembleReport(toSummary(listing), draft, signals, visionResult, themeResult);
+      report = assembleReport(toSummary(listing), draft, signals, visionResult, themeResult, listing.reviews);
       usedModelId = llm.modelId;
     }
 

@@ -344,7 +344,7 @@ function themeSection(themeResult: ThemeAnalysisResult | null | undefined): stri
   const lines = ['## Classified complaint themes'];
   for (const t of themeResult.themes) {
     const unresolvedNote = t.isUnresolved ? ' [unclassified]' : '';
-    lines.push(`- ${t.bucket}${unresolvedNote}: ${t.text} (${t.reviewIds.length} reviews)`);
+    lines.push(`- ${t.bucket}${unresolvedNote}: ${t.summary} (${t.count} reviews)`);
   }
   if (themeResult.versionDelta) {
     const d = themeResult.versionDelta;

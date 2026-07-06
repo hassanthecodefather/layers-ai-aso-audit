@@ -8,7 +8,7 @@ import {
   type ScoredDimension,
   type ThemeResult,
 } from '../domain/audit';
-import type { AppSummary } from '../domain/listing';
+import type { AppSummary, Review } from '../domain/listing';
 import { rubricFor } from './rubric';
 import type { ListingSignals } from './signals';
 import { deriveConfidence, codeScore, coarseOrdinalScore } from './dimension-scorer';
@@ -44,6 +44,7 @@ export function assembleReport(
   signals?: ListingSignals,
   visionResult?: VisionResult,
   themeResult?: ThemeAnalysisResult | null,
+  reviews?: Review[],
 ): AuditReport {
   const byId = new Map<DimensionId, DimensionScore>();
   for (const d of draft.dimensions) byId.set(d.id, d);
@@ -107,18 +108,28 @@ export function assembleReport(
       .filter((r) => r.category === c)
       .map((r) => ({ ...r, proofRegime: assignProofRegime(r.intent) }));
 
-  const sampleSize = themeResult
-    ? new Set(themeResult.themes.flatMap((t) => t.reviewIds)).size
-    : 0;
+  // Build lookup map from review ID → { text, rating }
+  const reviewById = new Map<string, { text: string; rating: number }>();
+  for (const r of (reviews ?? [])) {
+    if (r.id) reviewById.set(r.id, { text: r.body ?? '', rating: r.rating });
+  }
+
+  const sampleSize = themeResult?.sampleSize ?? 0;
 
   const themeResultWire: ThemeResult = themeResult
     ? {
-        themes: themeResult.themes.map((t) => ({
-          bucket: t.bucket,
-          text: t.text,
-          reviewCount: t.reviewIds.length,
-          isUnresolved: t.isUnresolved,
-        })),
+        themes: [...themeResult.themes]
+          .sort((a, b) => b.count - a.count)
+          .map((t) => ({
+            bucket: t.bucket,
+            summary: t.summary,
+            count: t.count,
+            sharePct: sampleSize > 0 ? t.count / sampleSize : 0,
+            exemplars: t.exemplarReviewIds
+              .map((id) => reviewById.get(id))
+              .filter((r): r is { text: string; rating: number } => r !== undefined),
+            isUnresolved: t.isUnresolved,
+          })),
         versionDelta: themeResult.versionDelta,
         featureRequests: themeResult.featureRequests,
         sampleSize,

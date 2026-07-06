@@ -81,8 +81,10 @@ export interface VersionDelta {
 
 export interface ThemeRow {
   bucket: string;
-  text: string;
-  reviewCount: number;
+  summary: string;
+  count: number;
+  sharePct: number;
+  exemplars: { text: string; rating: number }[];
   isUnresolved: boolean;
 }
 

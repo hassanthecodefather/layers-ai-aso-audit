@@ -110,8 +110,8 @@ export async function mineCompetitorReviews(
     const contributors = [...new Set(allLowRatingReviews.map((r) => r.competitorName))];
     return {
       bucket: theme.bucket,
-      text: theme.text,
-      reviewCount: theme.reviewIds.length,
+      text: theme.summary,
+      reviewCount: theme.count,
       competitors: contributors,
     };
   });
