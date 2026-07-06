@@ -64,10 +64,12 @@ export class TavilyWebSearch implements WebSearchProvider {
         },
       );
       if (!res.ok) {
+        console.warn(`[tavily] HTTP ${res.status} — treating as errored`);
         return ok({ state: 'errored', reason: `HTTP ${res.status}` });
       }
       const json = await res.json() as { results?: { title: string; url: string }[] };
       const results = json.results ?? [];
+      console.log(`[tavily] results=${results.length} → ${results.length === 0 ? 'searched_and_empty' : 'corroborated'}`);
       if (results.length === 0) return ok({ state: 'searched_and_empty' });
       return ok({
         state: 'corroborated',
@@ -155,9 +157,10 @@ export function getWebSearch(): WebSearchProvider {
 
 function createWebSearch(): WebSearchProvider {
   const tavilyKey = process.env['TAVILY_API_KEY'];
-  if (tavilyKey) return new TavilyWebSearch(tavilyKey);
+  if (tavilyKey) { console.log('[websearch] provider=tavily'); return new TavilyWebSearch(tavilyKey); }
   const exaKey = process.env['EXA_API_KEY'];
-  if (exaKey) return new ExaWebSearch(exaKey);
+  if (exaKey) { console.log('[websearch] provider=exa'); return new ExaWebSearch(exaKey); }
+  console.warn('[websearch] provider=noop (no TAVILY_API_KEY / EXA_API_KEY — footprint always empty)');
   return new NoopWebSearch();
 }
 

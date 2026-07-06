@@ -431,7 +431,14 @@ const scoreStep = createStep({
         }),
       );
 
-      draft = { ...draft, recommendations: enrichedRecommendations };
+      // Suppress identity-rewriting recs when identity is unconfirmed — keeps the
+      // visible report consistent with the ledger (which already withholds them)
+      // and prevents the limitation note from contradicting a visible rec.
+      const visibleRecs = resolved.escalate && resolved.source !== 'human_confirmed'
+        ? enrichedRecommendations.filter((r) => r.intent !== 'reposition_identity')
+        : enrichedRecommendations;
+
+      draft = { ...draft, recommendations: visibleRecs };
 
       report = assembleReport(toSummary(listing), draft, signals, visionResult, themeResult, listing.reviews);
       usedModelId = llm.modelId;
@@ -494,8 +501,11 @@ const scoreStep = createStep({
       notes.push('Review fetch failed (network error or Apple rate-limit) — the Review Insights section is missing. Re-run the audit to include reviews.');
     }
     if (resolved.escalate) {
+      const cause = resolved.divergence === 'cross_domain'
+        ? `the store category ("${listing.primaryGenre ?? 'unknown'}") and the app's apparent function ("${resolved.category}") diverge`
+        : `the app's function category or niche could not be confirmed with sufficient confidence`;
       notes.push(
-        `Identity unconfirmed — the store category ("${listing.primaryGenre ?? 'unknown'}") and the app's apparent function ("${resolved.category}") diverge, and no human confirmation was given. Identity-rewriting recommendations were withheld.`,
+        `Identity unconfirmed — ${cause}, and no human confirmation was given. Identity-rewriting recommendations were withheld.`,
       );
     } else if (resolved.source === 'human_confirmed') {
       notes.push(`Identity human-confirmed as "${resolved.category}".`);
