@@ -103,10 +103,11 @@ Scoring: 0=poor, 5=acceptable, 10=excellent. Be conservative; reserve 10 for gen
         },
       ],
       temperature: 0,
-      // 8000 tokens: Gemini 2.5 Flash uses thinking tokens before output begins,
-      // leaving fewer than expected for JSON. 8000 ensures the full critiques
-      // array fits even with thinking budget consumed.
       max_tokens: 8000,
+      // Disable Gemini 2.5 Flash thinking: these are structured-extraction calls
+      // that don't need reasoning, and thinking tokens otherwise consume the
+      // per-call budget and truncate the JSON to an empty result.
+      reasoning_effort: 'none',
       response_format: { type: 'json_object' },
     };
 
@@ -167,6 +168,7 @@ strongestSlotForPromotion: Which slot (1-indexed) would benefit most from being 
       ],
       temperature: 0,
       max_tokens: 1500,
+      reasoning_effort: 'none', // disable thinking — see analyzeScreenshots
       response_format: { type: 'json_object' },
     };
 
@@ -220,6 +222,7 @@ Analyze the app icon for ASO quality. Return JSON:
       ],
       temperature: 0,
       max_tokens: 400,
+      reasoning_effort: 'none', // disable thinking — see analyzeScreenshots
       response_format: { type: 'json_object' },
     };
 

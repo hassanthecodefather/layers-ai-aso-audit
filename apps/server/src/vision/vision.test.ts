@@ -168,6 +168,73 @@ describe('runVision — pHash and confusable confidence labels', () => {
   });
 });
 
+// ── B-follow-up: empty screenshotUrls defeats the visionUsable guard ──────────
+describe('runVision — empty screenshotUrls (B-follow-up)', () => {
+  it('skips the model call and emits empty critiques when screenshotUrls is empty', async () => {
+    const { runVision } = await import('./analyze');
+    const { StubVisionClient } = await import('./client');
+    const { visionUsable } = await import('../scoring/dimension-scorer');
+
+    // Stub returns non-empty critiques — simulating Gemini's placeholder
+    // response ("No screenshots provided") when given an empty URL list.
+    // The short-circuit must prevent the call entirely.
+    const stubClient = new StubVisionClient(
+      {
+        critiques: [
+          { slot: 1, valuePropClarity: 'No screenshots provided', readability: 'N/A', cohesion: 'N/A' },
+        ],
+        competitorComparison: '',
+        suggestedCoarseScore: 0,
+      },
+      { pHashDistance: 0, confusable: 'N/A', categoryCohesion: 'N/A' },
+    );
+
+    // Build the listing directly so iconUrl is literally null (makeListing's
+    // ?? operator coerces null to the default URL, which would trigger icon
+    // analysis and increment callCount via analyzeIcon).
+    const listing: AppListing = {
+      ...makeListing({ screenshotUrls: [] }),
+      iconUrl: null,
+    };
+    const noopFetcher = async (_url: string): Promise<Buffer> => Buffer.alloc(0);
+
+    const result = await runVision(listing, stubClient, noopFetcher);
+
+    // No model call — the short-circuit must have fired.
+    expect(stubClient.callCount).toBe(0);
+
+    // visionUsable must be false so downstream falls back to slotsUsedOf10.
+    expect(visionUsable(result)).toBe(false);
+
+    // Confidence must stay inferred — not observed.
+    expect(result.screenshotSetVerdict.confidence).toBe('inferred');
+
+    // critiques are empty (the short-circuit result, not the stub's canned data).
+    expect(result.screenshotSetVerdict.critiques).toHaveLength(0);
+  });
+
+  it('codeScore falls back to slotsUsedOf10 when visionUsable is false', async () => {
+    const { codeScore, visionUsable } = await import('../scoring/dimension-scorer');
+
+    // A listing with 7 slots used but an unusable vision result (empty critiques).
+    const signals = makeSignals(7);
+    const unusableVision: VisionResult = {
+      screenshotSetVerdict: {
+        critiques: [],
+        competitorComparison: { value: '', confidence: 'inferred' },
+        coarseScore: 0,
+        confidence: 'inferred',
+        modelId: 'gemini-2.5-flash',
+      },
+      iconVerdict: null,
+    };
+
+    expect(visionUsable(unusableVision)).toBe(false);
+    // Score must be the honest slot count (7), not the placeholder 0.
+    expect(codeScore('screenshots', signals, unusableVision)).toBe(7);
+  });
+});
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function makeListing(

@@ -157,6 +157,7 @@ describe('analyzeThemes — empty reviews returns empty result', () => {
       themes: [],
       versionDelta: null,
       featureRequests: [],
+      sampleSize: 0,
       taxonomyVersion: 'theme-taxonomy@1',
     });
   });
@@ -269,7 +270,7 @@ describe('analyzeThemes — other bucket sets isUnresolved: true', () => {
       stubLlm,
       makeStubGenerator({
         themes: [
-          { bucket: 'other', text: 'Something weird happened', reviewIds: ['123'] },
+          { bucket: 'other', summary: 'Something weird happened', memberReviewIds: ['123'], exemplarReviewIds: ['123'] },
         ],
         featureRequests: [],
       }),
@@ -279,6 +280,9 @@ describe('analyzeThemes — other bucket sets isUnresolved: true', () => {
     const theme = result.themes[0];
     expect(theme?.isUnresolved).toBe(true);
     expect(theme?.bucket).toBe('other');
+    expect(theme?.summary).toBe('Something weird happened');
+    expect(theme?.count).toBe(1);
+    expect(theme?.exemplarReviewIds).toEqual(['123']);
   });
 });
 
@@ -295,8 +299,9 @@ describe('analyzeThemes — named bucket sets isUnresolved: false', () => {
         themes: [
           {
             bucket: 'crash_stability',
-            text: 'App crashes when searching for chargers',
-            reviewIds: ['14209690246', '14199210988'],
+            summary: 'App crashes when searching for chargers',
+            memberReviewIds: ['14209690246', '14199210988'],
+            exemplarReviewIds: ['14209690246', '14199210988'],
           },
         ],
         featureRequests: ['Offline mode'],
@@ -307,7 +312,9 @@ describe('analyzeThemes — named bucket sets isUnresolved: false', () => {
     const theme = result.themes[0];
     expect(theme?.isUnresolved).toBe(false);
     expect(theme?.bucket).toBe('crash_stability');
-    expect(theme?.reviewIds).toEqual(['14209690246', '14199210988']);
+    expect(theme?.summary).toBe('App crashes when searching for chargers');
+    expect(theme?.count).toBe(2);
+    expect(theme?.exemplarReviewIds).toEqual(['14209690246', '14199210988']);
     expect(result.featureRequests).toEqual(['Offline mode']);
   });
 });
@@ -316,10 +323,11 @@ describe('analyzeThemes — named bucket sets isUnresolved: false', () => {
 
 const STORED_THEME_RESULT = {
   themes: [
-    { bucket: 'crash_stability', text: 'App crashes on launch', reviewIds: ['r1', 'r2'], isUnresolved: false },
+    { bucket: 'crash_stability', summary: 'App crashes on launch', count: 2, exemplarReviewIds: ['r1', 'r2'], isUnresolved: false },
   ],
   versionDelta: null,
   featureRequests: ['Offline mode'],
+  sampleSize: 2,
   taxonomyVersion: 'theme-taxonomy@1' as const,
 };
 
@@ -429,5 +437,83 @@ describe('selectThemeResult — reuse logic', () => {
     // Same reviews, different order
     const reviews: Review[] = [makeReview({ id: 'r2' }), makeReview({ id: 'r1' })];
     expect(selectThemeResult(reviews, snap)).not.toBeNull();
+  });
+});
+
+// ── New suite: parseThemeResponse guards ──────────────────────────────────────
+
+describe('analyzeThemes — code-side guards in parseThemeResponse', () => {
+  const reviews = reviewsForVersion('3.13.0', 5);
+
+  it('one-entry-per-bucket: single bucket in output', async () => {
+    const result = await analyzeThemes(reviews, stubLlm, makeStubGenerator({
+      themes: [
+        { bucket: 'crash_stability', summary: 'Crashes on launch', memberReviewIds: ['r1', 'r2'], exemplarReviewIds: ['r1'] },
+      ],
+      featureRequests: [],
+    }));
+    expect(result.themes).toHaveLength(1);
+    expect(result.themes[0]!.bucket).toBe('crash_stability');
+    expect(result.themes[0]!.summary).toBe('Crashes on launch');
+    expect(result.themes[0]!.count).toBe(2);
+    expect(result.themes[0]!.exemplarReviewIds).toEqual(['r1']);
+    expect(result.themes[0]!.isUnresolved).toBe(false);
+  });
+
+  it('duplicate-bucket merge: two entries for same bucket merged into one', async () => {
+    const result = await analyzeThemes(reviews, stubLlm, makeStubGenerator({
+      themes: [
+        { bucket: 'ads_intrusive', summary: 'Too many ads', memberReviewIds: ['r1', 'r2'], exemplarReviewIds: ['r1'] },
+        { bucket: 'ads_intrusive', summary: 'Ads every song', memberReviewIds: ['r3'], exemplarReviewIds: ['r3'] },
+      ],
+      featureRequests: [],
+    }));
+    // Must merge into one entry
+    expect(result.themes).toHaveLength(1);
+    expect(result.themes[0]!.bucket).toBe('ads_intrusive');
+    // count = union of memberReviewIds
+    expect(result.themes[0]!.count).toBe(3);
+  });
+
+  it('memberReviewId dedup: duplicate IDs across entries are counted once', async () => {
+    const result = await analyzeThemes(reviews, stubLlm, makeStubGenerator({
+      themes: [
+        { bucket: 'ads_intrusive', summary: 'Too many ads', memberReviewIds: ['r1', 'r2'], exemplarReviewIds: ['r1'] },
+        { bucket: 'ads_intrusive', summary: 'Ads every song', memberReviewIds: ['r1', 'r3'], exemplarReviewIds: ['r3'] },
+      ],
+      featureRequests: [],
+    }));
+    // r1 appears in both; count must be 3 (r1, r2, r3), not 4
+    expect(result.themes[0]!.count).toBe(3);
+  });
+
+  it('exemplar cap: caps exemplarReviewIds at 3', async () => {
+    const result = await analyzeThemes(reviews, stubLlm, makeStubGenerator({
+      themes: [
+        { bucket: 'performance_speed', summary: 'App is slow', memberReviewIds: ['r1','r2','r3','r4','r5'], exemplarReviewIds: ['r1','r2','r3','r4','r5'] },
+      ],
+      featureRequests: [],
+    }));
+    expect(result.themes[0]!.exemplarReviewIds.length).toBeLessThanOrEqual(3);
+  });
+
+  it('count correctness: count equals deduplicated memberReviewIds length', async () => {
+    const result = await analyzeThemes(reviews, stubLlm, makeStubGenerator({
+      themes: [
+        { bucket: 'ui_ux_confusion', summary: 'Confusing UI', memberReviewIds: ['a', 'b', 'b', 'c'], exemplarReviewIds: ['a'] },
+      ],
+      featureRequests: [],
+    }));
+    // 'b' is duplicate → count = 3
+    expect(result.themes[0]!.count).toBe(3);
+  });
+
+  it('sampleSize equals the number of reviews passed in', async () => {
+    const fiveReviews = reviewsForVersion('3.13.0', 5);
+    const result = await analyzeThemes(fiveReviews, stubLlm, makeStubGenerator({
+      themes: [],
+      featureRequests: [],
+    }));
+    expect(result.sampleSize).toBe(5);
   });
 });

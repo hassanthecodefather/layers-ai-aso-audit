@@ -37,6 +37,7 @@ import { fetchFunctionGroundedCompetitors, selectFunctionCompetitors, seedKeywor
 import { rankOpportunities } from '../../keywords/opportunity';
 import { mineCompetitorReviews, selectCompetitorMining } from '../../keywords/competitor-mining';
 import { buildCompetitorTieringResult } from '../../sources/competitor-tiering';
+import { enrichThemeReferents } from '../../memory/enrich-referents';
 
 /**
  * The ASO audit workflow.
@@ -407,11 +408,18 @@ const scoreStep = createStep({
         };
       }
 
+      // ── D2 CORRECTION: populate theme/reviewId referents from themeResult ──────
+      // fix_complaint_theme and respond_to_reviews are multi-instance (removed from
+      // SINGLE_INSTANCE_INTENTS), but the LLM may still emit {kind:'none'} when it
+      // misses the REFERENT RULES. enrichThemeReferents assigns the correct typed
+      // referents — preserving a valid LLM-supplied bucket, falling back to positional
+      // assignment from themeResult. Text always comes from themeResult.summary so
+      // re-audits on unchanged reviews produce stable rec_keys (not LLM prose).
+      const recsWithTypedReferents = enrichThemeReferents(draft.recommendations, themeResult);
+
       // ── §F P4: enrich 'other'-bucket fix_complaint_theme recs with stable resolved keys ──
-      // Done after per-dimension reuse splice (draft is final) and before assembleReport.
-      // priorLedgerR was read above for persistAudit; reuse here for prior 'other' themes.
-      // draft.recommendations is a flat array of Recommendation; quickWins/highImpact/strategic
-      // are assembled by assembleReport from this flat list.
+      // Runs after D2 CORRECTION so referent.kind==='theme' is now guaranteed for
+      // fix_complaint_theme recs (the guard below can actually fire).
       const priorLedger = priorLedgerR.ok ? priorLedgerR.value : [];
       // beforeText holds the raw theme complaint text for other-bucket recs (set by toLedgerRec).
       // r.body is the recommendation rationale — a different string that produces wrong cosine scores.
@@ -422,7 +430,7 @@ const scoreStep = createStep({
       const embedder = getEmbeddingProvider();
 
       const enrichedRecommendations = await Promise.all(
-        draft.recommendations.map(async (rec) => {
+        recsWithTypedReferents.map(async (rec) => {
           if (rec.intent !== 'fix_complaint_theme' || rec.referent.kind !== 'theme' || rec.referent.bucket !== 'other') {
             return rec;
           }
@@ -431,9 +439,16 @@ const scoreStep = createStep({
         }),
       );
 
-      draft = { ...draft, recommendations: enrichedRecommendations };
+      // Suppress identity-rewriting recs when identity is unconfirmed — keeps the
+      // visible report consistent with the ledger (which already withholds them)
+      // and prevents the limitation note from contradicting a visible rec.
+      const visibleRecs = resolved.escalate && resolved.source !== 'human_confirmed'
+        ? enrichedRecommendations.filter((r) => r.intent !== 'reposition_identity')
+        : enrichedRecommendations;
 
-      report = assembleReport(toSummary(listing), draft, signals, visionResult, themeResult);
+      draft = { ...draft, recommendations: visibleRecs };
+
+      report = assembleReport(toSummary(listing), draft, signals, visionResult, themeResult, listing.reviews);
       usedModelId = llm.modelId;
     }
 
@@ -494,8 +509,11 @@ const scoreStep = createStep({
       notes.push('Review fetch failed (network error or Apple rate-limit) — the Review Insights section is missing. Re-run the audit to include reviews.');
     }
     if (resolved.escalate) {
+      const cause = resolved.divergence === 'cross_domain'
+        ? `the store category ("${listing.primaryGenre ?? 'unknown'}") and the app's apparent function ("${resolved.category}") diverge`
+        : `the app's function category or niche could not be confirmed with sufficient confidence`;
       notes.push(
-        `Identity unconfirmed — the store category ("${listing.primaryGenre ?? 'unknown'}") and the app's apparent function ("${resolved.category}") diverge, and no human confirmation was given. Identity-rewriting recommendations were withheld.`,
+        `Identity unconfirmed — ${cause}, and no human confirmation was given. Identity-rewriting recommendations were withheld.`,
       );
     } else if (resolved.source === 'human_confirmed') {
       notes.push(`Identity human-confirmed as "${resolved.category}".`);

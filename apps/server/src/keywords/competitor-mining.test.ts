@@ -39,19 +39,22 @@ const STUB_THEME_RESULT: ThemeAnalysisResult = {
   themes: [
     {
       bucket: 'crash_stability',
-      text: 'App crashes on startup frequently',
-      reviewIds: ['r1', 'r2'],
+      summary: 'App crashes on startup frequently',
+      count: 2,
+      exemplarReviewIds: ['r1', 'r2'],
       isUnresolved: false,
     },
     {
       bucket: 'battery_resource',
-      text: 'Drains battery too fast',
-      reviewIds: ['r3'],
+      summary: 'Drains battery too fast',
+      count: 1,
+      exemplarReviewIds: ['r3'],
       isUnresolved: false,
     },
   ],
   versionDelta: null,
   featureRequests: [],
+  sampleSize: 3,
   taxonomyVersion: 'theme-taxonomy@1',
 };
 
@@ -59,6 +62,7 @@ const EMPTY_THEME_RESULT: ThemeAnalysisResult = {
   themes: [],
   versionDelta: null,
   featureRequests: [],
+  sampleSize: 0,
   taxonomyVersion: 'theme-taxonomy@1',
 };
 

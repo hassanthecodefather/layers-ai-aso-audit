@@ -98,6 +98,25 @@ describe('§F ID-lite acceptance', () => {
     expect(r.tally.find((t) => t.family === 'marketing_domain')).toBeUndefined();
   });
 
+  it('Fix 4: high-category, non-divergent, niche:null → flag but not escalate (niche inferred-only at ID-lite)', () => {
+    // Mirrors the TikTok/Spotify pattern but with functionNiche:null — the LLM
+    // returned no niche (common at ID-lite where vision isn't available yet).
+    // nicheBand is 'low' by definition, but that should not trigger a human-
+    // confirmation ask: niche is definitionally uncertain at this stage.
+    const signals = extractIdentitySignals(loadFixtureListing('spotify'));
+    const classificationNoNiche: IdentityClassification = {
+      functionCategory: 'Music streaming',
+      functionNiche: null,
+      functionTerms: ['music', 'song', 'playlist'],
+    };
+    const r = resolveIdentity(signals, classificationNoNiche, {
+      fetchedAt: '2026-06-24T00:00:00.000Z',
+    });
+    expect(r.categoryBand).toBe('high');
+    expect(r.nicheBand).toBe('low');
+    expect(r.escalate).toBe(false);
+  });
+
   it('every tally entry resolves to a citable source tier and freshness', () => {
     const r = resolveFixture('spotify');
     for (const entry of r.tally) {
@@ -151,6 +170,18 @@ describe('footprint probe tally (F-K5)', () => {
   it('no probe (undefined) does not add any tally entry', () => {
     const r = resolveIdentity(signals, classification, opts);
     expect(r.tally.find((t) => t.family === 'footprint')).toBeUndefined();
+  });
+
+  it('Fix 3 regression: mirror-only probe (→ searched_and_empty) does not lift on-store-only band above medium', () => {
+    // "Amit Verma" scenario: Tavily returned 3 App-Store-mirror pages which
+    // isMirrorUrl() now strips, so the probe arrives here as searched_and_empty.
+    // The on-store-only cap must hold — the band should stay ≤ medium.
+    const onStoreSignals = extractIdentitySignals(loadFixtureListing('onstoreonly'));
+    const r = resolveIdentity(onStoreSignals, CLASSIFY['onstoreonly']!, {
+      ...opts,
+      footprintProbe: { state: 'searched_and_empty' },
+    });
+    expect(r.categoryBand).not.toBe('high');
   });
 
   it('corroborated probe can lift an on-store-only app from medium to high', () => {

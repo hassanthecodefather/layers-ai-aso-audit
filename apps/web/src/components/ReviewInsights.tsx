@@ -19,22 +19,54 @@ const BUCKET_LABELS: Record<string, string> = {
   other: 'Other',
 };
 
-function bucketLabel(bucket: string): string {
-  return BUCKET_LABELS[bucket] ?? bucket;
-}
+function ThemeCard({ theme }: { theme: ThemeRow }) {
+  const [quotesExpanded, setQuotesExpanded] = useState(false);
+  const label = BUCKET_LABELS[theme.bucket] ?? theme.bucket;
+  const pct = (theme.sharePct * 100).toFixed(0);
 
-/** Group themes by bucket, preserving order of first appearance. */
-function groupByBucket(themes: ThemeRow[]): Map<string, ThemeRow[]> {
-  const map = new Map<string, ThemeRow[]>();
-  for (const theme of themes) {
-    const items = map.get(theme.bucket);
-    if (items) {
-      items.push(theme);
-    } else {
-      map.set(theme.bucket, [theme]);
-    }
-  }
-  return map;
+  return (
+    <div className="rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="text-xs font-medium text-zinc-300">{label}</span>
+          {theme.isUnresolved && (
+            <span className="rounded border border-amber-500/30 bg-amber-500/10 px-1 py-0.5 text-[10px] text-amber-400">
+              unresolved
+            </span>
+          )}
+        </div>
+        <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[11px] text-zinc-400">
+          {theme.count} · {pct}%
+        </span>
+      </div>
+
+      {/* Summary */}
+      <p className="mt-1 text-[11px] text-zinc-500">{theme.summary}</p>
+
+      {/* Exemplar quotes expander */}
+      {theme.exemplars.length > 0 && (
+        <div className="mt-1">
+          <button
+            onClick={() => setQuotesExpanded((v) => !v)}
+            className="text-[11px] text-zinc-600 underline hover:text-zinc-400"
+          >
+            {quotesExpanded ? 'hide quotes' : 'show quotes'}
+          </button>
+          {quotesExpanded && (
+            <ul className="mt-1.5 space-y-1.5">
+              {theme.exemplars.map((ex, i) => (
+                <li key={i} className="rounded border border-white/[0.04] bg-white/[0.02] px-2 py-1">
+                  <span className="text-[11px] text-zinc-500 italic">"{ex.text}"</span>
+                  <span className="ml-1.5 text-[10px] text-zinc-600">{ex.rating}★</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function ReviewInsights({ themeResult }: { themeResult: ThemeResult }) {
@@ -61,8 +93,6 @@ export function ReviewInsights({ themeResult }: { themeResult: ThemeResult }) {
         ? '↑'
         : '↓';
 
-  const grouped = groupByBucket(themes);
-
   return (
     <section className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
       <h3 className="text-sm font-semibold text-zinc-100">Review Insights</h3>
@@ -80,45 +110,11 @@ export function ReviewInsights({ themeResult }: { themeResult: ThemeResult }) {
         </div>
       )}
 
-      {grouped.size > 0 && (
+      {themes.length > 0 && (
         <div className="mt-3 space-y-2">
-          {[...grouped.entries()].map(([bucket, items]) => {
-            const totalCount = items.reduce((s, t) => s + t.reviewCount, 0);
-            const isUnresolved = items.some((t) => t.isUnresolved);
-            return (
-              <div
-                key={bucket}
-                className="rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2"
-              >
-                {/* Bucket header */}
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <span className="text-xs font-medium text-zinc-300">
-                      {bucketLabel(bucket)}
-                    </span>
-                    {isUnresolved && (
-                      <span className="rounded border border-amber-500/30 bg-amber-500/10 px-1 py-0.5 text-[10px] text-amber-400">
-                        unresolved
-                      </span>
-                    )}
-                  </div>
-                  <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[11px] text-zinc-400">
-                    {totalCount}
-                  </span>
-                </div>
-
-                {/* Individual complaints */}
-                <ul className="mt-1.5 space-y-1">
-                  {items.map((item, i) => (
-                    <li key={i} className="flex items-start justify-between gap-3">
-                      <span className="text-[11px] text-zinc-500">{item.text}</span>
-                      <span className="shrink-0 text-[11px] text-zinc-600">{item.reviewCount}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            );
-          })}
+          {themes.map((theme) => (
+            <ThemeCard key={theme.bucket} theme={theme} />
+          ))}
         </div>
       )}
 
@@ -145,7 +141,7 @@ export function ReviewInsights({ themeResult }: { themeResult: ThemeResult }) {
 
       {sampleSize > 0 && (
         <p className="mt-3 text-[11px] text-zinc-600">
-          Based on {sampleSize} recent reviews
+          Based on {sampleSize} reviews analyzed
         </p>
       )}
     </section>

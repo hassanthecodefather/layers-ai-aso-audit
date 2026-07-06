@@ -137,8 +137,11 @@ REFERENT RULES — the referent field pins the recommendation's identity for ded
 - intent is add_keyword or remove_wasted_term  → {"kind":"keyword","value":"<the single keyword, lowercase>"}
 - intent is localise_storefront               → {"kind":"country","value":"<2-letter ISO country code>"}
 - ALL other intents                           → {"kind":"none"}
+(For fix_complaint_theme and respond_to_reviews, always use {"kind":"none"} — the
+theme bucket and review ID are assigned deterministically in code from the analysed
+review themes, NOT by you. Do not invent a bucket name.)
 There is at most ONE recommendation per (dimension, intent, referent) combination. For example,
-two add_keyword suggestions for the subtitle must have different referent.value keywords.`;
+two add_keyword suggestions for the same field must use different referent.value keywords.`;
 
 
 /**
@@ -344,7 +347,7 @@ function themeSection(themeResult: ThemeAnalysisResult | null | undefined): stri
   const lines = ['## Classified complaint themes'];
   for (const t of themeResult.themes) {
     const unresolvedNote = t.isUnresolved ? ' [unclassified]' : '';
-    lines.push(`- ${t.bucket}${unresolvedNote}: ${t.text} (${t.reviewIds.length} reviews)`);
+    lines.push(`- ${t.bucket}${unresolvedNote}: ${t.summary} (${t.count} reviews)`);
   }
   if (themeResult.versionDelta) {
     const d = themeResult.versionDelta;

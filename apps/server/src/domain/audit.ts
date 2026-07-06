@@ -118,8 +118,10 @@ export type ScoredDimension = z.infer<typeof ScoredDimensionSchema>;
 export const ThemeResultSchema = z.object({
   themes: z.array(z.object({
     bucket: z.string(),
-    text: z.string(),
-    reviewCount: z.number(),
+    summary: z.string(),
+    count: z.number(),
+    sharePct: z.number(),
+    exemplars: z.array(z.object({ text: z.string(), rating: z.number() })),
     isUnresolved: z.boolean(),
   })),
   versionDelta: z.object({
