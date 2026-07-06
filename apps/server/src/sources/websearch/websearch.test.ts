@@ -107,6 +107,21 @@ describe('TavilyWebSearch', () => {
     expect(result.value.sources[0]!.url).toBe('https://techcrunch.com/rivian-app-review');
   });
 
+  it('mirror on a SUBDOMAIN is filtered too (Fix 3 follow-up: app.sensortower.com)', async () => {
+    vi.stubGlobal('fetch', mockFetch({
+      results: [
+        { title: 'Rivian on SensorTower', url: 'https://app.sensortower.com/ios/us/rivian/1570215232' },
+        { title: 'Rivian on data.ai', url: 'https://foo.data.ai/apps/ios/rivian' },
+      ],
+    }));
+    const client = new TavilyWebSearch('test-key');
+    const result = await client.probe('Rivian electric truck app');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // Both are aggregator mirrors on subdomains of listed roots → nothing genuine.
+    expect(result.value.state).toBe('searched_and_empty');
+  });
+
   it('returns errored on non-OK HTTP status', async () => {
     vi.stubGlobal('fetch', mockFetch({ error: 'Unauthorized' }, 401));
     const client = new TavilyWebSearch('bad-key');

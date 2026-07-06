@@ -4,7 +4,6 @@ import { Mastra } from '@mastra/core';
 import { LibSQLStore } from '@mastra/libsql';
 import { PinoLogger } from '@mastra/loggers';
 import { FileTransport } from '@mastra/loggers/file';
-import { Observability, MastraStorageExporter } from '@mastra/observability';
 import { asoAuditor } from './agents/aso-auditor';
 import { asoAuditWorkflow } from './workflows/audit-workflow';
 import { auditRoutes } from './routes';
@@ -69,14 +68,11 @@ export const mastra = new Mastra({
     level: 'info',
     ...(fileTransport ? { transports: { file: fileTransport } } : {}),
   }),
-  observability: new Observability({
-    configs: {
-      default: {
-        serviceName: 'aso-audit',
-        exporters: [new MastraStorageExporter()],
-      },
-    },
-  }),
+  // NOTE: observability via MastraStorageExporter was removed — it writes AI
+  // spans to the same LibSQL file the workflow uses for suspend/resume state and
+  // blocks the run on resume ("does not support batch creating metrics"). Studio
+  // Traces needs a storage that supports it (e.g. Postgres at P6) or a non-LibSQL
+  // exporter; Studio Logs still work via the PinoLogger file transport above.
   server: {
     apiRoutes: auditRoutes,
   },

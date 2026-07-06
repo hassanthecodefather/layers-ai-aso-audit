@@ -68,7 +68,13 @@ const MIRROR_DOMAINS = new Set([
 function isMirrorUrl(url: string): boolean {
   try {
     const hostname = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
-    return MIRROR_DOMAINS.has(hostname);
+    // Suffix match, not exact: aggregators serve listings from subdomains
+    // (app.sensortower.com, foo.data.ai). Match the registrable root or any
+    // subdomain of it, so a listed root catches its whole domain.
+    for (const d of MIRROR_DOMAINS) {
+      if (hostname === d || hostname.endsWith(`.${d}`)) return true;
+    }
+    return false;
   } catch {
     return false;
   }
