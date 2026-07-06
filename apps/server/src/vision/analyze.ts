@@ -42,10 +42,16 @@ export async function runVision(
   const competitorFirstFrameUrls: string[] = [];
 
   // ── Screenshot analysis ──────────────────────────────────────────────────
-  const screenshotRaw = await client.analyzeScreenshots({
-    screenshotUrls,
-    competitorFirstFrameUrls,
-  });
+  // Short-circuit when there are no URLs — skip the model call entirely and
+  // return empty critiques so visionUsable() is false downstream.  Without
+  // this guard, an empty-URL listing still invokes the client and Gemini
+  // responds with placeholder text ("No screenshots provided"), giving
+  // critiques.length > 0 → visionUsable true → confidence wrongly flips to
+  // 'observed' and coarseScore overwrites the honest slotsUsedOf10 fallback.
+  const screenshotRaw =
+    screenshotUrls.length > 0
+      ? await client.analyzeScreenshots({ screenshotUrls, competitorFirstFrameUrls })
+      : { critiques: [], competitorComparison: '', suggestedCoarseScore: 0 as const };
 
   // Gate 'observed' on vision actually producing critiques.
   // A parse failure (backward-scan returning {}) leaves critiques empty —
