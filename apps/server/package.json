@@ -18,6 +18,7 @@
     "@mastra/core": "^1.36.0",
     "@mastra/libsql": "^1.11.1",
     "@mastra/loggers": "^1.1.1",
+    "@mastra/observability": "^1.16.0",
     "dotenv-cli": "^11.0.0",
     "hono": "^4.12.22",
     "jimp": "^1.6.1",
