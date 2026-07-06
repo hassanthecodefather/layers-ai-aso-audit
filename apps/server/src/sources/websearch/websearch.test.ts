@@ -137,6 +137,36 @@ describe('TavilyWebSearch', () => {
     if (!result.ok) return;
     expect(result.value.state).toBe('searched_and_empty');
   });
+
+  it('logs surviving hostnames when corroborated (Fix 3 follow-up)', async () => {
+    vi.stubGlobal('fetch', mockFetch({
+      results: [
+        { title: 'Mirror', url: 'https://apps.apple.com/us/app/example/id123' },
+        { title: 'Real coverage', url: 'https://techcrunch.com/rivian-app-review' },
+      ],
+    }));
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const client = new TavilyWebSearch('test-key');
+    await client.probe('query');
+    const line = logSpy.mock.calls.find((c) => String(c[0]).includes('[tavily]'));
+    expect(line).toBeDefined();
+    expect(String(line![0])).toContain('survivors:');
+    expect(String(line![0])).toContain('techcrunch.com');
+  });
+
+  it('caps over-long queries instead of sending them verbatim (Fix 3 follow-up)', async () => {
+    const captured: RequestInit[] = [];
+    vi.stubGlobal('fetch', vi.fn((_url: string, init?: RequestInit) => {
+      if (init) captured.push(init);
+      return Promise.resolve(new Response(JSON.stringify({ results: [] }), { status: 200 }));
+    }));
+    const client = new TavilyWebSearch('test-key');
+    const longQuery = 'x '.repeat(300); // 600 chars
+    await client.probe(longQuery);
+    expect(captured.length).toBeGreaterThan(0);
+    const sentBody = JSON.parse(String(captured[0]!.body)) as { query: string };
+    expect(sentBody.query.length).toBeLessThanOrEqual(400);
+  });
 });
 
 // ── ExaWebSearch ──────────────────────────────────────────────────────────────
@@ -209,6 +239,36 @@ describe('ExaWebSearch', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.state).toBe('errored');
+  });
+
+  it('logs surviving hostnames when corroborated (Fix 3 follow-up)', async () => {
+    vi.stubGlobal('fetch', mockFetch({
+      results: [
+        { title: 'Mirror', url: 'https://apptopia.com/ios/app/id123' },
+        { title: 'Real coverage', url: 'https://news.example.com/app-review' },
+      ],
+    }));
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const client = new ExaWebSearch('test-key');
+    await client.probe('query');
+    const line = logSpy.mock.calls.find((c) => String(c[0]).includes('[exa]'));
+    expect(line).toBeDefined();
+    expect(String(line![0])).toContain('survivors:');
+    expect(String(line![0])).toContain('news.example.com');
+  });
+
+  it('caps over-long queries instead of sending them verbatim (Fix 3 follow-up)', async () => {
+    const captured: RequestInit[] = [];
+    vi.stubGlobal('fetch', vi.fn((_url: string, init?: RequestInit) => {
+      if (init) captured.push(init);
+      return Promise.resolve(new Response(JSON.stringify({ results: [] }), { status: 200 }));
+    }));
+    const client = new ExaWebSearch('test-key');
+    const longQuery = 'y '.repeat(300); // 600 chars
+    await client.probe(longQuery);
+    expect(captured.length).toBeGreaterThan(0);
+    const sentBody = JSON.parse(String(captured[0]!.body)) as { query: string };
+    expect(sentBody.query.length).toBeLessThanOrEqual(400);
   });
 });
 
