@@ -114,3 +114,13 @@ export interface ProgressEvent {
   phase: string;
   message: string;
 }
+
+export interface EvidenceLine { family: string; value: string; sourceTier: string; text: string; }
+export interface Conflict {
+  evidenceCategory: string;
+  chosenCategory: string;
+  storeGenre: string | null;
+  confidence: 'high' | 'medium' | 'low';
+  evidence: EvidenceLine[];
+  consequences: string[];
+}
