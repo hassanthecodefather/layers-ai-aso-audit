@@ -23,6 +23,7 @@ import {
   IdentityDecisionSchema,
 } from '../../identity/human-confirm';
 import { buildPriorContext, persistAudit } from '../../memory/audit-memory';
+import type { IdentityVersion } from '../../domain/identity';
 import { getVisionClient, runVision, selectVisionResult } from '../../vision';
 import { getGovernor, GovernorDenialError } from '../../cost/governor';
 import { runIdFull } from '../../identity/id-full';
@@ -112,10 +113,15 @@ function coreToIdentityListing(core: ITunesCore) {
   });
 }
 
+/** Ignore a stored human override when the operator asked to re-open identity. */
+export function selectPrior(prior: IdentityVersion | null, reopenIdentity?: boolean): IdentityVersion | null {
+  return reopenIdentity ? null : prior;
+}
+
 // ── Step 1: resolve surface metadata AND the ID-lite identity ──────────────
 const identifyStep = createStep({
   id: 'identify-app',
-  inputSchema: z.object({ url: z.string() }),
+  inputSchema: z.object({ url: z.string(), reopenIdentity: z.boolean().optional() }),
   outputSchema: SummaryAndIdentitySchema,
   execute: async ({ inputData }) => {
     const ref = parseAppStoreUrl(inputData.url);
@@ -128,7 +134,8 @@ const identifyStep = createStep({
     // re-asked only if its signals materially changed and the answer flips.
     const storage = await getStorage();
     const priorR = await storage.latestIdentity(core.value.appId, core.value.country);
-    const prior = priorR.ok ? priorR.value : null;
+    const priorRow = priorR.ok ? priorR.value : null;
+    const prior = selectPrior(priorRow, inputData.reopenIdentity);
     const identity = await resolveWithHistory(
       coreToIdentityListing(core.value),
       geminiClassifier,
@@ -576,7 +583,7 @@ const scoreStep = createStep({
 
 export const asoAuditWorkflow = createWorkflow({
   id: 'aso-audit',
-  inputSchema: z.object({ url: z.string() }),
+  inputSchema: z.object({ url: z.string(), reopenIdentity: z.boolean().optional() }),
   outputSchema: AuditReportSchema,
 })
   .then(identifyStep)
