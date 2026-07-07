@@ -9,6 +9,7 @@ import {
   IdentitySourceSchema,
   SOURCE_TIER_WEIGHT,
   ON_STORE_TIERS,
+  OverrodeEvidenceSchema,
 } from '../domain/identity';
 import type { RawIdentitySignals } from './signals';
 import { divergenceBetween } from './domains';
@@ -46,6 +47,10 @@ export const ResolvedIdentitySchema = z.object({
   tally: z.array(SignalTallyEntrySchema),
   /** `resolved` by the agent, or `human_confirmed` — the sticky override tier. */
   source: IdentitySourceSchema.default('resolved'),
+  /** The classifier's function vocabulary — used for structured competitor seeds. */
+  functionTerms: z.array(z.string()).default([]),
+  /** Set only on a contested human override (see OverrodeEvidenceSchema). */
+  overrodeEvidence: OverrodeEvidenceSchema.nullable().default(null),
 });
 export type ResolvedIdentity = z.infer<typeof ResolvedIdentitySchema>;
 
@@ -210,5 +215,7 @@ export function resolveIdentity(
     escalate,
     tally,
     source: 'resolved',
+    functionTerms: classification.functionTerms,
+    overrodeEvidence: null,
   };
 }

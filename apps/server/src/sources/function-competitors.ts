@@ -1,5 +1,6 @@
 import type { AppRef } from '../domain/app-url';
 import type { ResolvedIdentity } from '../identity/resolve';
+import type { OverrodeEvidence } from '../domain/identity';
 import type { Competitor } from '../domain/listing';
 import type { ListingSnapshot } from '../domain/snapshot';
 import type { AppKittieClient } from '../keywords/appkittie-client';
@@ -8,17 +9,34 @@ import { batchLookupCompetitors } from './itunes';
 
 const MAX_SEEDS = 2;      // AppKittie queries per audit (10 credits each)
 const MAX_COMPETITORS = 6; // cap on returned competitors
+const MAX_EVIDENCE_COMPETITORS = 3; // teaser only — not a full parallel analysis
 
 /**
- * Derive seed keywords from the resolved identity. Uses niche (most specific)
- * and category (function-derived, not store genre). Up to MAX_SEEDS terms.
- * Exported so the workflow can pass seeds to persistAudit for future reuse.
+ * Derive seed keywords from the resolved identity — a prioritised, deduped
+ * (case-insensitive) list: niche (most specific) → function category →
+ * classifier function terms. Capped at MAX_SEEDS. Multi-signal so competitor
+ * discovery no longer hinges on a single category string.
  */
-export function seedKeywords(resolved: ResolvedIdentity): string[] {
-  const seeds: string[] = [];
-  if (resolved.niche) seeds.push(resolved.niche);
-  if (seeds.length < MAX_SEEDS) seeds.push(resolved.category);
-  return seeds.slice(0, MAX_SEEDS);
+export function seedKeywords(
+  resolved: Pick<ResolvedIdentity, 'niche' | 'category' | 'functionTerms'>,
+): string[] {
+  const candidates: (string | null | undefined)[] = [
+    resolved.niche,
+    resolved.category,
+    ...(resolved.functionTerms ?? []),
+  ];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const c of candidates) {
+    const trimmed = c?.trim();
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(trimmed);
+    if (out.length >= MAX_SEEDS) break;
+  }
+  return out;
 }
 
 /**
@@ -91,4 +109,50 @@ export async function fetchFunctionGroundedCompetitors(
 
   // 3. Fetch competitor listings via iTunes Lookup (free, not AppKittie).
   return batchLookupCompetitors(filtered, ref.country, ref.appId, MAX_COMPETITORS);
+}
+
+/**
+ * Dual-discovery: find the competitors the app's OWN evidence implies, for the
+ * mismatch check shown when a human override is contested. Seeds from the stored
+ * marker (no re-resolution), returns a short teaser list. Never replaces the
+ * confirmed-category competitors — it's a comparison, surfaced honestly.
+ */
+export async function fetchEvidenceCompetitors(
+  ref: AppRef,
+  marker: OverrodeEvidence,
+  appKittie: AppKittieClient,
+  storage: StorageClient,
+  limit: number = MAX_EVIDENCE_COMPETITORS,
+): Promise<Competitor[]> {
+  // The category phrase (e.g. "Electric vehicle companion") is an internal
+  // classifier label, not a searchable keyword — skip it and seed from the
+  // captured functionTerms instead. They are closer to what users search for
+  // and give AppKittie enough signal to find evidence-side peers.
+  // Fall back to the category phrase only when no functionTerms were captured.
+  const MAX_EVIDENCE_SEEDS = 3;
+  const termPool = marker.functionTerms ?? [];
+  const seeds: string[] = termPool.length > 0
+    ? termPool.slice(0, MAX_EVIDENCE_SEEDS)
+    : [marker.category];
+  if (seeds.length === 0) return [];
+
+  const seen = new Set<string>();
+  const collectedIds: string[] = [];
+  for (const seed of seeds) {
+    const topApps = await appKittie.getTopApps(seed, ref.country);
+    for (const app of topApps) {
+      if (app.appStoreId && !seen.has(app.appStoreId)) {
+        seen.add(app.appStoreId);
+        collectedIds.push(app.appStoreId);
+      }
+    }
+  }
+  if (collectedIds.length === 0) return [];
+
+  const tombstonesR = await storage.tombstones(ref.appId, ref.country);
+  const tombstones = tombstonesR.ok ? tombstonesR.value : new Set<string>();
+  const filtered = collectedIds.filter((id) => !tombstones.has(id));
+  if (filtered.length === 0) return [];
+
+  return batchLookupCompetitors(filtered, ref.country, ref.appId, limit);
 }

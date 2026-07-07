@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { AppSummary, ResolvedIdentity, IdentityDecision } from '../lib/types';
+import type { AppSummary, Conflict, ResolvedIdentity, IdentityDecision } from '../lib/types';
 import { formatCount, formatRating } from '../lib/format';
 
 interface ConfirmationCardProps {
@@ -9,6 +9,7 @@ interface ConfirmationCardProps {
   decision: 'pending' | 'yes' | 'no';
   onConfirm: (identityDecision: IdentityDecision | null) => void;
   onReject: () => void;
+  onReopenIdentity?: () => void;
 }
 
 /** "Is this the app you meant?" — the human-in-the-loop confirmation gate.
@@ -21,6 +22,7 @@ export function ConfirmationCard({
   decision,
   onConfirm,
   onReject,
+  onReopenIdentity,
 }: ConfirmationCardProps) {
   const pending = decision === 'pending';
 
@@ -84,6 +86,21 @@ export function ConfirmationCard({
           </div>
         </div>
       </div>
+
+      {/* Previously-confirmed banner — human decision still in force, no re-escalation */}
+      {pending && !identityNeedsConfirm && identity?.source === 'human_confirmed' && identity && (
+        <div className="mt-4 rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-3">
+          <p className="text-xs font-medium text-indigo-400">Previously confirmed</p>
+          <p className="mt-0.5 text-xs text-zinc-400">
+            You confirmed this app as{' '}
+            <span className="text-zinc-200">{identity.category}</span>
+            {identity.niche ? (
+              <>, niche <span className="text-zinc-200">{identity.niche}</span></>
+            ) : null}
+            . The audit will use this identity.
+          </p>
+        </div>
+      )}
 
       {/* Identity panel — only when the resolved identity needs human review */}
       {pending && identityNeedsConfirm && identity && (
@@ -159,6 +176,14 @@ export function ConfirmationCard({
           >
             Yes, audit this app
           </button>
+          {onReopenIdentity && !identityNeedsConfirm && identity?.source === 'human_confirmed' && (
+            <button
+              onClick={onReopenIdentity}
+              className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-zinc-300 transition hover:bg-white/10"
+            >
+              Change identity
+            </button>
+          )}
           <button
             onClick={onReject}
             className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-zinc-300 transition hover:bg-white/10"
@@ -176,6 +201,57 @@ export function ConfirmationCard({
             ? '✓ Confirmed — running the audit'
             : '✕ Dismissed'}
         </p>
+      )}
+    </div>
+  );
+}
+
+// ── ChallengeCard ──────────────────────────────────────────────────────────
+
+export function ChallengeCard({
+  conflict,
+  decision,
+  onConfirmAnyway,
+  onRevise,
+}: {
+  conflict: Conflict;
+  decision: 'pending' | 'yes' | 'no';
+  onConfirmAnyway: () => void;
+  onRevise: () => void;
+}) {
+  const pending = decision === 'pending';
+  return (
+    <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4">
+      <p className="text-sm font-semibold text-amber-300">
+        Before you confirm &ldquo;{conflict.chosenCategory}&rdquo; &mdash; here&rsquo;s why we read this as
+        &ldquo;{conflict.evidenceCategory}&rdquo;:
+      </p>
+      <ul className="mt-3 space-y-1 text-xs text-zinc-300">
+        {conflict.evidence.map((e, i) => (
+          <li key={i}>&bull; {e.text}</li>
+        ))}
+      </ul>
+      <p className="mt-4 text-sm font-semibold text-amber-300">If you confirm anyway:</p>
+      <ul className="mt-2 space-y-1 text-xs text-zinc-400">
+        {conflict.consequences.map((c, i) => (
+          <li key={i}>&bull; {c}</li>
+        ))}
+      </ul>
+      {pending && (
+        <div className="mt-4 flex gap-2">
+          <button
+            onClick={onConfirmAnyway}
+            className="flex-1 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-medium text-black transition hover:bg-amber-400"
+          >
+            Confirm &ldquo;{conflict.chosenCategory}&rdquo; anyway
+          </button>
+          <button
+            onClick={onRevise}
+            className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-zinc-300 transition hover:bg-white/10"
+          >
+            Change my answer
+          </button>
+        </div>
       )}
     </div>
   );

@@ -1,8 +1,16 @@
 import { describe, it, expect } from 'vitest';
+import { selectPrior } from './workflows/audit-workflow';
 import { Mastra } from '@mastra/core';
 import { LibSQLStore } from '@mastra/libsql';
 import { createWorkflow, createStep } from '@mastra/core/workflows';
 import { z } from 'zod';
+
+it('selectPrior returns null when reopenIdentity is set (forces fresh resolve)', () => {
+  const prior = { source: 'human_confirmed' } as any;
+  expect(selectPrior(prior, true)).toBeNull();
+  expect(selectPrior(prior, false)).toBe(prior);
+  expect(selectPrior(prior, undefined)).toBe(prior);
+});
 
 /**
  * Guards the load-bearing assumption behind A5's human-confirmed override

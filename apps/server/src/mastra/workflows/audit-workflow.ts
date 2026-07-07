@@ -2,6 +2,7 @@ import { createWorkflow, createStep } from '@mastra/core/workflows';
 import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import { AppListingSchema, AppSummarySchema, toSummary } from '../../domain/listing';
+import type { Competitor } from '../../domain/listing';
 import { AuditReportSchema } from '../../domain/audit';
 import { parseAppStoreUrl } from '../../domain/app-url';
 import { assembleReport } from '../../scoring/aggregate';
@@ -17,12 +18,17 @@ import { getStorage } from '../../memory';
 import { extractIdentitySignals } from '../../identity/signals';
 import { buildFactSheet, geminiClassifier } from '../tools/resolve-identity';
 import { ResolvedIdentitySchema } from '../../identity/resolve';
+import type { ResolvedIdentity } from '../../identity/resolve';
 import {
   resolveWithHistory,
   applyHumanDecision,
   IdentityDecisionSchema,
+  isContestedOverride,
 } from '../../identity/human-confirm';
+import { explainIdentityEvidence, describeOverrideConsequences } from '../../identity/evidence-explain';
+import { ConfidenceBandSchema } from '../../domain/identity';
 import { buildPriorContext, persistAudit } from '../../memory/audit-memory';
+import type { IdentityVersion } from '../../domain/identity';
 import { getVisionClient, runVision, selectVisionResult } from '../../vision';
 import { getGovernor, GovernorDenialError } from '../../cost/governor';
 import { runIdFull } from '../../identity/id-full';
@@ -33,7 +39,7 @@ import { getKeywordProvider } from '../../keywords/asa-client';
 import { analyzeThemes, selectThemeResult } from '../../reviews/themes';
 import { getEmbeddingProvider, resolveOtherThemeKey } from '../../reviews/embedding';
 import { AppKittieClient } from '../../keywords/appkittie-client';
-import { fetchFunctionGroundedCompetitors, selectFunctionCompetitors, seedKeywords } from '../../sources/function-competitors';
+import { fetchFunctionGroundedCompetitors, selectFunctionCompetitors, seedKeywords, fetchEvidenceCompetitors } from '../../sources/function-competitors';
 import { rankOpportunities } from '../../keywords/opportunity';
 import { mineCompetitorReviews, selectCompetitorMining } from '../../keywords/competitor-mining';
 import { buildCompetitorTieringResult } from '../../sources/competitor-tiering';
@@ -60,6 +66,19 @@ const SummaryAndIdentitySchema = z.object({
   /** True only when the resolved identity escalates (cross-domain / low). */
   identityNeedsConfirm: z.boolean(),
 });
+
+const EvidenceLineSchema = z.object({
+  family: z.string(), value: z.string(), sourceTier: z.string(), text: z.string(),
+});
+export const ConflictSchema = z.object({
+  evidenceCategory: z.string(),
+  chosenCategory: z.string(),
+  storeGenre: z.string().nullable(),
+  confidence: ConfidenceBandSchema,
+  evidence: z.array(EvidenceLineSchema),
+  consequences: z.array(z.string()),
+});
+export type Conflict = z.infer<typeof ConflictSchema>;
 
 /** Build the confirmation-card summary from the iTunes core (no second fetch). */
 function coreToSummary(core: ITunesCore) {
@@ -112,10 +131,53 @@ function coreToIdentityListing(core: ITunesCore) {
   });
 }
 
+/** Ignore a stored human override when the operator asked to re-open identity. */
+export function selectPrior(prior: IdentityVersion | null, reopenIdentity?: boolean): IdentityVersion | null {
+  return reopenIdentity ? null : prior;
+}
+
+/**
+ * Notes shown on EVERY run for a contested human override — the standing
+ * conflict line plus, when evidence-side peers were discovered, a mismatch
+ * check comparing the two competitor sets. Empty for any non-override identity.
+ */
+export function buildOverrideNotes(
+  resolved: ResolvedIdentity,
+  listingCompetitors: Competitor[],
+  evidenceCompetitors: Competitor[],
+): string[] {
+  if (resolved.source !== 'human_confirmed' || !resolved.overrodeEvidence) return [];
+  const ev = resolved.overrodeEvidence;
+  const notes: string[] = [
+    `Identity human-confirmed as "${resolved.category}", overriding the app's own signals ` +
+      `(which read as "${ev.category}"). Competitors and recommendations follow the confirmed ` +
+      `identity. Re-open identity to re-resolve.`,
+  ];
+  if (evidenceCompetitors.length > 0) {
+    const confirmedSlice = listingCompetitors.slice(0, 3);
+    const evidenceSlice = evidenceCompetitors.slice(0, 3);
+    const confirmedNames = confirmedSlice.map((c) => c.name).join(', ') || '(none found)';
+    const evidenceNames = evidenceSlice.map((c) => c.name).join(', ');
+    const confirmedIds = new Set(confirmedSlice.map((c) => c.appStoreId ?? c.name.toLowerCase()));
+    const overlap = evidenceSlice.filter((c) => confirmedIds.has(c.appStoreId ?? c.name.toLowerCase())).length;
+    const overlapNote =
+      overlap === evidenceSlice.length
+        ? 'Results are identical — evidence seeds may be too generic to distinguish. Re-open identity to re-resolve.'
+        : overlap === 0
+          ? 'No overlap — confirmed category is likely wrong.'
+          : 'Partial overlap — categories may be adjacent.';
+    notes.push(
+      `Category mismatch check — competitors for the confirmed "${resolved.category}": ${confirmedNames}; ` +
+        `competitors implied by the app's signals ("${ev.category}"): ${evidenceNames}. ${overlapNote}`,
+    );
+  }
+  return notes;
+}
+
 // ── Step 1: resolve surface metadata AND the ID-lite identity ──────────────
 const identifyStep = createStep({
   id: 'identify-app',
-  inputSchema: z.object({ url: z.string() }),
+  inputSchema: z.object({ url: z.string(), reopenIdentity: z.boolean().optional() }),
   outputSchema: SummaryAndIdentitySchema,
   execute: async ({ inputData }) => {
     const ref = parseAppStoreUrl(inputData.url);
@@ -128,7 +190,8 @@ const identifyStep = createStep({
     // re-asked only if its signals materially changed and the answer flips.
     const storage = await getStorage();
     const priorR = await storage.latestIdentity(core.value.appId, core.value.country);
-    const prior = priorR.ok ? priorR.value : null;
+    const priorRow = priorR.ok ? priorR.value : null;
+    const prior = selectPrior(priorRow, inputData.reopenIdentity);
     const identity = await resolveWithHistory(
       coreToIdentityListing(core.value),
       geminiClassifier,
@@ -144,7 +207,7 @@ const identifyStep = createStep({
 });
 
 // ── Step 2: suspend for human confirmation (app + identity, widened) ───────
-const confirmStep = createStep({
+export const confirmStep = createStep({
   id: 'confirm-app',
   inputSchema: SummaryAndIdentitySchema,
   outputSchema: z.object({
@@ -154,24 +217,61 @@ const confirmStep = createStep({
     /** When true, the gather step bypasses the cache (--fresh mode, spec E1). */
     fresh: z.boolean().optional(),
   }),
-  suspendSchema: SummaryAndIdentitySchema,
+  suspendSchema: SummaryAndIdentitySchema.extend({ conflict: ConflictSchema.nullish() }),
   resumeSchema: z.object({
     confirmed: z.boolean(),
     identityDecision: IdentityDecisionSchema.nullish(),
+    overrideAcknowledged: z.boolean().optional(),
     /** Set true to bypass all source caches for this run (--fresh, spec E1). */
     fresh: z.boolean().optional(),
   }),
   execute: async ({ inputData, resumeData, suspend }) => {
     if (!resumeData) {
-      return suspend(inputData);
+      return suspend({ ...inputData, conflict: null });
     }
     if (!resumeData.confirmed) {
       throw new Error('Audit cancelled — the identified app was rejected.');
     }
+    const decision = resumeData.identityDecision ?? null;
+
+    // Challenge then obey: on a contested override that hasn't been acknowledged,
+    // suspend again with an evidence-backed conflict so the operator can revise
+    // or confirm-anyway. In-domain corrections and plain confirms pass straight through.
+    if (decision && isContestedOverride(inputData.identity, decision) && !resumeData.overrideAcknowledged) {
+      const storeGenre = inputData.summary.primaryGenre ?? null;
+      const conflict = {
+        evidenceCategory: inputData.identity.category,
+        chosenCategory: decision.category ?? '',
+        storeGenre,
+        confidence: inputData.identity.categoryBand,
+        evidence: explainIdentityEvidence(inputData.identity, storeGenre),
+        consequences: describeOverrideConsequences(decision.category ?? '', inputData.identity.category),
+      };
+      return suspend({ ...inputData, conflict });
+    }
+
+    // Re-audit standing override re-challenge: when the stored identity already
+    // carries overrodeEvidence (a prior contested override) and the user confirms
+    // without a new decision, surface the conflict again — the confirmed category
+    // still contradicts the app's own signals and the user should acknowledge it.
+    if (!decision && inputData.identity.overrodeEvidence && !resumeData.overrideAcknowledged) {
+      const ev = inputData.identity.overrodeEvidence;
+      const storeGenre = inputData.summary.primaryGenre ?? null;
+      const conflict = {
+        evidenceCategory: ev.category,
+        chosenCategory: inputData.identity.category,
+        storeGenre,
+        confidence: inputData.identity.categoryBand,
+        evidence: explainIdentityEvidence(inputData.identity, storeGenre),
+        consequences: describeOverrideConsequences(inputData.identity.category, ev.category),
+      };
+      return suspend({ ...inputData, conflict });
+    }
+
     return {
       appId: inputData.summary.appId,
       country: inputData.summary.country,
-      identityDecision: resumeData.identityDecision ?? null,
+      identityDecision: decision,
       fresh: resumeData.fresh ?? false,
     };
   },
@@ -269,6 +369,18 @@ const scoreStep = createStep({
           listing = { ...listing, competitors: functionCompetitors };
           d3ProvidedCompetitors = true;
         }
+      }
+    }
+
+    // Dual-discovery (contested override only): find the competitors the app's
+    // OWN evidence implies, for the mismatch check. Never replaces the primary set.
+    let evidenceCompetitors: Competitor[] = [];
+    if (resolved.overrodeEvidence) {
+      const appKittieKey = process.env['APP_KITTI_API_KEY'];
+      if (appKittieKey) {
+        evidenceCompetitors = await fetchEvidenceCompetitors(
+          ref, resolved.overrodeEvidence, new AppKittieClient(appKittieKey), storage,
+        );
       }
     }
 
@@ -516,7 +628,9 @@ const scoreStep = createStep({
         `Identity unconfirmed — ${cause}, and no human confirmation was given. Identity-rewriting recommendations were withheld.`,
       );
     } else if (resolved.source === 'human_confirmed') {
-      notes.push(`Identity human-confirmed as "${resolved.category}".`);
+      const overrideNotes = buildOverrideNotes(resolved, listing.competitors, evidenceCompetitors);
+      if (overrideNotes.length > 0) notes.push(...overrideNotes);
+      else notes.push(`Identity human-confirmed as "${resolved.category}".`);
     }
     if (memo.applied.length > 0) {
       notes.push(`Applied since last audit: ${memo.applied.map((r) => r.title).join('; ')}.`);
@@ -576,7 +690,7 @@ const scoreStep = createStep({
 
 export const asoAuditWorkflow = createWorkflow({
   id: 'aso-audit',
-  inputSchema: z.object({ url: z.string() }),
+  inputSchema: z.object({ url: z.string(), reopenIdentity: z.boolean().optional() }),
   outputSchema: AuditReportSchema,
 })
   .then(identifyStep)

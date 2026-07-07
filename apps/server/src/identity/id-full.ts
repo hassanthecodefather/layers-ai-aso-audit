@@ -101,7 +101,11 @@ export async function runIdFull(
     litePrior.divergence !== 'cross_domain' &&
     creativeMatch.creativeMatchesFunction;
 
-  const escalate = deEscalate ? false : litePrior.escalate || visionEscalation;
+  // A human-confirmed identity is final — vision cannot re-escalate it.
+  // (Vision can still de-escalate a non-human lite escalation via `deEscalate`.)
+  const escalate = litePrior.source === 'human_confirmed'
+    ? false
+    : deEscalate ? false : litePrior.escalate || visionEscalation;
 
   // nicheBand: vision can only raise (not lower) the prior value.
   // When de-escalating we adopt vision's nicheBand; otherwise keep litePrior's.
@@ -142,6 +146,7 @@ export async function runIdFull(
     nicheBand,
     audience: creativeMatch.audience,
     escalate,
+    overrodeEvidence: litePrior.overrodeEvidence ?? null,
     createdAt: now,
   };
 

@@ -66,21 +66,22 @@ export const MIGRATIONS: readonly string[] = [
     ON aso_recommendations (app_id, country, rec_key)`,
 
   `CREATE TABLE IF NOT EXISTS aso_identity_versions (
-    id            TEXT PRIMARY KEY,
-    app_id        TEXT NOT NULL,
-    country       TEXT NOT NULL,
-    version       INTEGER NOT NULL,
-    stage         TEXT NOT NULL,
-    category      TEXT NOT NULL,
-    category_band TEXT NOT NULL,
-    niche         TEXT,
-    niche_band    TEXT,
-    audience_json TEXT,
-    tally_json    TEXT NOT NULL,
-    divergence    TEXT NOT NULL,
-    escalate      INTEGER NOT NULL,
-    source        TEXT NOT NULL,
-    created_at    TEXT NOT NULL
+    id                    TEXT PRIMARY KEY,
+    app_id                TEXT NOT NULL,
+    country               TEXT NOT NULL,
+    version               INTEGER NOT NULL,
+    stage                 TEXT NOT NULL,
+    category              TEXT NOT NULL,
+    category_band         TEXT NOT NULL,
+    niche                 TEXT,
+    niche_band            TEXT,
+    audience_json         TEXT,
+    tally_json            TEXT NOT NULL,
+    divergence            TEXT NOT NULL,
+    escalate              INTEGER NOT NULL,
+    source                TEXT NOT NULL,
+    created_at            TEXT NOT NULL,
+    overrode_evidence_json TEXT
   )`,
   `CREATE INDEX IF NOT EXISTS aso_identity_versions_app
     ON aso_identity_versions (app_id, country, version DESC)`,
@@ -140,6 +141,12 @@ export const MIGRATIONS: readonly string[] = [
 )`,
   `CREATE INDEX IF NOT EXISTS aso_cache_expires
   ON aso_cache (expires_at)`,
+
+  // ── Phase B-Vision: Identity override evidence marker ─────────────────────────
+  // Stores the evidence a human override contested so later runs can re-surface
+  // the conflict. Added to the CREATE TABLE above for fresh DBs; this ALTER
+  // handles existing databases (idempotent via runMigrations error-suppression).
+  `ALTER TABLE aso_identity_versions ADD COLUMN overrode_evidence_json TEXT`,
 ];
 
 /** Open a raw LibSQL client against the given url (defaults to the app DB). */

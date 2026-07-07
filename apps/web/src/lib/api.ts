@@ -1,4 +1,4 @@
-import type { AppSummary, AuditReport, ProgressEvent, ResolvedIdentity, IdentityDecision } from './types';
+import type { AppSummary, AuditReport, ProgressEvent, ResolvedIdentity, IdentityDecision, Conflict } from './types';
 
 /**
  * The client side of the two audit endpoints. `/audit` is proxied to the
@@ -13,11 +13,11 @@ export interface IdentifyResult {
 }
 
 /** Turn 1 — resolve a pasted URL to an app summary for confirmation. */
-export async function identifyApp(url: string): Promise<IdentifyResult> {
+export async function identifyApp(url: string, reopenIdentity = false): Promise<IdentifyResult> {
   const res = await fetch('/audit/identify', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url }),
+    body: JSON.stringify({ url, reopenIdentity }),
   });
   const data = (await res.json().catch(() => ({}))) as Partial<IdentifyResult> & {
     error?: string;
@@ -37,6 +37,7 @@ export interface AuditStreamHandlers {
   onProgress: (event: ProgressEvent) => void;
   onReport: (report: AuditReport) => void;
   onError: (message: string) => void;
+  onConflict: (conflict: Conflict) => void;
 }
 
 /**
@@ -47,11 +48,12 @@ export async function runAudit(
   runId: string,
   handlers: AuditStreamHandlers,
   identityDecision?: IdentityDecision | null,
+  overrideAcknowledged = false,
 ): Promise<void> {
   const res = await fetch('/audit/run', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ runId, identityDecision: identityDecision ?? null }),
+    body: JSON.stringify({ runId, identityDecision: identityDecision ?? null, overrideAcknowledged }),
   });
 
   if (!res.ok || !res.body) {
@@ -94,6 +96,7 @@ function dispatchFrame(frame: string, handlers: AuditStreamHandlers): void {
 
   if (event === 'progress') handlers.onProgress(data as ProgressEvent);
   else if (event === 'report') handlers.onReport(data as AuditReport);
+  else if (event === 'conflict') handlers.onConflict(data as Conflict);
   else if (event === 'error') {
     handlers.onError((data as { message?: string }).message ?? 'Audit failed.');
   }

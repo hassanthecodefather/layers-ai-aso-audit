@@ -4,6 +4,7 @@ import {
   signalsMateriallyChanged,
   identityVersionToResolved,
   resolveWithHistory,
+  isContestedOverride,
 } from './human-confirm';
 import { extractIdentitySignals } from './signals';
 import { loadFixtureListing } from './__fixtures__/load';
@@ -24,6 +25,8 @@ const RIVIAN_ESCALATED: ResolvedIdentity = {
   divergence: 'cross_domain',
   escalate: true,
   source: 'resolved',
+  functionTerms: ['truck', 'charge'],
+  overrodeEvidence: null,
   tally: [
     { family: 'developer', value: 'Rivian', sourceTier: 'observed_on_store', agrees: true, fetchedAt: 't' },
     { family: 'bundle_id', value: 'rivian', sourceTier: 'observed_on_store', agrees: true, fetchedAt: 't' },
@@ -79,8 +82,9 @@ describe('signalsMateriallyChanged', () => {
   });
 });
 
+const automotive: IdentityClassifier = async () => ({ functionCategory: 'Electric vehicle companion', functionNiche: 'EV', functionTerms: ['truck', 'charge'] });
+
 describe('resolveWithHistory', () => {
-  const automotive: IdentityClassifier = async () => ({ functionCategory: 'Electric vehicle companion', functionNiche: 'EV', functionTerms: ['truck', 'charge'] });
   const flippedToMusic: IdentityClassifier = async () => ({ functionCategory: 'Music streaming', functionNiche: 'music', functionTerms: ['song'] });
 
   it('reuses a human-confirmed identity verbatim when signals are unchanged (no re-ask)', async () => {
@@ -121,4 +125,57 @@ describe('resolveWithHistory', () => {
     expect(out.source).toBe('human_confirmed');
     expect(out.category).toBe('Electric vehicle companion');
   });
+});
+
+describe('isContestedOverride', () => {
+  it('true when a corrected category is cross-domain from the evidence', () => {
+    expect(isContestedOverride(RIVIAN_ESCALATED, { action: 'correct', category: 'Travel' })).toBe(true);
+  });
+  it('false for a plain confirm (accepts the evidence)', () => {
+    expect(isContestedOverride(RIVIAN_ESCALATED, { action: 'confirm' })).toBe(false);
+  });
+  it('false for an in-domain refinement', () => {
+    expect(isContestedOverride(RIVIAN_ESCALATED, { action: 'correct', category: 'EV charging utility' })).toBe(false);
+  });
+  it('false when no category is supplied', () => {
+    expect(isContestedOverride(RIVIAN_ESCALATED, { action: 'pick' })).toBe(false);
+  });
+});
+
+describe('applyHumanDecision — contested override', () => {
+  it('sets the marker, forces cross_domain divergence, clears niche + functionTerms', () => {
+    const out = applyHumanDecision(RIVIAN_ESCALATED, { action: 'correct', category: 'Travel' });
+    expect(out.source).toBe('human_confirmed');
+    expect(out.category).toBe('Travel');
+    expect(out.niche).toBeNull();          // stale EV niche cleared
+    expect(out.functionTerms).toEqual([]); // stale EV terms cleared
+    expect(out.divergence).toBe('cross_domain');
+    expect(out.overrodeEvidence).toEqual({
+      category: 'Electric vehicle companion',
+      niche: 'EV companion',
+      functionTerms: ['truck', 'charge'],
+    });
+  });
+
+  it('no marker and divergence=none for an in-domain correction', () => {
+    const out = applyHumanDecision(RIVIAN_ESCALATED, { action: 'correct', category: 'EV charging utility', niche: 'charging' });
+    expect(out.overrodeEvidence).toBeNull();
+    expect(out.divergence).toBe('none');
+    expect(out.niche).toBe('charging');
+  });
+
+  it('confirm preserves the resolved divergence and sets no marker', () => {
+    const out = applyHumanDecision(RIVIAN_ESCALATED, { action: 'confirm' });
+    expect(out.overrodeEvidence).toBeNull();
+    expect(out.divergence).toBe(RIVIAN_ESCALATED.divergence);
+  });
+});
+
+it('resolveWithHistory carries the marker through verbatim reuse', async () => {
+  const prior = humanConfirmedRow({
+    category: 'Travel', niche: null, divergence: 'cross_domain',
+    overrodeEvidence: { category: 'Electric vehicle companion', niche: 'EV companion', functionTerms: ['truck'] },
+  });
+  const out = await resolveWithHistory(loadFixtureListing('rivian'), automotive, prior, { fetchedAt: 't' });
+  expect(out.overrodeEvidence?.category).toBe('Electric vehicle companion');
 });

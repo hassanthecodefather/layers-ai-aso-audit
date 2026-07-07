@@ -65,6 +65,8 @@ const litePriorEscalated: ResolvedIdentity = {
     },
   ],
   source: 'resolved',
+  functionTerms: [],
+  overrodeEvidence: null,
 };
 
 /** A resolved ID-lite identity that did NOT escalate. */
@@ -85,6 +87,8 @@ const litePriorNormal: ResolvedIdentity = {
     },
   ],
   source: 'resolved',
+  functionTerms: [],
+  overrodeEvidence: null,
 };
 
 /** A resolved ID-lite identity escalated with cross_domain divergence. */
@@ -105,6 +109,8 @@ const litePriorEscalatedCrossDomain: ResolvedIdentity = {
     },
   ],
   source: 'resolved',
+  functionTerms: [],
+  overrodeEvidence: null,
 };
 
 /** Canned creative-match result: everything checks out. */
