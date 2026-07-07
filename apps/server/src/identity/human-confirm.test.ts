@@ -4,6 +4,7 @@ import {
   signalsMateriallyChanged,
   identityVersionToResolved,
   resolveWithHistory,
+  isContestedOverride,
 } from './human-confirm';
 import { extractIdentitySignals } from './signals';
 import { loadFixtureListing } from './__fixtures__/load';
@@ -24,6 +25,8 @@ const RIVIAN_ESCALATED: ResolvedIdentity = {
   divergence: 'cross_domain',
   escalate: true,
   source: 'resolved',
+  functionTerms: ['truck', 'charge'],
+  overrodeEvidence: null,
   tally: [
     { family: 'developer', value: 'Rivian', sourceTier: 'observed_on_store', agrees: true, fetchedAt: 't' },
     { family: 'bundle_id', value: 'rivian', sourceTier: 'observed_on_store', agrees: true, fetchedAt: 't' },
@@ -120,5 +123,20 @@ describe('resolveWithHistory', () => {
     const out = identityVersionToResolved(humanConfirmedRow());
     expect(out.source).toBe('human_confirmed');
     expect(out.category).toBe('Electric vehicle companion');
+  });
+});
+
+describe('isContestedOverride', () => {
+  it('true when a corrected category is cross-domain from the evidence', () => {
+    expect(isContestedOverride(RIVIAN_ESCALATED, { action: 'correct', category: 'Travel' })).toBe(true);
+  });
+  it('false for a plain confirm (accepts the evidence)', () => {
+    expect(isContestedOverride(RIVIAN_ESCALATED, { action: 'confirm' })).toBe(false);
+  });
+  it('false for an in-domain refinement', () => {
+    expect(isContestedOverride(RIVIAN_ESCALATED, { action: 'correct', category: 'EV charging utility' })).toBe(false);
+  });
+  it('false when no category is supplied', () => {
+    expect(isContestedOverride(RIVIAN_ESCALATED, { action: 'pick' })).toBe(false);
   });
 });

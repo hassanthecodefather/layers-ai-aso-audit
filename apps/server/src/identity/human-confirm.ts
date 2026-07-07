@@ -4,7 +4,7 @@ import type { IdentityVersion } from '../domain/identity';
 import { type ResolvedIdentity } from './resolve';
 import { resolveAppIdentity, type IdentityClassifier } from '../mastra/tools/resolve-identity';
 import { extractIdentitySignals, type RawIdentitySignals } from './signals';
-import { domainOf } from './domains';
+import { domainOf, divergenceBetween } from './domains';
 
 /**
  * The human-confirmed identity override (spec ID "Save the findings —
@@ -65,7 +65,25 @@ export function identityVersionToResolved(v: IdentityVersion): ResolvedIdentity 
     escalate: v.escalate,
     tally: v.tally,
     source: v.source,
+    functionTerms: [],
+    overrodeEvidence: null,
   };
+}
+
+/**
+ * Does the operator's choice contradict the app's own evidence? True only for a
+ * `correct`/`pick` whose category sits in a different top-level domain from the
+ * evidence-derived category. Reuses `divergenceBetween`, so an unmappable choice
+ * never manufactures a false conflict and an in-domain refinement is not flagged.
+ */
+export function isContestedOverride(
+  resolved: ResolvedIdentity,
+  decision: IdentityDecision,
+): boolean {
+  if (decision.action === 'confirm') return false;
+  const chosen = decision.category?.trim();
+  if (!chosen) return false;
+  return divergenceBetween(chosen, resolved.category) === 'cross_domain';
 }
 
 /** The key signals a human decision rests on — change here is "material". */
