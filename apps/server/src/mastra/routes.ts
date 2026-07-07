@@ -52,6 +52,11 @@ function extractSummary(result: any): unknown {
   return extractSuspendPayload(result)?.summary;
 }
 
+/** Locate the challenge conflict payload in a re-suspended confirm step. */
+function extractConflict(result: any): unknown {
+  return extractSuspendPayload(result)?.conflict ?? null;
+}
+
 /** Locate the audit report in a completed workflow result. */
 function extractReport(result: any): unknown {
   return firstOf(
@@ -155,7 +160,8 @@ export const auditRoutes = [
 
         const workflow = mastra.getWorkflow(WORKFLOW_ID);
         const run = await workflow.createRun();
-        const result: any = await run.start({ inputData: { url } });
+        const reopenIdentity = body?.reopenIdentity === true;
+        const result: any = await run.start({ inputData: { url, reopenIdentity } });
 
         if (result?.status === 'suspended') {
           const payload = extractSuspendPayload(result);
@@ -233,6 +239,7 @@ export const auditRoutes = [
       const runId = typeof body?.runId === 'string' ? body.runId : '';
       if (!runId) return c.json({ error: 'Missing runId.' }, 400);
       const identityDecision = body?.identityDecision ?? null;
+      const overrideAcknowledged = body?.overrideAcknowledged === true;
       // When true, all source fetches in gather-listing bypass the cache.
       // The documented --fresh post-release bypass (spec E1).
       const fresh = typeof body?.fresh === 'boolean' ? body.fresh : false;
@@ -246,6 +253,7 @@ export const auditRoutes = [
         // Serialise writes — stream events and the result arrive on different
         // callstacks, and interleaved SSE frames would corrupt.
         let chain: Promise<unknown> = Promise.resolve();
+        let wasSuspended = false;
         const send = (event: string, data: unknown): void => {
           chain = chain.then(() =>
             stream.writeSSE({ event, data: JSON.stringify(data) }),
@@ -260,7 +268,7 @@ export const auditRoutes = [
         try {
           const wfStream = await run.resumeStream({
             step: 'confirm-app',
-            resumeData: { confirmed: true, identityDecision, fresh },
+            resumeData: { confirmed: true, identityDecision, overrideAcknowledged, fresh },
           });
 
           const seen = new Set<string>();
@@ -282,7 +290,12 @@ export const auditRoutes = [
           }
 
           const result: any = await wfStream.result;
-          if (result?.status === 'success') {
+          if (result?.status === 'suspended') {
+            // The gate challenged a contested override — send the conflict and keep
+            // the run alive so the UI can resubmit with overrideAcknowledged.
+            wasSuspended = true;
+            send('conflict', extractConflict(result));
+          } else if (result?.status === 'success') {
             send('report', extractReport(result));
           } else {
             send('error', { message: extractError(result) });
@@ -293,7 +306,7 @@ export const auditRoutes = [
             message: e instanceof Error ? e.message : 'The audit failed.',
           });
         } finally {
-          pendingRuns.delete(runId);
+          if (!wasSuspended) pendingRuns.delete(runId);
           send('done', {});
           await chain;
         }
