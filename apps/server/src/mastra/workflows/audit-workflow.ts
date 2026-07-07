@@ -2,6 +2,7 @@ import { createWorkflow, createStep } from '@mastra/core/workflows';
 import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import { AppListingSchema, AppSummarySchema, toSummary } from '../../domain/listing';
+import type { Competitor } from '../../domain/listing';
 import { AuditReportSchema } from '../../domain/audit';
 import { parseAppStoreUrl } from '../../domain/app-url';
 import { assembleReport } from '../../scoring/aggregate';
@@ -17,6 +18,7 @@ import { getStorage } from '../../memory';
 import { extractIdentitySignals } from '../../identity/signals';
 import { buildFactSheet, geminiClassifier } from '../tools/resolve-identity';
 import { ResolvedIdentitySchema } from '../../identity/resolve';
+import type { ResolvedIdentity } from '../../identity/resolve';
 import {
   resolveWithHistory,
   applyHumanDecision,
@@ -37,7 +39,7 @@ import { getKeywordProvider } from '../../keywords/asa-client';
 import { analyzeThemes, selectThemeResult } from '../../reviews/themes';
 import { getEmbeddingProvider, resolveOtherThemeKey } from '../../reviews/embedding';
 import { AppKittieClient } from '../../keywords/appkittie-client';
-import { fetchFunctionGroundedCompetitors, selectFunctionCompetitors, seedKeywords } from '../../sources/function-competitors';
+import { fetchFunctionGroundedCompetitors, selectFunctionCompetitors, seedKeywords, fetchEvidenceCompetitors } from '../../sources/function-competitors';
 import { rankOpportunities } from '../../keywords/opportunity';
 import { mineCompetitorReviews, selectCompetitorMining } from '../../keywords/competitor-mining';
 import { buildCompetitorTieringResult } from '../../sources/competitor-tiering';
@@ -132,6 +134,35 @@ function coreToIdentityListing(core: ITunesCore) {
 /** Ignore a stored human override when the operator asked to re-open identity. */
 export function selectPrior(prior: IdentityVersion | null, reopenIdentity?: boolean): IdentityVersion | null {
   return reopenIdentity ? null : prior;
+}
+
+/**
+ * Notes shown on EVERY run for a contested human override — the standing
+ * conflict line plus, when evidence-side peers were discovered, a mismatch
+ * check comparing the two competitor sets. Empty for any non-override identity.
+ */
+export function buildOverrideNotes(
+  resolved: ResolvedIdentity,
+  listingCompetitors: Competitor[],
+  evidenceCompetitors: Competitor[],
+): string[] {
+  if (resolved.source !== 'human_confirmed' || !resolved.overrodeEvidence) return [];
+  const ev = resolved.overrodeEvidence;
+  const notes: string[] = [
+    `Identity human-confirmed as "${resolved.category}", overriding the app's own signals ` +
+      `(which read as "${ev.category}"). Competitors and recommendations follow the confirmed ` +
+      `identity. Re-open identity to re-resolve.`,
+  ];
+  if (evidenceCompetitors.length > 0) {
+    const confirmedNames = listingCompetitors.slice(0, 3).map((c) => c.name).join(', ') || '(none found)';
+    const evidenceNames = evidenceCompetitors.slice(0, 3).map((c) => c.name).join(', ');
+    notes.push(
+      `Category mismatch check — competitors for the confirmed "${resolved.category}": ${confirmedNames}; ` +
+        `competitors implied by the app's signals ("${ev.category}"): ${evidenceNames}. ` +
+        `Little overlap suggests the confirmed category may be wrong.`,
+    );
+  }
+  return notes;
 }
 
 // ── Step 1: resolve surface metadata AND the ID-lite identity ──────────────
@@ -311,6 +342,18 @@ const scoreStep = createStep({
           listing = { ...listing, competitors: functionCompetitors };
           d3ProvidedCompetitors = true;
         }
+      }
+    }
+
+    // Dual-discovery (contested override only): find the competitors the app's
+    // OWN evidence implies, for the mismatch check. Never replaces the primary set.
+    let evidenceCompetitors: Competitor[] = [];
+    if (resolved.overrodeEvidence) {
+      const appKittieKey = process.env['APP_KITTI_API_KEY'];
+      if (appKittieKey) {
+        evidenceCompetitors = await fetchEvidenceCompetitors(
+          ref, resolved.overrodeEvidence, new AppKittieClient(appKittieKey), storage,
+        );
       }
     }
 
@@ -558,7 +601,9 @@ const scoreStep = createStep({
         `Identity unconfirmed — ${cause}, and no human confirmation was given. Identity-rewriting recommendations were withheld.`,
       );
     } else if (resolved.source === 'human_confirmed') {
-      notes.push(`Identity human-confirmed as "${resolved.category}".`);
+      const overrideNotes = buildOverrideNotes(resolved, listing.competitors, evidenceCompetitors);
+      if (overrideNotes.length > 0) notes.push(...overrideNotes);
+      else notes.push(`Identity human-confirmed as "${resolved.category}".`);
     }
     if (memo.applied.length > 0) {
       notes.push(`Applied since last audit: ${memo.applied.map((r) => r.title).join('; ')}.`);
