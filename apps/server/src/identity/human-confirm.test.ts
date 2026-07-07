@@ -82,8 +82,9 @@ describe('signalsMateriallyChanged', () => {
   });
 });
 
+const automotive: IdentityClassifier = async () => ({ functionCategory: 'Electric vehicle companion', functionNiche: 'EV', functionTerms: ['truck', 'charge'] });
+
 describe('resolveWithHistory', () => {
-  const automotive: IdentityClassifier = async () => ({ functionCategory: 'Electric vehicle companion', functionNiche: 'EV', functionTerms: ['truck', 'charge'] });
   const flippedToMusic: IdentityClassifier = async () => ({ functionCategory: 'Music streaming', functionNiche: 'music', functionTerms: ['song'] });
 
   it('reuses a human-confirmed identity verbatim when signals are unchanged (no re-ask)', async () => {
@@ -139,4 +140,42 @@ describe('isContestedOverride', () => {
   it('false when no category is supplied', () => {
     expect(isContestedOverride(RIVIAN_ESCALATED, { action: 'pick' })).toBe(false);
   });
+});
+
+describe('applyHumanDecision — contested override', () => {
+  it('sets the marker, forces cross_domain divergence, clears niche + functionTerms', () => {
+    const out = applyHumanDecision(RIVIAN_ESCALATED, { action: 'correct', category: 'Travel' });
+    expect(out.source).toBe('human_confirmed');
+    expect(out.category).toBe('Travel');
+    expect(out.niche).toBeNull();          // stale EV niche cleared
+    expect(out.functionTerms).toEqual([]); // stale EV terms cleared
+    expect(out.divergence).toBe('cross_domain');
+    expect(out.overrodeEvidence).toEqual({
+      category: 'Electric vehicle companion',
+      niche: 'EV companion',
+      functionTerms: ['truck', 'charge'],
+    });
+  });
+
+  it('no marker and divergence=none for an in-domain correction', () => {
+    const out = applyHumanDecision(RIVIAN_ESCALATED, { action: 'correct', category: 'EV charging utility', niche: 'charging' });
+    expect(out.overrodeEvidence).toBeNull();
+    expect(out.divergence).toBe('none');
+    expect(out.niche).toBe('charging');
+  });
+
+  it('confirm preserves the resolved divergence and sets no marker', () => {
+    const out = applyHumanDecision(RIVIAN_ESCALATED, { action: 'confirm' });
+    expect(out.overrodeEvidence).toBeNull();
+    expect(out.divergence).toBe(RIVIAN_ESCALATED.divergence);
+  });
+});
+
+it('resolveWithHistory carries the marker through verbatim reuse', async () => {
+  const prior = humanConfirmedRow({
+    category: 'Travel', niche: null, divergence: 'cross_domain',
+    overrodeEvidence: { category: 'Electric vehicle companion', niche: 'EV companion', functionTerms: ['truck'] },
+  });
+  const out = await resolveWithHistory(loadFixtureListing('rivian'), automotive, prior, { fetchedAt: 't' });
+  expect(out.overrodeEvidence?.category).toBe('Electric vehicle companion');
 });

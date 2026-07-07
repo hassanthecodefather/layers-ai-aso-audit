@@ -41,16 +41,40 @@ export function applyHumanDecision(
   resolved: ResolvedIdentity,
   decision: IdentityDecision,
 ): ResolvedIdentity {
+  const contested = isContestedOverride(resolved, decision);
   const category = decision.action === 'confirm' ? resolved.category : decision.category ?? resolved.category;
-  const niche = decision.action === 'confirm' ? resolved.niche : decision.niche ?? resolved.niche;
+
+  // Niche: the operator's if supplied; else keep the resolved niche — UNLESS the
+  // override is contested and no niche was given, in which case the stale
+  // (old-domain) niche must be cleared so structured seeds don't mix domains.
+  let niche = decision.action === 'confirm' ? resolved.niche : decision.niche ?? resolved.niche;
+  if (contested && decision.niche == null) niche = null;
+
+  // functionTerms belong to the evidence identity; on a contested override they
+  // no longer describe the confirmed category, so clear them (same reason).
+  const functionTerms = contested ? [] : resolved.functionTerms;
+
+  // Divergence now describes the human-set category vs the evidence: preserve the
+  // resolved value on a plain confirm; else cross_domain iff contested, else none.
+  const divergence = decision.action === 'confirm'
+    ? resolved.divergence
+    : (contested ? 'cross_domain' : 'none');
+
+  const overrodeEvidence = contested
+    ? { category: resolved.category, niche: resolved.niche, functionTerms: resolved.functionTerms }
+    : null;
+
   return {
     ...resolved,
     category,
     niche,
+    functionTerms,
     categoryBand: 'high',
     nicheBand: niche ? 'high' : null,
+    divergence,
     escalate: false,
     source: 'human_confirmed',
+    overrodeEvidence,
   };
 }
 
@@ -65,8 +89,8 @@ export function identityVersionToResolved(v: IdentityVersion): ResolvedIdentity 
     escalate: v.escalate,
     tally: v.tally,
     source: v.source,
-    functionTerms: [],
-    overrodeEvidence: null,
+    functionTerms: [],                       // not stored on the row; not needed for a confirmed identity
+    overrodeEvidence: v.overrodeEvidence ?? null,
   };
 }
 
@@ -148,7 +172,7 @@ export async function resolveWithHistory(
   // is material; a minor signal change that stays in the same domain is not).
   const flipped = domainOf(fresh.category) !== domainOf(prior.category);
   if (!flipped) {
-    return { ...fresh, category: prior.category, niche: prior.niche, categoryBand: 'high', nicheBand: prior.niche ? 'high' : null, escalate: false, source: 'human_confirmed' };
+    return { ...fresh, category: prior.category, niche: prior.niche, categoryBand: 'high', nicheBand: prior.niche ? 'high' : null, escalate: false, source: 'human_confirmed', overrodeEvidence: prior.overrodeEvidence ?? null };
   }
   return { ...fresh, escalate: true };
 }
