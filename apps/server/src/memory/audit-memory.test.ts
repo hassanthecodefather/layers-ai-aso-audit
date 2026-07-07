@@ -34,6 +34,8 @@ const CONFIDENT: ResolvedIdentity = {
   escalate: false,
   tally: [],
   source: 'resolved',
+  functionTerms: [],
+  overrodeEvidence: null,
 };
 
 function rec(over: Partial<ReportRec>): ReportRec {

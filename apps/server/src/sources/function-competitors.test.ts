@@ -29,6 +29,8 @@ function makeResolved(overrides: Partial<ResolvedIdentity> = {}): ResolvedIdenti
     escalate: false,
     tally: [],
     source: 'resolved',
+    functionTerms: [],
+    overrodeEvidence: null,
     ...overrides,
   };
 }
