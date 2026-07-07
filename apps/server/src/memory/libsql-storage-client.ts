@@ -241,8 +241,8 @@ export class LibSqlStorageClient implements StorageClient {
       `INSERT INTO aso_identity_versions
         (id, app_id, country, version, stage, category, category_band, niche,
          niche_band, audience_json, tally_json, divergence, escalate, source,
-         created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         created_at, overrode_evidence_json)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         v.id,
         v.appId,
@@ -259,6 +259,7 @@ export class LibSqlStorageClient implements StorageClient {
         v.escalate ? 1 : 0,
         v.source,
         v.createdAt,
+        JSON.stringify(v.overrodeEvidence ?? null),
       ],
     );
     return r.ok ? ok(undefined) : err(r.error);
@@ -309,6 +310,9 @@ export class LibSqlStorageClient implements StorageClient {
       divergence: row.divergence,
       escalate: Number(row.escalate) === 1,
       source: row.source,
+      overrodeEvidence: row.overrode_evidence_json != null
+        ? JSON.parse(String(row.overrode_evidence_json))
+        : null,
       createdAt: row.created_at,
     });
     return parsed.success

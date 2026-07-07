@@ -152,6 +152,7 @@ function identity(over: Partial<IdentityVersion> = {}): IdentityVersion {
     divergence: over.divergence ?? 'none',
     escalate: over.escalate ?? false,
     source: over.source ?? 'resolved',
+    overrodeEvidence: over.overrodeEvidence ?? null,
     createdAt: over.createdAt ?? '2026-06-24T00:00:00.000Z',
   };
 }
@@ -415,6 +416,43 @@ export function storageClientConformance(
       const h = await makeClient();
       try {
         expect(unwrap(await h.client.latestIdentity('nobody', 'us'))).toBeNull();
+      } finally {
+        h.close();
+      }
+    });
+
+    it('round-trips a populated overrodeEvidence marker through append/latestIdentity', async () => {
+      const h = await makeClient();
+      try {
+        const marker = {
+          category: 'Electric vehicle companion',
+          niche: 'EV companion',
+          functionTerms: ['truck'],
+        };
+        unwrap(
+          await h.client.appendIdentity(
+            identity({ id: 'id-override', source: 'human_confirmed', overrodeEvidence: marker }),
+          ),
+        );
+        const got = unwrap(await h.client.latestIdentity('app1', 'us'));
+        expect(got).not.toBeNull();
+        expect(got?.overrodeEvidence).toEqual(marker);
+      } finally {
+        h.close();
+      }
+    });
+
+    it('round-trips a null overrodeEvidence marker through append/latestIdentity', async () => {
+      const h = await makeClient();
+      try {
+        unwrap(
+          await h.client.appendIdentity(
+            identity({ id: 'id-no-override', source: 'resolved', overrodeEvidence: null }),
+          ),
+        );
+        const got = unwrap(await h.client.latestIdentity('app1', 'us'));
+        expect(got).not.toBeNull();
+        expect(got?.overrodeEvidence).toBeNull();
       } finally {
         h.close();
       }
