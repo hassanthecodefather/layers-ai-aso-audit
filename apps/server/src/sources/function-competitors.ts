@@ -124,7 +124,16 @@ export async function fetchEvidenceCompetitors(
   storage: StorageClient,
   limit: number = MAX_EVIDENCE_COMPETITORS,
 ): Promise<Competitor[]> {
-  const seeds = seedKeywords({ category: marker.category, niche: marker.niche, functionTerms: marker.functionTerms });
+  // The category phrase (e.g. "Electric vehicle companion") is an internal
+  // classifier label, not a searchable keyword — skip it and seed from the
+  // captured functionTerms instead. They are closer to what users search for
+  // and give AppKittie enough signal to find evidence-side peers.
+  // Fall back to the category phrase only when no functionTerms were captured.
+  const MAX_EVIDENCE_SEEDS = 3;
+  const termPool = marker.functionTerms ?? [];
+  const seeds: string[] = termPool.length > 0
+    ? termPool.slice(0, MAX_EVIDENCE_SEEDS)
+    : [marker.category];
   if (seeds.length === 0) return [];
 
   const seen = new Set<string>();

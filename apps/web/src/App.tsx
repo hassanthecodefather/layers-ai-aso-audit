@@ -9,7 +9,7 @@ import type { IdentityDecision } from './lib/types';
 
 /** Top-level chat shell: header, scrolling conversation, composer. */
 export function App() {
-  const { messages, busy, submitUrl, confirm, confirmAnyway, reject } = useAudit();
+  const { messages, busy, submitUrl, confirm, confirmAnyway, reject, reopenIdentity } = useAudit();
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -47,6 +47,7 @@ export function App() {
                     onReject={reject}
                     onConfirmAnyway={confirmAnyway}
                     onRevise={onRevise}
+                    onReopenIdentity={reopenIdentity}
                   />
                 ))}
             </div>
@@ -160,9 +161,10 @@ interface MessageRowProps {
   onReject: () => void;
   onConfirmAnyway: () => void;
   onRevise: (id: string) => void;
+  onReopenIdentity: () => void;
 }
 
-function MessageRow({ message, onConfirm, onReject, onConfirmAnyway, onRevise }: MessageRowProps) {
+function MessageRow({ message, onConfirm, onReject, onConfirmAnyway, onRevise, onReopenIdentity }: MessageRowProps) {
   switch (message.kind) {
     case 'user':
       return (
@@ -195,6 +197,7 @@ function MessageRow({ message, onConfirm, onReject, onConfirmAnyway, onRevise }:
             decision={message.decision}
             onConfirm={onConfirm}
             onReject={onReject}
+            onReopenIdentity={onReopenIdentity}
           />
         </Agent>
       );

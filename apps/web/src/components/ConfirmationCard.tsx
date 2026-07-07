@@ -9,6 +9,7 @@ interface ConfirmationCardProps {
   decision: 'pending' | 'yes' | 'no';
   onConfirm: (identityDecision: IdentityDecision | null) => void;
   onReject: () => void;
+  onReopenIdentity?: () => void;
 }
 
 /** "Is this the app you meant?" — the human-in-the-loop confirmation gate.
@@ -21,6 +22,7 @@ export function ConfirmationCard({
   decision,
   onConfirm,
   onReject,
+  onReopenIdentity,
 }: ConfirmationCardProps) {
   const pending = decision === 'pending';
 
@@ -84,6 +86,21 @@ export function ConfirmationCard({
           </div>
         </div>
       </div>
+
+      {/* Previously-confirmed banner — human decision still in force, no re-escalation */}
+      {pending && !identityNeedsConfirm && identity?.source === 'human_confirmed' && identity && (
+        <div className="mt-4 rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-3">
+          <p className="text-xs font-medium text-indigo-400">Previously confirmed</p>
+          <p className="mt-0.5 text-xs text-zinc-400">
+            You confirmed this app as{' '}
+            <span className="text-zinc-200">{identity.category}</span>
+            {identity.niche ? (
+              <>, niche <span className="text-zinc-200">{identity.niche}</span></>
+            ) : null}
+            . The audit will use this identity.
+          </p>
+        </div>
+      )}
 
       {/* Identity panel — only when the resolved identity needs human review */}
       {pending && identityNeedsConfirm && identity && (
@@ -159,6 +176,14 @@ export function ConfirmationCard({
           >
             Yes, audit this app
           </button>
+          {onReopenIdentity && !identityNeedsConfirm && identity?.source === 'human_confirmed' && (
+            <button
+              onClick={onReopenIdentity}
+              className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-zinc-300 transition hover:bg-white/10"
+            >
+              Change identity
+            </button>
+          )}
           <button
             onClick={onReject}
             className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-zinc-300 transition hover:bg-white/10"

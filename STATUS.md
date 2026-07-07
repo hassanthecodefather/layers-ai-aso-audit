@@ -5,7 +5,7 @@ contracts live elsewhere: [`specification.md`](specification.md) is the *what*,
 [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) is the *how-to-build*. This
 file is the *where-we-are* — read it first, trust the tests over the prose.
 
-_Last updated: 2026-07-02 · spec v1.3.2 · **Phase E complete (400 tests); Phase F base DoD met + F-K5 shipped (437 tests); F-K2 ✅ + F-K3 ✅ shipped (475 tests); F-K4 pending**_
+_Last updated: 2026-07-08 · spec v1.3.2 · **Phase E complete (400 tests); Phase F base DoD met + F-K5 shipped (437 tests); F-K2 ✅ + F-K3 ✅ shipped (475 tests); F-K4 pending; Identity-confirmation guard (Fix 5) ✅ shipped — 534 tests, tsc clean both apps**_
 
 Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferred (by design)
 
@@ -21,6 +21,24 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
 | **E** | P5 cost & courtesy control | ✅ | Gateway chokepoint; governor (count 2000/hr, run-entry 2s, wall-clock 5min); pacer (iTunes ≥3.5s, Retry-After); LibSQL `aso_cache` (iTunes 24h, reviews 2h, appkittie 24h); `observedFromCache` provenance. 400 tests, tsc clean. |
 | **F** | Net-new uplifts (storefront sweep, export, …) | 🚧 | Base DoD met (415/418 tests): storefront sweep + proof regime + Markdown export + F-K1 keyword ranking. F-K2 (competitor review mining), F-K3 (competitor tiering), F-K4 (competitor visual benchmarking), F-K5 (web-search corroboration) still open. |
 | **P6+** | Multi-tenant, ASC, write-path, North Star | ⏸ | planned at their tier, not now |
+
+## Identity-confirmation guard (Fix 5) — detail
+
+**Status: ✅ shipped** (commits `29b0491..b8d0832`, 15 commits; 534 tests / 3 live-smoke skips; server + web `tsc` clean). Spec [`docs/superpowers/specs/2026-07-07-identity-confirmation-guard-design.md`](docs/superpowers/specs/2026-07-07-identity-confirmation-guard-design.md); build plan [`plan.md`](plan.md). Full write-up in [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) (Identity-escalation fixes → Fix 5).
+
+**The bug:** a *wrong* human identity confirmation (operator picks "Travel" for an app whose evidence reads "EV") was obeyed without challenge and never re-validated — a self-contradictory audit (travel competitors + `reposition_identity` rec while the scorer re-derived EV), sticky forever with no re-ask and no reset.
+
+| Part | What shipped | Lives in |
+|---|---|---|
+| **A · Challenge then obey** | `confirm-app` is a two-stage gate: a contested override (`divergenceBetween(chosen, evidence)==='cross_domain'`) re-suspends with an evidence-backed `conflict` payload; accepted only on revise or `overrideAcknowledged`. | `identity/human-confirm.ts` (`isContestedOverride`), `identity/evidence-explain.ts`, `mastra/workflows/audit-workflow.ts` (`confirmStep`, `ConflictSchema`), `mastra/routes.ts` (conflict SSE), web `ConfirmationCard.tsx` (`ChallengeCard`) + `hooks/useAudit.ts` (`confirmAnyway`) |
+| **B · Marker + lifecycle** | `overrodeEvidence:{category,niche,functionTerms}` set by `applyHumanDecision` (+ stale `divergence`/`niche`/`functionTerms` fixes), carried through reuse, **persisted + re-read** (`overrode_evidence_json`), re-surfaced on every run at 0 LLM cost; `reopenIdentity` reset. | `domain/identity.ts`, `identity/resolve.ts`, `identity/human-confirm.ts`, `mastra/tools/resolve-identity.ts`, `memory/{migrate,libsql-storage-client,storage-client.conformance}.ts`, `audit-workflow.ts` (`buildOverrideNotes`, `selectPrior`) |
+| **C · Honest competitors** | Multi-signal structured seeds (`niche → category → functionTerms`, Rivian→EVgo/PlugShare guarded); contested-case `fetchEvidenceCompetitors` dual-discovery → evidence-side teaser (≤3) in a mismatch-check note; primary competitor set never mutated. | `sources/function-competitors.ts`, `audit-workflow.ts` |
+
+**Honesty spine upheld:** scorer LLM's read of the app is never gagged (residual EV findings stay, now explained); evidence competitors are a comparison, never a silent swap. **Determinism upheld:** reuse never re-runs the classifier; marker captured once at decision time.
+
+**Process note:** the whole-branch review caught a Critical the per-task reviews structurally couldn't — the marker was built in-memory but never written to / read from `aso_identity_versions`, so Part B silently failed after the decision run. Fixed (`b8d0832`) with a stash-proven conformance round-trip.
+
+**Not yet done:** live manual SSE smoke (paste Rivian → correct to "Travel" → challenge card → confirm-anyway → report shows conflict note + mismatch check).
 
 ## Phase D — detail
 

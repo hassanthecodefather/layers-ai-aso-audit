@@ -279,15 +279,18 @@ export class LibSqlStorageClient implements StorageClient {
     appId: string,
     country: string,
   ): Promise<Result<IdentityVersion | null>> {
-    // Priority: human_confirmed > full > lite; within same tier, highest version wins.
-    // A human-confirmed override must never be shadowed by a freshly-written lite row
-    // (which toIdentityVersion always writes as stage='lite').
+    // Priority rules:
+    //  1. human_confirmed rows always beat resolved rows.
+    //  2. Within non-human_confirmed rows, full stage beats lite (vision-augmented > text-only).
+    //  3. Within human_confirmed rows, version DESC is the only tiebreaker — a newer
+    //     lite human_confirmed row (e.g. after "Change identity") must beat an older
+    //     full human_confirmed row even though full > lite for resolved rows.
     const r = await this.#run(
       `SELECT * FROM aso_identity_versions
         WHERE app_id = ? AND country = ?
         ORDER BY
           CASE WHEN source = 'human_confirmed' THEN 0 ELSE 1 END,
-          CASE WHEN stage = 'full' THEN 0 ELSE 1 END,
+          CASE WHEN source != 'human_confirmed' AND stage = 'full' THEN 0 ELSE 1 END,
           version DESC
         LIMIT 1`,
       [appId, country],

@@ -44,6 +44,8 @@ export interface UseAudit {
   confirm: (identityDecision?: IdentityDecision | null) => void;
   confirmAnyway: () => void;
   reject: () => void;
+  /** Re-open identity: force a fresh resolve so the operator can change a prior human-confirmed category. */
+  reopenIdentity: () => void;
 }
 
 let sequence = 0;
@@ -54,6 +56,7 @@ export function useAudit(): UseAudit {
   const [status, setStatus] = useState<AuditStatus>('idle');
   const [runId, setRunId] = useState<string | null>(null);
   const [pendingDecision, setPendingDecision] = useState<IdentityDecision | null>(null);
+  const [pendingUrl, setPendingUrl] = useState<string | null>(null);
 
   const add = useCallback((message: ChatMessage) => {
     setMessages((prev) => [...prev, message]);
@@ -88,12 +91,49 @@ export function useAudit(): UseAudit {
     );
   }, []);
 
+  /**
+   * Build the shared onProgress/onReport/onError handlers for a runAudit call.
+   * Both `confirm` and `confirmAnyway` share these bodies — extracted here to
+   * stay DRY. The `progressId` is the id of the progress message to patch.
+   */
+  const streamHandlers = useCallback(
+    (progressId: string) => ({
+      onProgress: (event: ProgressEvent) =>
+        patch(progressId, (m) =>
+          m.kind === 'progress' ? { ...m, events: [...m.events, event] } : m,
+        ),
+      onReport: (report: AuditReport) => {
+        patch(progressId, (m) =>
+          m.kind === 'progress' ? { ...m, complete: true } : m,
+        );
+        add({ id: nextId(), kind: 'report', report });
+        add({
+          id: nextId(),
+          kind: 'agent',
+          text: 'Audit complete. Paste another App Store URL to run another.',
+        });
+        setStatus('done');
+        setRunId(null);
+      },
+      onError: (message: string) => {
+        patch(progressId, (m) =>
+          m.kind === 'progress' ? { ...m, complete: true } : m,
+        );
+        add({ id: nextId(), kind: 'error', text: message });
+        setStatus('idle');
+        setRunId(null);
+      },
+    }),
+    [add, patch],
+  );
+
   const submitUrl = useCallback(
     (raw: string) => {
       const url = raw.trim();
       if (!url || status === 'identifying' || status === 'auditing') return;
 
       add({ id: nextId(), kind: 'user', text: url });
+      setPendingUrl(url);
       setStatus('identifying');
 
       const thinkingId = nextId();
@@ -133,42 +173,6 @@ export function useAudit(): UseAudit {
     [status, add, patch],
   );
 
-  /**
-   * Build the shared onProgress/onReport/onError handlers for a runAudit call.
-   * Both `confirm` and `confirmAnyway` share these bodies — extracted here to
-   * stay DRY. The `progressId` is the id of the progress message to patch.
-   */
-  const streamHandlers = useCallback(
-    (progressId: string) => ({
-      onProgress: (event: ProgressEvent) =>
-        patch(progressId, (m) =>
-          m.kind === 'progress' ? { ...m, events: [...m.events, event] } : m,
-        ),
-      onReport: (report: AuditReport) => {
-        patch(progressId, (m) =>
-          m.kind === 'progress' ? { ...m, complete: true } : m,
-        );
-        add({ id: nextId(), kind: 'report', report });
-        add({
-          id: nextId(),
-          kind: 'agent',
-          text: 'Audit complete. Paste another App Store URL to run another.',
-        });
-        setStatus('done');
-        setRunId(null);
-      },
-      onError: (message: string) => {
-        patch(progressId, (m) =>
-          m.kind === 'progress' ? { ...m, complete: true } : m,
-        );
-        add({ id: nextId(), kind: 'error', text: message });
-        setStatus('idle');
-        setRunId(null);
-      },
-    }),
-    [add, patch],
-  );
-
   const confirm = useCallback((identityDecision?: IdentityDecision | null) => {
     if (status !== 'confirming' || !runId) return;
     decideConfirmation('yes');
@@ -192,8 +196,10 @@ export function useAudit(): UseAudit {
 
   const confirmAnyway = useCallback(() => {
     // Guard against re-entrancy: only proceed when we are still in the
-    // confirming state (not mid-audit or done) and have a pending decision.
-    if (status !== 'confirming' || !runId || !pendingDecision) return;
+    // confirming state and have a live run. pendingDecision may be null on a
+    // re-audit re-acknowledge (no new decision, just confirming the standing
+    // override again) — that's valid and must not be blocked.
+    if (status !== 'confirming' || !runId) return;
     setStatus('auditing');
 
     // Lock the challenge card's buttons immediately so a rapid double-click
@@ -215,6 +221,43 @@ export function useAudit(): UseAudit {
     }, pendingDecision, /* overrideAcknowledged */ true);
   }, [status, runId, pendingDecision, add, streamHandlers]);
 
+  const reopenIdentity = useCallback(() => {
+    if (!pendingUrl || status !== 'confirming') return;
+    setMessages((prev) => prev.filter((m) => m.kind !== 'confirmation'));
+    setRunId(null);
+    setStatus('identifying');
+
+    const thinkingId = nextId();
+    add({ id: thinkingId, kind: 'agent', text: 'Re-opening identity — resolving fresh…' });
+
+    identifyApp(pendingUrl, true)
+      .then(({ runId: id, summary, identity, identityNeedsConfirm }) => {
+        setRunId(id);
+        patch(thinkingId, () => ({
+          id: thinkingId,
+          kind: 'agent',
+          text: `Got it — here's the fresh identity. Confirm or correct it.`,
+        }));
+        add({
+          id: nextId(),
+          kind: 'confirmation',
+          summary,
+          identity,
+          identityNeedsConfirm,
+          decision: 'pending',
+        });
+        setStatus('confirming');
+      })
+      .catch((e: unknown) => {
+        patch(thinkingId, () => ({
+          id: thinkingId,
+          kind: 'error',
+          text: e instanceof Error ? e.message : 'Could not re-identify the app.',
+        }));
+        setStatus('idle');
+      });
+  }, [pendingUrl, status, add, patch]);
+
   const reject = useCallback(() => {
     if (status !== 'confirming') return;
     decideConfirmation('no');
@@ -230,7 +273,7 @@ export function useAudit(): UseAudit {
   const busy = status === 'identifying' || status === 'auditing';
 
   return useMemo(
-    () => ({ messages, status, busy, submitUrl, confirm, confirmAnyway, reject }),
-    [messages, status, busy, submitUrl, confirm, confirmAnyway, reject],
+    () => ({ messages, status, busy, submitUrl, confirm, confirmAnyway, reject, reopenIdentity }),
+    [messages, status, busy, submitUrl, confirm, confirmAnyway, reject, reopenIdentity],
   );
 }

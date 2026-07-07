@@ -154,12 +154,21 @@ export function buildOverrideNotes(
       `identity. Re-open identity to re-resolve.`,
   ];
   if (evidenceCompetitors.length > 0) {
-    const confirmedNames = listingCompetitors.slice(0, 3).map((c) => c.name).join(', ') || '(none found)';
-    const evidenceNames = evidenceCompetitors.slice(0, 3).map((c) => c.name).join(', ');
+    const confirmedSlice = listingCompetitors.slice(0, 3);
+    const evidenceSlice = evidenceCompetitors.slice(0, 3);
+    const confirmedNames = confirmedSlice.map((c) => c.name).join(', ') || '(none found)';
+    const evidenceNames = evidenceSlice.map((c) => c.name).join(', ');
+    const confirmedIds = new Set(confirmedSlice.map((c) => c.appStoreId ?? c.name.toLowerCase()));
+    const overlap = evidenceSlice.filter((c) => confirmedIds.has(c.appStoreId ?? c.name.toLowerCase())).length;
+    const overlapNote =
+      overlap === evidenceSlice.length
+        ? 'Results are identical — evidence seeds may be too generic to distinguish. Re-open identity to re-resolve.'
+        : overlap === 0
+          ? 'No overlap — confirmed category is likely wrong.'
+          : 'Partial overlap — categories may be adjacent.';
     notes.push(
       `Category mismatch check — competitors for the confirmed "${resolved.category}": ${confirmedNames}; ` +
-        `competitors implied by the app's signals ("${ev.category}"): ${evidenceNames}. ` +
-        `Little overlap suggests the confirmed category may be wrong.`,
+        `competitors implied by the app's signals ("${ev.category}"): ${evidenceNames}. ${overlapNote}`,
     );
   }
   return notes;
@@ -237,6 +246,24 @@ export const confirmStep = createStep({
         confidence: inputData.identity.categoryBand,
         evidence: explainIdentityEvidence(inputData.identity, storeGenre),
         consequences: describeOverrideConsequences(decision.category ?? '', inputData.identity.category),
+      };
+      return suspend({ ...inputData, conflict });
+    }
+
+    // Re-audit standing override re-challenge: when the stored identity already
+    // carries overrodeEvidence (a prior contested override) and the user confirms
+    // without a new decision, surface the conflict again — the confirmed category
+    // still contradicts the app's own signals and the user should acknowledge it.
+    if (!decision && inputData.identity.overrodeEvidence && !resumeData.overrideAcknowledged) {
+      const ev = inputData.identity.overrodeEvidence;
+      const storeGenre = inputData.summary.primaryGenre ?? null;
+      const conflict = {
+        evidenceCategory: ev.category,
+        chosenCategory: inputData.identity.category,
+        storeGenre,
+        confidence: inputData.identity.categoryBand,
+        evidence: explainIdentityEvidence(inputData.identity, storeGenre),
+        consequences: describeOverrideConsequences(inputData.identity.category, ev.category),
       };
       return suspend({ ...inputData, conflict });
     }
