@@ -89,6 +89,18 @@ export const IdentitySourceSchema = z.enum(['resolved', 'human_confirmed']);
 export type IdentitySource = z.infer<typeof IdentitySourceSchema>;
 
 /**
+ * The evidence a human override contested — captured once at decision time so
+ * later runs can re-surface the conflict and seed evidence-side competitor
+ * discovery WITHOUT re-resolving (the reuse path never re-runs the classifier).
+ */
+export const OverrodeEvidenceSchema = z.object({
+  category: z.string(),
+  niche: z.string().nullable(),
+  functionTerms: z.array(z.string()),
+});
+export type OverrodeEvidence = z.infer<typeof OverrodeEvidenceSchema>;
+
+/**
  * One append-only identity version (spec §A `aso_identity_versions`). ID-lite
  * writes the first; ID-full augments later without rewriting ID-lite's
  * deterministic fields.
@@ -112,6 +124,12 @@ export const IdentityVersionSchema = z.object({
   /** Whether the gate fired (low/conflict → ask a human). */
   escalate: z.boolean(),
   source: IdentitySourceSchema,
+  /**
+   * Set when this version is a human override that contested the app's own
+   * evidence. `null`/absent for a normal resolve or an uncontested confirm.
+   * Optional so pre-existing rows validate.
+   */
+  overrodeEvidence: OverrodeEvidenceSchema.nullish(),
   createdAt: z.string(),
 });
 export type IdentityVersion = z.infer<typeof IdentityVersionSchema>;

@@ -3,6 +3,7 @@ import { extractIdentitySignals } from './signals';
 import { resolveIdentity, type IdentityClassification } from './resolve';
 import { domainOf, divergenceBetween } from './domains';
 import { loadFixtureListing } from './__fixtures__/load';
+import { OverrodeEvidenceSchema } from '../domain/identity';
 
 /**
  * §F ID-lite acceptance criteria, run against the frozen real fixtures (§A0).
@@ -222,4 +223,25 @@ describe('footprint probe tally (F-K5)', () => {
     const fp = r.tally.find((t) => t.family === 'footprint');
     expect(fp!.value).toContain('3 off-store sources');
   });
+});
+
+it('resolveIdentity carries functionTerms and a null marker by default', () => {
+  const resolved = resolveIdentity(
+    // reuse whatever signals factory the file already has; if none, inline:
+    {
+      developer: 'Rivian', developerSlug: 'rivian', bundleOrg: 'rivian',
+      marketingDomain: 'rivian', storeCategory: 'Travel', storeGenres: ['Travel'],
+      reviewCount: 0, reviewCorpus: '',
+    } as any,
+    { functionCategory: 'Electric vehicle companion', functionNiche: 'EV companion', functionTerms: ['truck', 'charge'] },
+  );
+  expect(resolved.functionTerms).toEqual(['truck', 'charge']);
+  expect(resolved.overrodeEvidence).toBeNull();
+});
+
+it('OverrodeEvidenceSchema accepts a well-formed marker', () => {
+  const parsed = OverrodeEvidenceSchema.safeParse({
+    category: 'Electric vehicle companion', niche: 'EV companion', functionTerms: ['truck'],
+  });
+  expect(parsed.success).toBe(true);
 });

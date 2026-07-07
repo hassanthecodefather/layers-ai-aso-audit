@@ -161,6 +161,7 @@ export function toIdentityVersion(
     // The resolution itself carries the tier (`human_confirmed` after an
     // override); an explicit opts.source still wins if a caller forces it.
     source: opts.source ?? resolved.source ?? 'resolved',
+    overrodeEvidence: resolved.overrodeEvidence ?? null,
     createdAt: opts.createdAt,
   };
 }
