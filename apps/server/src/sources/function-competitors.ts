@@ -10,15 +10,31 @@ const MAX_SEEDS = 2;      // AppKittie queries per audit (10 credits each)
 const MAX_COMPETITORS = 6; // cap on returned competitors
 
 /**
- * Derive seed keywords from the resolved identity. Uses niche (most specific)
- * and category (function-derived, not store genre). Up to MAX_SEEDS terms.
- * Exported so the workflow can pass seeds to persistAudit for future reuse.
+ * Derive seed keywords from the resolved identity — a prioritised, deduped
+ * (case-insensitive) list: niche (most specific) → function category →
+ * classifier function terms. Capped at MAX_SEEDS. Multi-signal so competitor
+ * discovery no longer hinges on a single category string.
  */
-export function seedKeywords(resolved: ResolvedIdentity): string[] {
-  const seeds: string[] = [];
-  if (resolved.niche) seeds.push(resolved.niche);
-  if (seeds.length < MAX_SEEDS) seeds.push(resolved.category);
-  return seeds.slice(0, MAX_SEEDS);
+export function seedKeywords(
+  resolved: Pick<ResolvedIdentity, 'niche' | 'category' | 'functionTerms'>,
+): string[] {
+  const candidates: (string | null | undefined)[] = [
+    resolved.niche,
+    resolved.category,
+    ...(resolved.functionTerms ?? []),
+  ];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const c of candidates) {
+    const trimmed = c?.trim();
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(trimmed);
+    if (out.length >= MAX_SEEDS) break;
+  }
+  return out;
 }
 
 /**
