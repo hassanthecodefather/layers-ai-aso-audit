@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { identifyApp, runAudit } from '../lib/api';
-import type { AppSummary, AuditReport, ProgressEvent, ResolvedIdentity, IdentityDecision } from '../lib/types';
+import type { AppSummary, AuditReport, Conflict, ProgressEvent, ResolvedIdentity, IdentityDecision } from '../lib/types';
 
 /**
  * The chat's state machine.
@@ -25,7 +25,8 @@ export type ChatMessage =
     }
   | { id: string; kind: 'progress'; events: ProgressEvent[]; complete: boolean }
   | { id: string; kind: 'report'; report: AuditReport }
-  | { id: string; kind: 'error'; text: string };
+  | { id: string; kind: 'error'; text: string }
+  | { id: string; kind: 'challenge'; conflict: Conflict; decision: 'pending' | 'yes' | 'no' };
 
 export type AuditStatus =
   | 'idle'
@@ -41,6 +42,7 @@ export interface UseAudit {
   busy: boolean;
   submitUrl: (url: string) => void;
   confirm: (identityDecision?: IdentityDecision | null) => void;
+  confirmAnyway: () => void;
   reject: () => void;
 }
 
@@ -51,6 +53,7 @@ export function useAudit(): UseAudit {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [status, setStatus] = useState<AuditStatus>('idle');
   const [runId, setRunId] = useState<string | null>(null);
+  const [pendingDecision, setPendingDecision] = useState<IdentityDecision | null>(null);
 
   const add = useCallback((message: ChatMessage) => {
     setMessages((prev) => [...prev, message]);
@@ -118,20 +121,18 @@ export function useAudit(): UseAudit {
     [status, add, patch],
   );
 
-  const confirm = useCallback((identityDecision?: IdentityDecision | null) => {
-    if (status !== 'confirming' || !runId) return;
-    decideConfirmation('yes');
-    setStatus('auditing');
-
-    const progressId = nextId();
-    add({ id: progressId, kind: 'progress', events: [], complete: false });
-
-    void runAudit(runId, {
-      onProgress: (event) =>
+  /**
+   * Build the shared onProgress/onReport/onError handlers for a runAudit call.
+   * Both `confirm` and `confirmAnyway` share these bodies — extracted here to
+   * stay DRY. The `progressId` is the id of the progress message to patch.
+   */
+  const streamHandlers = useCallback(
+    (progressId: string) => ({
+      onProgress: (event: ProgressEvent) =>
         patch(progressId, (m) =>
           m.kind === 'progress' ? { ...m, events: [...m.events, event] } : m,
         ),
-      onReport: (report) => {
+      onReport: (report: AuditReport) => {
         patch(progressId, (m) =>
           m.kind === 'progress' ? { ...m, complete: true } : m,
         );
@@ -144,7 +145,7 @@ export function useAudit(): UseAudit {
         setStatus('done');
         setRunId(null);
       },
-      onError: (message) => {
+      onError: (message: string) => {
         patch(progressId, (m) =>
           m.kind === 'progress' ? { ...m, complete: true } : m,
         );
@@ -152,8 +153,40 @@ export function useAudit(): UseAudit {
         setStatus('idle');
         setRunId(null);
       },
+    }),
+    [add, patch],
+  );
+
+  const confirm = useCallback((identityDecision?: IdentityDecision | null) => {
+    if (status !== 'confirming' || !runId) return;
+    decideConfirmation('yes');
+    setStatus('auditing');
+
+    const progressId = nextId();
+    add({ id: progressId, kind: 'progress', events: [], complete: false });
+
+    void runAudit(runId, {
+      ...streamHandlers(progressId),
+      onConflict: (conflict: Conflict) => {
+        setPendingDecision(identityDecision ?? null);
+        add({ id: nextId(), kind: 'challenge', conflict, decision: 'pending' });
+        setStatus('confirming');
+      },
     }, identityDecision ?? null);
-  }, [status, runId, add, patch, decideConfirmation]);
+  }, [status, runId, add, decideConfirmation, streamHandlers]);
+
+  const confirmAnyway = useCallback(() => {
+    if (!runId || !pendingDecision) return;
+    setStatus('auditing');
+
+    const progressId = nextId();
+    add({ id: progressId, kind: 'progress', events: [], complete: false });
+
+    void runAudit(runId, {
+      ...streamHandlers(progressId),
+      onConflict: () => { /* cannot re-challenge once acknowledged */ },
+    }, pendingDecision, /* overrideAcknowledged */ true);
+  }, [runId, pendingDecision, add, streamHandlers]);
 
   const reject = useCallback(() => {
     if (status !== 'confirming') return;
@@ -170,7 +203,7 @@ export function useAudit(): UseAudit {
   const busy = status === 'identifying' || status === 'auditing';
 
   return useMemo(
-    () => ({ messages, status, busy, submitUrl, confirm, reject }),
-    [messages, status, busy, submitUrl, confirm, reject],
+    () => ({ messages, status, busy, submitUrl, confirm, confirmAnyway, reject }),
+    [messages, status, busy, submitUrl, confirm, confirmAnyway, reject],
   );
 }

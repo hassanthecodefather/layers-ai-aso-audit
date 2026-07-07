@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { AppSummary, ResolvedIdentity, IdentityDecision } from '../lib/types';
+import type { AppSummary, Conflict, ResolvedIdentity, IdentityDecision } from '../lib/types';
 import { formatCount, formatRating } from '../lib/format';
 
 interface ConfirmationCardProps {
@@ -176,6 +176,57 @@ export function ConfirmationCard({
             ? '✓ Confirmed — running the audit'
             : '✕ Dismissed'}
         </p>
+      )}
+    </div>
+  );
+}
+
+// ── ChallengeCard ──────────────────────────────────────────────────────────
+
+export function ChallengeCard({
+  conflict,
+  decision,
+  onConfirmAnyway,
+  onRevise,
+}: {
+  conflict: Conflict;
+  decision: 'pending' | 'yes' | 'no';
+  onConfirmAnyway: () => void;
+  onRevise: () => void;
+}) {
+  const pending = decision === 'pending';
+  return (
+    <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4">
+      <p className="text-sm font-semibold text-amber-300">
+        Before you confirm &ldquo;{conflict.chosenCategory}&rdquo; &mdash; here&rsquo;s why we read this as
+        &ldquo;{conflict.evidenceCategory}&rdquo;:
+      </p>
+      <ul className="mt-3 space-y-1 text-xs text-zinc-300">
+        {conflict.evidence.map((e, i) => (
+          <li key={i}>&bull; {e.text}</li>
+        ))}
+      </ul>
+      <p className="mt-4 text-sm font-semibold text-amber-300">If you confirm anyway:</p>
+      <ul className="mt-2 space-y-1 text-xs text-zinc-400">
+        {conflict.consequences.map((c, i) => (
+          <li key={i}>&bull; {c}</li>
+        ))}
+      </ul>
+      {pending && (
+        <div className="mt-4 flex gap-2">
+          <button
+            onClick={onConfirmAnyway}
+            className="flex-1 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-medium text-black transition hover:bg-amber-400"
+          >
+            Confirm &ldquo;{conflict.chosenCategory}&rdquo; anyway
+          </button>
+          <button
+            onClick={onRevise}
+            className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-zinc-300 transition hover:bg-white/10"
+          >
+            Change my answer
+          </button>
+        </div>
       )}
     </div>
   );

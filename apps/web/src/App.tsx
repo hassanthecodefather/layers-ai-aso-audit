@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useAudit, type ChatMessage } from './hooks/useAudit';
 import { Composer } from './components/Composer';
-import { ConfirmationCard } from './components/ConfirmationCard';
+import { ChallengeCard, ConfirmationCard } from './components/ConfirmationCard';
 import { ProgressTrace } from './components/ProgressTrace';
 import { ReportView } from './components/ReportView';
 import { fetchHealth, type Health } from './lib/api';
@@ -9,12 +9,22 @@ import type { IdentityDecision } from './lib/types';
 
 /** Top-level chat shell: header, scrolling conversation, composer. */
 export function App() {
-  const { messages, busy, submitUrl, confirm, reject } = useAudit();
+  const { messages, busy, submitUrl, confirm, confirmAnyway, reject } = useAudit();
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages]);
+
+  // "Change my answer" — hides the challenge card so the prior confirmation
+  // card is active again. Status is already 'confirming' (set by onConflict),
+  // so the confirmation card re-renders as pending without any hook change.
+  const [dismissedChallenges, setDismissedChallenges] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const onRevise = useCallback((id: string) => {
+    setDismissedChallenges((prev) => new Set([...prev, id]));
+  }, []);
 
   return (
     <div className="flex h-full flex-col">
@@ -25,14 +35,20 @@ export function App() {
             <EmptyState />
           ) : (
             <div className="space-y-4">
-              {messages.map((message) => (
-                <MessageRow
-                  key={message.id}
-                  message={message}
-                  onConfirm={confirm}
-                  onReject={reject}
-                />
-              ))}
+              {messages
+                .filter(
+                  (m) => !(m.kind === 'challenge' && dismissedChallenges.has(m.id)),
+                )
+                .map((message) => (
+                  <MessageRow
+                    key={message.id}
+                    message={message}
+                    onConfirm={confirm}
+                    onReject={reject}
+                    onConfirmAnyway={confirmAnyway}
+                    onRevise={onRevise}
+                  />
+                ))}
             </div>
           )}
           <div ref={endRef} />
@@ -142,9 +158,11 @@ interface MessageRowProps {
   message: ChatMessage;
   onConfirm: (identityDecision: IdentityDecision | null) => void;
   onReject: () => void;
+  onConfirmAnyway: () => void;
+  onRevise: (id: string) => void;
 }
 
-function MessageRow({ message, onConfirm, onReject }: MessageRowProps) {
+function MessageRow({ message, onConfirm, onReject, onConfirmAnyway, onRevise }: MessageRowProps) {
   switch (message.kind) {
     case 'user':
       return (
@@ -192,6 +210,18 @@ function MessageRow({ message, onConfirm, onReject }: MessageRowProps) {
       return (
         <Agent>
           <ReportView report={message.report} />
+        </Agent>
+      );
+
+    case 'challenge':
+      return (
+        <Agent>
+          <ChallengeCard
+            conflict={message.conflict}
+            decision={message.decision}
+            onConfirmAnyway={onConfirmAnyway}
+            onRevise={() => onRevise(message.id)}
+          />
         </Agent>
       );
   }
