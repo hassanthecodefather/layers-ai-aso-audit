@@ -76,6 +76,18 @@ export function useAudit(): UseAudit {
     );
   }, []);
 
+  /** Revert the most-recently-locked confirmation card back to pending so that
+   *  after a conflict challenge is dismissed the user can change their answer. */
+  const revertConfirmationToPending = useCallback(() => {
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.kind === 'confirmation' && m.decision === 'yes'
+          ? { ...m, decision: 'pending' as const }
+          : m,
+      ),
+    );
+  }, []);
+
   const submitUrl = useCallback(
     (raw: string) => {
       const url = raw.trim();
@@ -169,15 +181,30 @@ export function useAudit(): UseAudit {
       ...streamHandlers(progressId),
       onConflict: (conflict: Conflict) => {
         setPendingDecision(identityDecision ?? null);
+        // Revert the confirmation card back to actionable so that if the user
+        // clicks "Change my answer" the card underneath is live again.
+        revertConfirmationToPending();
         add({ id: nextId(), kind: 'challenge', conflict, decision: 'pending' });
         setStatus('confirming');
       },
     }, identityDecision ?? null);
-  }, [status, runId, add, decideConfirmation, streamHandlers]);
+  }, [status, runId, add, decideConfirmation, revertConfirmationToPending, streamHandlers]);
 
   const confirmAnyway = useCallback(() => {
-    if (!runId || !pendingDecision) return;
+    // Guard against re-entrancy: only proceed when we are still in the
+    // confirming state (not mid-audit or done) and have a pending decision.
+    if (status !== 'confirming' || !runId || !pendingDecision) return;
     setStatus('auditing');
+
+    // Lock the challenge card's buttons immediately so a rapid double-click
+    // on a stale card cannot fire a second runAudit call.
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.kind === 'challenge' && m.decision === 'pending'
+          ? { ...m, decision: 'yes' as const }
+          : m,
+      ),
+    );
 
     const progressId = nextId();
     add({ id: progressId, kind: 'progress', events: [], complete: false });
@@ -186,7 +213,7 @@ export function useAudit(): UseAudit {
       ...streamHandlers(progressId),
       onConflict: () => { /* cannot re-challenge once acknowledged */ },
     }, pendingDecision, /* overrideAcknowledged */ true);
-  }, [runId, pendingDecision, add, streamHandlers]);
+  }, [status, runId, pendingDecision, add, streamHandlers]);
 
   const reject = useCallback(() => {
     if (status !== 'confirming') return;
