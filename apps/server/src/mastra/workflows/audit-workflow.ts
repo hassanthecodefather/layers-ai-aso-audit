@@ -21,7 +21,10 @@ import {
   resolveWithHistory,
   applyHumanDecision,
   IdentityDecisionSchema,
+  isContestedOverride,
 } from '../../identity/human-confirm';
+import { explainIdentityEvidence, describeOverrideConsequences } from '../../identity/evidence-explain';
+import { ConfidenceBandSchema } from '../../domain/identity';
 import { buildPriorContext, persistAudit } from '../../memory/audit-memory';
 import type { IdentityVersion } from '../../domain/identity';
 import { getVisionClient, runVision, selectVisionResult } from '../../vision';
@@ -61,6 +64,19 @@ const SummaryAndIdentitySchema = z.object({
   /** True only when the resolved identity escalates (cross-domain / low). */
   identityNeedsConfirm: z.boolean(),
 });
+
+const EvidenceLineSchema = z.object({
+  family: z.string(), value: z.string(), sourceTier: z.string(), text: z.string(),
+});
+export const ConflictSchema = z.object({
+  evidenceCategory: z.string(),
+  chosenCategory: z.string(),
+  storeGenre: z.string().nullable(),
+  confidence: ConfidenceBandSchema,
+  evidence: z.array(EvidenceLineSchema),
+  consequences: z.array(z.string()),
+});
+export type Conflict = z.infer<typeof ConflictSchema>;
 
 /** Build the confirmation-card summary from the iTunes core (no second fetch). */
 function coreToSummary(core: ITunesCore) {
@@ -151,7 +167,7 @@ const identifyStep = createStep({
 });
 
 // ── Step 2: suspend for human confirmation (app + identity, widened) ───────
-const confirmStep = createStep({
+export const confirmStep = createStep({
   id: 'confirm-app',
   inputSchema: SummaryAndIdentitySchema,
   outputSchema: z.object({
@@ -161,24 +177,43 @@ const confirmStep = createStep({
     /** When true, the gather step bypasses the cache (--fresh mode, spec E1). */
     fresh: z.boolean().optional(),
   }),
-  suspendSchema: SummaryAndIdentitySchema,
+  suspendSchema: SummaryAndIdentitySchema.extend({ conflict: ConflictSchema.nullish() }),
   resumeSchema: z.object({
     confirmed: z.boolean(),
     identityDecision: IdentityDecisionSchema.nullish(),
+    overrideAcknowledged: z.boolean().optional(),
     /** Set true to bypass all source caches for this run (--fresh, spec E1). */
     fresh: z.boolean().optional(),
   }),
   execute: async ({ inputData, resumeData, suspend }) => {
     if (!resumeData) {
-      return suspend(inputData);
+      return suspend({ ...inputData, conflict: null });
     }
     if (!resumeData.confirmed) {
       throw new Error('Audit cancelled — the identified app was rejected.');
     }
+    const decision = resumeData.identityDecision ?? null;
+
+    // Challenge then obey: on a contested override that hasn't been acknowledged,
+    // suspend again with an evidence-backed conflict so the operator can revise
+    // or confirm-anyway. In-domain corrections and plain confirms pass straight through.
+    if (decision && isContestedOverride(inputData.identity, decision) && !resumeData.overrideAcknowledged) {
+      const storeGenre = inputData.summary.primaryGenre ?? null;
+      const conflict = {
+        evidenceCategory: inputData.identity.category,
+        chosenCategory: decision.category ?? '',
+        storeGenre,
+        confidence: inputData.identity.categoryBand,
+        evidence: explainIdentityEvidence(inputData.identity, storeGenre),
+        consequences: describeOverrideConsequences(decision.category ?? '', inputData.identity.category),
+      };
+      return suspend({ ...inputData, conflict });
+    }
+
     return {
       appId: inputData.summary.appId,
       country: inputData.summary.country,
-      identityDecision: resumeData.identityDecision ?? null,
+      identityDecision: decision,
       fresh: resumeData.fresh ?? false,
     };
   },
