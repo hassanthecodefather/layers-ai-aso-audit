@@ -5,7 +5,7 @@ contracts live elsewhere: [`specification.md`](specification.md) is the *what*,
 [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) is the *how-to-build*. This
 file is the *where-we-are* — read it first, trust the tests over the prose.
 
-_Last updated: 2026-07-08 · spec v1.3.2 · **Phase E complete (400 tests); Phase F base DoD met + F-K5 shipped (437 tests); F-K2 ✅ + F-K3 ✅ shipped (475 tests); F-K4 pending; Identity-confirmation guard (Fix 5) ✅ shipped — 534 tests, tsc clean both apps**_
+_Last updated: 2026-07-08 · spec v1.3.2 · **Phase E complete (400 tests); Phase F base DoD met + F-K5 shipped (437 tests); F-K2 ✅ + F-K3 ✅ shipped (475 tests); F-K4 pending; Identity-confirmation guard (Fix 5) ✅ shipped + live-smoke corrections ✅ — 534 tests, tsc clean both apps**_
 
 Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferred (by design)
 
@@ -24,7 +24,7 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
 
 ## Identity-confirmation guard (Fix 5) — detail
 
-**Status: ✅ shipped** (commits `29b0491..b8d0832`, 15 commits; 534 tests / 3 live-smoke skips; server + web `tsc` clean). Spec [`docs/superpowers/specs/2026-07-07-identity-confirmation-guard-design.md`](docs/superpowers/specs/2026-07-07-identity-confirmation-guard-design.md); build plan [`plan.md`](plan.md). Full write-up in [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) (Identity-escalation fixes → Fix 5).
+**Status: ✅ shipped + live-smoke corrections applied** (commits `29b0491..929bcaf`, 16 commits; 534 tests / 3 live-smoke skips; server + web `tsc` clean). Spec [`docs/superpowers/specs/2026-07-07-identity-confirmation-guard-design.md`](docs/superpowers/specs/2026-07-07-identity-confirmation-guard-design.md). Full write-up in [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) (Identity-escalation fixes → Fix 5).
 
 **The bug:** a *wrong* human identity confirmation (operator picks "Travel" for an app whose evidence reads "EV") was obeyed without challenge and never re-validated — a self-contradictory audit (travel competitors + `reposition_identity` rec while the scorer re-derived EV), sticky forever with no re-ask and no reset.
 
@@ -38,7 +38,19 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
 
 **Process note:** the whole-branch review caught a Critical the per-task reviews structurally couldn't — the marker was built in-memory but never written to / read from `aso_identity_versions`, so Part B silently failed after the decision run. Fixed (`b8d0832`) with a stash-proven conformance round-trip.
 
-**Not yet done:** live manual SSE smoke (paste Rivian → correct to "Travel" → challenge card → confirm-anyway → report shows conflict note + mismatch check).
+**Live smoke completed (`929bcaf`) — 7 bugs found and fixed:**
+
+| # | Bug | Fix |
+|---|---|---|
+| 1 | `buildOverrideNotes` hardcoded "Little overlap" regardless of actual overlap | Set-based comparison → 3 distinct notes (identical / no overlap / partial overlap) |
+| 2 | `fetchEvidenceCompetitors` seeded from category phrase ("Electric vehicle companion" → Travel in AppKittie) | Seed from `functionTerms` directly; fall back to category only when absent |
+| 3 | `runIdFull` re-escalated `human_confirmed` when `visionEscalation` was true | Guard: `source === 'human_confirmed'` → `escalate: false` always |
+| 4 | `runIdFull` dropped `overrodeEvidence` on the full row | Carry `litePrior.overrodeEvidence ?? null` to the full row |
+| 5 | `latestIdentity` SQL: `full > lite` priority applied globally, so an older full row beat a newer lite row after "Change identity" | Restrict `full > lite` to non-`human_confirmed` rows only |
+| 6 | Blank screen from `useCallback` temporal dead zone (`streamHandlers` after `submitUrl`) | Move `streamHandlers` before `submitUrl` |
+| 7 | Re-audit silently accepted contested override (challenge never re-fired) | `confirmStep`: re-suspend when `decision === null && overrodeEvidence && !overrideAcknowledged`; fix `confirmAnyway` guard to allow `pendingDecision === null` |
+
+**Also added:** "Previously confirmed" banner (re-audit lightweight card); "Change identity" button (`reopenIdentity` force-fresh resolve).
 
 ## Phase D — detail
 
