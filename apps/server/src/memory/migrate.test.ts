@@ -55,4 +55,47 @@ describe('runMigrations', () => {
       db.close();
     }
   });
+
+  it('creates aso_users table', async () => {
+    const db = openDb(':memory:');
+    await runMigrations(db);
+    const res = await db.execute(`SELECT name FROM sqlite_master WHERE type='table' AND name='aso_users'`);
+    expect(res.rows.length).toBe(1);
+    db.close();
+  });
+
+  it('creates aso_refresh_tokens table', async () => {
+    const db = openDb(':memory:');
+    await runMigrations(db);
+    const res = await db.execute(`SELECT name FROM sqlite_master WHERE type='table' AND name='aso_refresh_tokens'`);
+    expect(res.rows.length).toBe(1);
+    db.close();
+  });
+
+  it('aso_listing_snapshots has tenant_id column', async () => {
+    const db = openDb(':memory:');
+    await runMigrations(db);
+    const res = await db.execute(`PRAGMA table_info(aso_listing_snapshots)`);
+    const cols = res.rows.map((r) => r[1] as string);
+    expect(cols).toContain('tenant_id');
+    db.close();
+  });
+
+  it('aso_recommendations has tenant_id column', async () => {
+    const db = openDb(':memory:');
+    await runMigrations(db);
+    const res = await db.execute(`PRAGMA table_info(aso_recommendations)`);
+    const cols = res.rows.map((r) => r[1] as string);
+    expect(cols).toContain('tenant_id');
+    db.close();
+  });
+
+  it('aso_identity_versions has tenant_id column', async () => {
+    const db = openDb(':memory:');
+    await runMigrations(db);
+    const res = await db.execute(`PRAGMA table_info(aso_identity_versions)`);
+    const cols = res.rows.map((r) => r[1] as string);
+    expect(cols).toContain('tenant_id');
+    db.close();
+  });
 });

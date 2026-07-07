@@ -127,12 +127,12 @@ export class LibSqlStorageClient implements StorageClient {
     // (id, first_seen_at) — the ledger holds one live row per logical rec.
     const r = await this.#run(
       `INSERT INTO aso_recommendations
-        (id, app_id, country, rec_key, value_key, taxonomy_version, dimension,
-         intent, target_field, title, body, before_text, after_text,
+        (id, tenant_id, app_id, country, rec_key, value_key, taxonomy_version,
+         dimension, intent, target_field, title, body, before_text, after_text,
          evidence_json, status, superseded_by, first_seen_at, last_seen_at,
          applied_at, proof_regime)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-       ON CONFLICT (app_id, country, rec_key) DO UPDATE SET
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+       ON CONFLICT (tenant_id, app_id, country, rec_key) DO UPDATE SET
          value_key        = excluded.value_key,
          taxonomy_version = excluded.taxonomy_version,
          target_field     = excluded.target_field,
@@ -148,6 +148,7 @@ export class LibSqlStorageClient implements StorageClient {
          proof_regime     = excluded.proof_regime`,
       [
         rec.id,
+        'default',
         rec.appId,
         rec.country,
         rec.recKey,
