@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fetchFunctionGroundedCompetitors, selectFunctionCompetitors, seedKeywords } from './function-competitors';
+import { fetchFunctionGroundedCompetitors, fetchEvidenceCompetitors, selectFunctionCompetitors, seedKeywords } from './function-competitors';
 import type { AppRef } from '../domain/app-url';
 import type { ResolvedIdentity } from '../identity/resolve';
 import type { AppKittieClient, AppKittieTopApp } from '../keywords/appkittie-client';
@@ -335,5 +335,35 @@ describe('seedKeywords', () => {
   it('seedKeywords preserves the existing Rivian result (regression guard)', () => {
     const seeds = seedKeywords({ niche: 'EV companion', category: 'Electric vehicle companion', functionTerms: [] } as any);
     expect(seeds).toEqual(['EV companion', 'Electric vehicle companion']);
+  });
+});
+
+// ── fetchEvidenceCompetitors tests ───────────────────────────────────────────
+
+describe('fetchEvidenceCompetitors', () => {
+  it('fetchEvidenceCompetitors seeds from the marker and returns up to `limit` peers', async () => {
+    const mockAppKittie = makeAppKittie([
+      { appStoreId: '111', title: 'for-Electric vehicle companion' },
+      { appStoreId: '222', title: 'App2' },
+      { appStoreId: '333', title: 'App3' },
+      { appStoreId: '444', title: 'App4' },
+    ]);
+    const mockStorage = makeStorage();
+    const mockCompetitors = [
+      makeCompetitor('111', 'for-Electric vehicle companion'),
+      makeCompetitor('222', 'App2'),
+      makeCompetitor('333', 'App3'),
+    ];
+    vi.mocked(batchLookupCompetitors).mockResolvedValue(mockCompetitors);
+
+    const out = await fetchEvidenceCompetitors(
+      { appId: '999', country: 'us' } as any,
+      { category: 'Electric vehicle companion', niche: 'EV companion', functionTerms: [] },
+      mockAppKittie,
+      mockStorage,
+      3,
+    );
+
+    expect(out.length).toBeLessThanOrEqual(3);
   });
 });

@@ -1,5 +1,6 @@
 import type { AppRef } from '../domain/app-url';
 import type { ResolvedIdentity } from '../identity/resolve';
+import type { OverrodeEvidence } from '../domain/identity';
 import type { Competitor } from '../domain/listing';
 import type { ListingSnapshot } from '../domain/snapshot';
 import type { AppKittieClient } from '../keywords/appkittie-client';
@@ -8,6 +9,7 @@ import { batchLookupCompetitors } from './itunes';
 
 const MAX_SEEDS = 2;      // AppKittie queries per audit (10 credits each)
 const MAX_COMPETITORS = 6; // cap on returned competitors
+const MAX_EVIDENCE_COMPETITORS = 3; // teaser only — not a full parallel analysis
 
 /**
  * Derive seed keywords from the resolved identity — a prioritised, deduped
@@ -107,4 +109,41 @@ export async function fetchFunctionGroundedCompetitors(
 
   // 3. Fetch competitor listings via iTunes Lookup (free, not AppKittie).
   return batchLookupCompetitors(filtered, ref.country, ref.appId, MAX_COMPETITORS);
+}
+
+/**
+ * Dual-discovery: find the competitors the app's OWN evidence implies, for the
+ * mismatch check shown when a human override is contested. Seeds from the stored
+ * marker (no re-resolution), returns a short teaser list. Never replaces the
+ * confirmed-category competitors — it's a comparison, surfaced honestly.
+ */
+export async function fetchEvidenceCompetitors(
+  ref: AppRef,
+  marker: OverrodeEvidence,
+  appKittie: AppKittieClient,
+  storage: StorageClient,
+  limit: number = MAX_EVIDENCE_COMPETITORS,
+): Promise<Competitor[]> {
+  const seeds = seedKeywords({ category: marker.category, niche: marker.niche, functionTerms: marker.functionTerms });
+  if (seeds.length === 0) return [];
+
+  const seen = new Set<string>();
+  const collectedIds: string[] = [];
+  for (const seed of seeds) {
+    const topApps = await appKittie.getTopApps(seed, ref.country);
+    for (const app of topApps) {
+      if (app.appStoreId && !seen.has(app.appStoreId)) {
+        seen.add(app.appStoreId);
+        collectedIds.push(app.appStoreId);
+      }
+    }
+  }
+  if (collectedIds.length === 0) return [];
+
+  const tombstonesR = await storage.tombstones(ref.appId, ref.country);
+  const tombstones = tombstonesR.ok ? tombstonesR.value : new Set<string>();
+  const filtered = collectedIds.filter((id) => !tombstones.has(id));
+  if (filtered.length === 0) return [];
+
+  return batchLookupCompetitors(filtered, ref.country, ref.appId, limit);
 }
