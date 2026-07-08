@@ -186,7 +186,10 @@ export function useAudit(): UseAudit {
     add({ id: progressId, kind: 'progress', step: null, complete: false });
 
     confirmAudit({ runId, identityDecision: identityDecision ?? null })
-      .then(() => startPolling(runId, progressId))
+      .then(() => {
+        stopPolling();
+        startPolling(runId, progressId);
+      })
       .catch((e: unknown) => {
         add({ id: nextId(), kind: 'error', text: e instanceof Error ? e.message : 'Confirmation failed.' });
         setStatus('idle');
@@ -209,7 +212,10 @@ export function useAudit(): UseAudit {
     add({ id: progressId, kind: 'progress', step: null, complete: false });
 
     confirmAudit({ runId, identityDecision: pendingDecision, overrideAcknowledged: true })
-      .then(() => startPolling(runId, progressId))
+      .then(() => {
+        stopPolling();
+        startPolling(runId, progressId);
+      })
       .catch((e: unknown) => {
         add({ id: nextId(), kind: 'error', text: e instanceof Error ? e.message : 'Confirmation failed.' });
         setStatus('idle');
