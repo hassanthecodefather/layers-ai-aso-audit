@@ -21,10 +21,9 @@ function isValidEmail(email: string): boolean {
 }
 
 function setRefreshCookie(c: any, token: string): void {
-  const expires = new Date(Date.now() + REFRESH_TOKEN_TTL_MS).toUTCString();
   c.header(
     'Set-Cookie',
-    `${REFRESH_COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/auth; Expires=${expires}`,
+    `${REFRESH_COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/auth; Max-Age=604800; Secure`,
   );
 }
 
@@ -78,8 +77,8 @@ export const authRoutes = [
       const email = typeof body.email === 'string' ? body.email.toLowerCase().trim() : '';
       const password = typeof body.password === 'string' ? body.password : '';
 
+      if (!email || !password) return c.json({ error: 'Email and password are required.' }, 400);
       const INVALID = 'Invalid email or password.';
-      if (!email || !password) return c.json({ error: INVALID }, 401);
 
       const store = await getUserStore();
       const user = await store.findUserByEmail(email);
