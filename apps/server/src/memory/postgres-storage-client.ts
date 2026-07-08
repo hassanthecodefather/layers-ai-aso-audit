@@ -25,11 +25,11 @@ export class PostgresStorageClient implements StorageClient {
           ${s.id}, ${s.appId}, ${s.country}, ${tenantId}, ${s.fetchedAt},
           ${JSON.stringify(s.listing)}, ${JSON.stringify(s.signals ?? null)},
           ${JSON.stringify(s.report)}, ${s.rubricVersion}, ${s.promptHash}, ${s.modelId},
-          ${JSON.stringify(s.visionResult ?? null)},
-          ${JSON.stringify(s.candidateResult ?? null)},
-          ${JSON.stringify(s.themeResult ?? null)},
+          ${s.visionResult != null ? JSON.stringify(s.visionResult) : null},
+          ${s.candidateResult != null ? JSON.stringify(s.candidateResult) : null},
+          ${s.themeResult != null ? JSON.stringify(s.themeResult) : null},
           ${s.functionCompetitorSeeds != null ? JSON.stringify(s.functionCompetitorSeeds) : null},
-          ${JSON.stringify(s.competitorMiningResult ?? null)}
+          ${s.competitorMiningResult != null ? JSON.stringify(s.competitorMiningResult) : null}
         )
       `;
       return ok(undefined);
@@ -163,10 +163,18 @@ export class PostgresStorageClient implements StorageClient {
     country: string,
   ): Promise<Result<IdentityVersion | null>> {
     try {
+      // Priority rules (mirrors LibSQL implementation):
+      //  1. human_confirmed rows always beat resolved rows.
+      //  2. Within non-human_confirmed rows, full stage beats lite.
+      //  3. Within human_confirmed rows, version DESC is the tiebreaker.
       const rows = await this.sql`
         SELECT * FROM aso_identity_versions
         WHERE tenant_id = ${tenantId} AND app_id = ${appId} AND country = ${country}
-        ORDER BY version DESC LIMIT 1
+        ORDER BY
+          CASE WHEN source = 'human_confirmed' THEN 0 ELSE 1 END,
+          CASE WHEN source != 'human_confirmed' AND stage = 'full' THEN 0 ELSE 1 END,
+          version DESC
+        LIMIT 1
       `;
       if (!rows[0]) return ok(null);
       return this.#parseIdentity(rows[0]);
@@ -182,10 +190,10 @@ export class PostgresStorageClient implements StorageClient {
   ): Promise<Result<number>> {
     try {
       const rows = await this.sql`
-        SELECT MAX(version) AS max_version FROM aso_identity_versions
+        SELECT COALESCE(MAX(version), -1) AS max_version FROM aso_identity_versions
         WHERE tenant_id = ${tenantId} AND app_id = ${appId} AND country = ${country}
       `;
-      return ok(Number(rows[0]?.max_version ?? 0));
+      return ok(Number(rows[0]?.max_version ?? -1));
     } catch (e) {
       return err(e instanceof Error ? e.message : String(e));
     }
@@ -204,7 +212,7 @@ export class PostgresStorageClient implements StorageClient {
         INSERT INTO aso_competitor_tombstones
           (tenant_id, app_id, country, competitor_app_id, rejected_at)
         VALUES (${tenantId}, ${appId}, ${country}, ${competitorAppId}, ${new Date().toISOString()})
-        ON CONFLICT (app_id, country, competitor_app_id) DO NOTHING
+        ON CONFLICT (tenant_id, app_id, country, competitor_app_id) DO NOTHING
       `;
       return ok(undefined);
     } catch (e) {
@@ -275,20 +283,20 @@ export class PostgresStorageClient implements StorageClient {
       country: String(row.country),
       recKey: String(row.rec_key),
       valueKey: String(row.value_key),
-      taxonomyVersion: row.taxonomy_version != null ? String(row.taxonomy_version) : undefined,
+      taxonomyVersion: row.taxonomy_version != null ? String(row.taxonomy_version) : null,
       dimension: String(row.dimension),
       intent: String(row.intent),
-      targetField: row.target_field != null ? String(row.target_field) : undefined,
+      targetField: row.target_field != null ? String(row.target_field) : null,
       title: String(row.title),
       body: String(row.body),
-      beforeText: row.before_text != null ? String(row.before_text) : undefined,
-      afterText: row.after_text != null ? String(row.after_text) : undefined,
+      beforeText: row.before_text != null ? String(row.before_text) : null,
+      afterText: row.after_text != null ? String(row.after_text) : null,
       evidence: JSON.parse(String(row.evidence_json)),
       status: String(row.status),
-      supersededBy: row.superseded_by != null ? String(row.superseded_by) : undefined,
+      supersededBy: row.superseded_by != null ? String(row.superseded_by) : null,
       firstSeenAt: String(row.first_seen_at),
       lastSeenAt: String(row.last_seen_at),
-      appliedAt: row.applied_at != null ? String(row.applied_at) : undefined,
+      appliedAt: row.applied_at != null ? String(row.applied_at) : null,
       proofRegime: String(row.proof_regime),
     });
     return parsed.success ? ok(parsed.data) : err(parsed.error.message);
@@ -314,7 +322,7 @@ export class PostgresStorageClient implements StorageClient {
       overrodeEvidence:
         row.overrode_evidence_json != null
           ? JSON.parse(String(row.overrode_evidence_json))
-          : undefined,
+          : null,
     });
     return parsed.success ? ok(parsed.data) : err(parsed.error.message);
   }
