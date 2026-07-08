@@ -12,12 +12,18 @@ export const PG_ONLY_MIGRATIONS: readonly string[] = [
 
 /**
  * Apply all migrations to the connected Postgres instance.
- * Postgres supports ALTER TABLE ... ADD COLUMN IF NOT EXISTS natively, so most
- * migrations are idempotent. The caller is responsible for setting search_path
- * on the sql connection if schema isolation is required (e.g. in tests).
+ * ALTER TABLE ... ADD COLUMN statements are rewritten to ADD COLUMN IF NOT
+ * EXISTS before execution so that re-running migrations is idempotent.
+ * The shared MIGRATIONS array intentionally omits IF NOT EXISTS because LibSQL
+ * does not support it; this layer injects it only for Postgres.
+ * The caller is responsible for setting search_path on the sql connection if
+ * schema isolation is required (e.g. in tests).
  */
 export async function runPgMigrations(sql: postgres.Sql): Promise<void> {
   for (const stmt of [...MIGRATIONS, ...PG_ONLY_MIGRATIONS]) {
-    await sql.unsafe(stmt);
+    const normalized = /^\s*ALTER\s+TABLE\b/i.test(stmt)
+      ? stmt.replace(/\bADD\s+COLUMN\b(?!\s+IF\s+NOT\s+EXISTS)/gi, 'ADD COLUMN IF NOT EXISTS')
+      : stmt;
+    await sql.unsafe(normalized);
   }
 }
