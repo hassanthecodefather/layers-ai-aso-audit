@@ -444,9 +444,11 @@ describe('per-dimension reuse — single-field edit moves only that dimension', 
     expect(mergedReport.dimensions.find(d => d.id === 'keywordField')!.score).toBe(5);
 
     // Unchanged dimensions: cached V1 scores (model=7, no coarseOrdinal for these)
-    for (const id of ['description', 'icon', 'conversion', 'competitive'] as const) {
+    for (const id of ['description', 'icon', 'conversion'] as const) {
       expect(mergedReport.dimensions.find(d => d.id === id)!.score).toBe(7);
     }
+    // competitive cached model=7 → coarseOrdinal(7) = 5 (snapped to ordinal)
+    expect(mergedReport.dimensions.find(d => d.id === 'competitive')!.score).toBe(5);
     // ratings is code-scored (4.5★ → 9), independent of model/cache
     expect(mergedReport.dimensions.find(d => d.id === 'ratings')!.score).toBe(9);
   });
@@ -468,12 +470,14 @@ describe('per-dimension reuse — single-field edit moves only that dimension', 
     // keywordField fresh model=6 → no coarseOrdinal → 6
     expect(mergedReport.dimensions.find(d => d.id === 'keywordField')!.score).toBe(6);
 
-    // title cached from V1: model=7 → coarseOrdinal(7) = 5; stays 5 after re-assembling
-    expect(mergedReport.dimensions.find(d => d.id === 'title')!.score).toBe(5);
-    // description/icon/conversion/competitive: cached model=7, no coarseOrdinal
-    for (const id of ['description', 'icon', 'conversion', 'competitive'] as const) {
+    // title cached from V1: Rivian = 6/30 = 20% utilization → floor → 0
+    expect(mergedReport.dimensions.find(d => d.id === 'title')!.score).toBe(0);
+    // description/icon/conversion: cached model=7, no coarseOrdinal → 7
+    for (const id of ['description', 'icon', 'conversion'] as const) {
       expect(mergedReport.dimensions.find(d => d.id === id)!.score).toBe(7);
     }
+    // competitive cached model=7 → coarseOrdinal(7) = 5 (snapped to ordinal)
+    expect(mergedReport.dimensions.find(d => d.id === 'competitive')!.score).toBe(5);
     // ratings is code-scored (4.5★ → 9)
     expect(mergedReport.dimensions.find(d => d.id === 'ratings')!.score).toBe(9);
   });
@@ -496,8 +500,8 @@ describe('per-dimension reuse — single-field edit moves only that dimension', 
     // screenshots changed → fresh, but code overrides model's 3 → score = 10
     expect(mergedReport.dimensions.find(d => d.id === 'screenshots')!.score).toBe(10);
 
-    // title cached from V1: model=7 → coarseOrdinal(7) = 5
-    expect(mergedReport.dimensions.find(d => d.id === 'title')!.score).toBe(5);
+    // title cached from V1: Rivian = 6/30 = 20% utilization → floor → 0
+    expect(mergedReport.dimensions.find(d => d.id === 'title')!.score).toBe(0);
     // description cached: model=7, no coarseOrdinal → 7
     expect(mergedReport.dimensions.find(d => d.id === 'description')!.score).toBe(7);
   });
@@ -536,8 +540,8 @@ describe('per-dimension reuse — single-field edit moves only that dimension', 
     const mergedReport = assembleReport(APP, mergedDraft, signalsV2);
 
     expect(mergedReport.dimensions.find(d => d.id === 'description')!.score).toBe(9);
-    // title cached from V1: model=7 → coarseOrdinal(7) = 5
-    expect(mergedReport.dimensions.find(d => d.id === 'title')!.score).toBe(5);
+    // title cached from V1: Rivian = 6/30 = 20% utilization → floor → 0
+    expect(mergedReport.dimensions.find(d => d.id === 'title')!.score).toBe(0);
     expect(mergedReport.dimensions.find(d => d.id === 'ratings')!.score).toBe(9); // code-scored
   });
 
@@ -551,8 +555,8 @@ describe('per-dimension reuse — single-field edit moves only that dimension', 
     const mergedDraft = applyPerDimensionReuse(freshDraft, listing, signals, listing, reportV1.dimensions);
     const mergedReport = assembleReport(APP, mergedDraft, signals);
 
-    // title cached from V1: model=7 → coarseOrdinal(7)=5; re-snapping 5→5 (idempotent)
-    expect(mergedReport.dimensions.find(d => d.id === 'title')!.score).toBe(5);
+    // title cached from V1: Rivian = 6/30 = 20% utilization → floor → 0
+    expect(mergedReport.dimensions.find(d => d.id === 'title')!.score).toBe(0);
     expect(mergedReport.dimensions.find(d => d.id === 'description')!.score).toBe(7);
     // ratings/screenshots are code-scored from signals (not cached model output)
     expect(mergedReport.dimensions.find(d => d.id === 'ratings')!.score).toBe(9);
