@@ -62,13 +62,23 @@ DATABASE_TEST_URL=postgresql://aso:aso@localhost:5432/aso_audit_test
 
 ### Behaviour
 
-Imports the same `MIGRATIONS` array from `migrate.ts` and applies each statement to Postgres via `postgres.js`. Key difference from the LibSQL runner: Postgres supports `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` natively, so duplicate-column errors never occur — no error suppression needed. Non-`ALTER` statements are idempotent by construction (`IF NOT EXISTS`).
+Imports the shared `MIGRATIONS` array from `migrate.ts` plus a `PG_ONLY_MIGRATIONS` array (Postgres-only DDL, e.g. `TIMESTAMPTZ` columns) and applies all statements to Postgres via `postgres.js`. Key difference from the LibSQL runner: Postgres supports `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` natively, so duplicate-column errors never occur — no error suppression needed. Non-`ALTER` statements are idempotent by construction (`IF NOT EXISTS`).
 
 ```typescript
+export const PG_ONLY_MIGRATIONS: readonly string[] = [
+  // Phase 6a: shared rate limiter slot table (TIMESTAMPTZ is Postgres-only)
+  `CREATE TABLE IF NOT EXISTS aso_rate_slots (
+    key             TEXT PRIMARY KEY,
+    next_allowed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `INSERT INTO aso_rate_slots (key, next_allowed_at)
+    VALUES ('itunes', NOW()) ON CONFLICT (key) DO NOTHING`,
+];
+
 export async function runPgMigrations(url: string): Promise<void>
 ```
 
-Called once on server boot alongside (or instead of) `runMigrations`. The `mastra/index.ts` boot sequence checks `DATABASE_URL`; if present, calls `runPgMigrations`.
+Called once eagerly at server boot from `mastra/index.ts`. When `DATABASE_URL` is set, `mastra/index.ts` calls `runPgMigrations` instead of (not alongside) `runMigrations`.
 
 ### SQL compatibility
 

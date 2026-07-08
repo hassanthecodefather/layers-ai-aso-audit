@@ -14,7 +14,7 @@ The `Pacer` interface (`cost/pacer.ts`) is already an abstraction. The swap is w
 
 ## Section 1: Data Model
 
-### New migration (appended to `MIGRATIONS` in `migrate.ts`)
+### New migration (in `PG_ONLY_MIGRATIONS` in `pg-migrate.ts`, NOT the shared `MIGRATIONS` array)
 
 ```sql
 CREATE TABLE IF NOT EXISTS aso_rate_slots (
@@ -25,6 +25,8 @@ INSERT INTO aso_rate_slots (key, next_allowed_at)
   VALUES ('itunes', NOW())
   ON CONFLICT (key) DO NOTHING;
 ```
+
+`TIMESTAMPTZ` is Postgres-specific and must not be added to the shared `MIGRATIONS` array (which LibSQL also reads). It lives in `PG_ONLY_MIGRATIONS` exported from `pg-migrate.ts` and applied only by `runPgMigrations`.
 
 One row per rate-limited upstream. Only `'itunes'` is seeded — Apple's iTunes and Review RSS endpoints share the same slot (both are `upstream === 'itunes' || upstream === 'reviews'` in the gateway, matching the existing pacer condition).
 
@@ -109,8 +111,8 @@ export function getPacer(): Pacer {
   if (!_pacer) {
     const dbUrl = process.env.DATABASE_URL;
     _pacer = dbUrl
-      ? new PostgresSharedPacer(getPgClient())  // shared across instances
-      : new SerialPacer();                       // single-instance fallback
+      ? new PostgresSharedPacer(postgres(dbUrl))  // own connection; postgres.js pools lazily
+      : new SerialPacer();                         // single-instance fallback
   }
   return _pacer;
 }
