@@ -6,6 +6,7 @@
 
 import { getGateway, type GatewayCall } from '../cost/gateway';
 import { getPacer } from '../cost/pacer';
+import { PacerError } from '../cost/postgres-pacer';
 
 /** A failure from an external data source. Carries which source failed. */
 export class SourceError extends Error {
@@ -74,6 +75,9 @@ export async function fetchWithRetry(
       lastError = new SourceError(source, `HTTP ${res.status}`, true);
     } catch (cause) {
       if (cause instanceof SourceError && !cause.retryable) throw cause;
+      // Pacer DB failures are configuration errors — retrying won't help and
+      // would produce a misleading "upstream unreachable" message.
+      if (cause instanceof PacerError) throw cause;
       lastError = cause;
       if (attempt === retries) break;
     } finally {
@@ -82,9 +86,10 @@ export async function fetchWithRetry(
     await sleep(250 * 2 ** attempt);
   }
 
+  const rootCause = lastError instanceof Error ? lastError.message : String(lastError);
   throw new SourceError(
     source,
-    `${source} unreachable after ${retries + 1} attempts`,
+    `${source} unreachable after ${retries + 1} attempts — ${rootCause}`,
     true,
     lastError,
   );
