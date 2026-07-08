@@ -7,6 +7,7 @@ import { FileTransport } from '@mastra/loggers/file';
 import { asoAuditor } from './agents/aso-auditor';
 import { asoAuditWorkflow } from './workflows/audit-workflow';
 import { auditRoutes } from './routes';
+import { authRoutes } from '../auth/routes';
 import { verifyLlmStartup } from '../llm';
 import { runMigrations } from '../memory/migrate';
 
@@ -74,7 +75,7 @@ export const mastra = new Mastra({
   // Traces needs a storage that supports it (e.g. Postgres at P6) or a non-LibSQL
   // exporter; Studio Logs still work via the PinoLogger file transport above.
   server: {
-    apiRoutes: auditRoutes,
+    apiRoutes: [...auditRoutes, ...authRoutes],
   },
 });
 
