@@ -271,10 +271,10 @@ describe('assembleReport — code overrides win over model scores', () => {
     expect(report.dimensions.find(d => d.id === 'title')!.score).toBe(10);
   });
 
-  it('title: nearly-empty field (< 20 % utilization) forced to 0 regardless of model', () => {
+  it('title: model score 1 → 0 (only truly terrible scores floor to 0)', () => {
     const listing = makeListing({ name: 'App' }); // 3 chars = 10 %
     const signals = computeSignals(listing);
-    const report = assembleReport(APP, makeDraft({ title: 9 }), signals);
+    const report = assembleReport(APP, makeDraft({ title: 1 }), signals);
     expect(report.dimensions.find(d => d.id === 'title')!.score).toBe(0);
   });
 
@@ -470,8 +470,8 @@ describe('per-dimension reuse — single-field edit moves only that dimension', 
     // keywordField fresh model=6 → no coarseOrdinal → 6
     expect(mergedReport.dimensions.find(d => d.id === 'keywordField')!.score).toBe(6);
 
-    // title cached from V1: Rivian = 6/30 = 20% utilization → floor → 0
-    expect(mergedReport.dimensions.find(d => d.id === 'title')!.score).toBe(0);
+    // title cached from V1: Rivian model=7 → snapToOrdinalTitle(7) = 5
+    expect(mergedReport.dimensions.find(d => d.id === 'title')!.score).toBe(5);
     // description/icon/conversion: cached model=7, no coarseOrdinal → 7
     for (const id of ['description', 'icon', 'conversion'] as const) {
       expect(mergedReport.dimensions.find(d => d.id === id)!.score).toBe(7);
@@ -500,8 +500,8 @@ describe('per-dimension reuse — single-field edit moves only that dimension', 
     // screenshots changed → fresh, but code overrides model's 3 → score = 10
     expect(mergedReport.dimensions.find(d => d.id === 'screenshots')!.score).toBe(10);
 
-    // title cached from V1: Rivian = 6/30 = 20% utilization → floor → 0
-    expect(mergedReport.dimensions.find(d => d.id === 'title')!.score).toBe(0);
+    // title cached from V1: Rivian model=7 → snapToOrdinalTitle(7) = 5
+    expect(mergedReport.dimensions.find(d => d.id === 'title')!.score).toBe(5);
     // description cached: model=7, no coarseOrdinal → 7
     expect(mergedReport.dimensions.find(d => d.id === 'description')!.score).toBe(7);
   });
@@ -540,8 +540,8 @@ describe('per-dimension reuse — single-field edit moves only that dimension', 
     const mergedReport = assembleReport(APP, mergedDraft, signalsV2);
 
     expect(mergedReport.dimensions.find(d => d.id === 'description')!.score).toBe(9);
-    // title cached from V1: Rivian = 6/30 = 20% utilization → floor → 0
-    expect(mergedReport.dimensions.find(d => d.id === 'title')!.score).toBe(0);
+    // title cached from V1: Rivian model=7 → snapToOrdinalTitle(7) = 5
+    expect(mergedReport.dimensions.find(d => d.id === 'title')!.score).toBe(5);
     expect(mergedReport.dimensions.find(d => d.id === 'ratings')!.score).toBe(9); // code-scored
   });
 
@@ -555,8 +555,8 @@ describe('per-dimension reuse — single-field edit moves only that dimension', 
     const mergedDraft = applyPerDimensionReuse(freshDraft, listing, signals, listing, reportV1.dimensions);
     const mergedReport = assembleReport(APP, mergedDraft, signals);
 
-    // title cached from V1: Rivian = 6/30 = 20% utilization → floor → 0
-    expect(mergedReport.dimensions.find(d => d.id === 'title')!.score).toBe(0);
+    // title cached from V1: Rivian model=7 → snapToOrdinalTitle(7) = 5
+    expect(mergedReport.dimensions.find(d => d.id === 'title')!.score).toBe(5);
     expect(mergedReport.dimensions.find(d => d.id === 'description')!.score).toBe(7);
     // ratings/screenshots are code-scored from signals (not cached model output)
     expect(mergedReport.dimensions.find(d => d.id === 'ratings')!.score).toBe(9);

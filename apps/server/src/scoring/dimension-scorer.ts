@@ -11,7 +11,7 @@ import type { VisionResult } from '../vision/types';
  * predate the change. Without this, old snapshots would serve stale scores
  * for dimensions whose scoring formula changed between Phase A and B.
  */
-export const SCORER_VERSION = 'phase-b-v3';
+export const SCORER_VERSION = 'phase-b-v4';
 
 /**
  * True when a VisionResult contains real Gemini-produced critiques.
@@ -241,17 +241,17 @@ export function coarseOrdinalScore(
 ): number | null {
   switch (id) {
     case 'title':
-      if (signals.title.utilizationPct <= 20) return 0;
-      return snapToOrdinal(modelScore);
+      // Wide "poor" bucket: only 0-1 → 0. Brand-only short names (Spotify, Rivian)
+      // score 2-4 from the model — that's "acceptable, not great" (→ 5), not terrible.
+      // Standard < 3 boundary straddled by brand names and caused ±5-point run-to-run drift.
+      return snapToOrdinalTitle(modelScore);
 
     case 'subtitle':
       // Not observable → confidence is 'unavailable'; snapping doesn't matter.
       if (!signals.subtitle.observable) return null;
-      if (signals.subtitle.utilizationPct <= 20) return 0;
       return snapToOrdinal(modelScore);
 
     case 'competitive':
-      // Snap to {0, 5, 10} to eliminate run-to-run drift on this model-judged dimension.
       return snapToOrdinal(modelScore);
 
     default:
@@ -259,9 +259,16 @@ export function coarseOrdinalScore(
   }
 }
 
+/** Snap for title: wider "poor" bucket (0–1 → 0) so brand-only names land at 5, not 0. */
+function snapToOrdinalTitle(score: number): number {
+  if (score < 2) return 0;  // 0-1 → truly terrible
+  if (score < 8) return 5;  // 2-7 → acceptable (brand name, short, not keyword-rich)
+  return 10;                 // 8-10 → excellent (keyword-optimized)
+}
+
 /** Snap a 0-10 model score to the nearest of {0, 5, 10}. */
 function snapToOrdinal(score: number): number {
   if (score < 3) return 0; // 0-2 → poor
   if (score < 8) return 5; // 3-7 → acceptable
-  return 10; // 8-10 → excellent
+  return 10;               // 8-10 → excellent
 }
