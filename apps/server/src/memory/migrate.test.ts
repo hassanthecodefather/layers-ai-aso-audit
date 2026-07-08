@@ -98,4 +98,13 @@ describe('runMigrations', () => {
     expect(cols).toContain('tenant_id');
     db.close();
   });
+
+  it('aso_rec_occurrences has tenant_id column', async () => {
+    const db = openDb(':memory:');
+    await runMigrations(db);
+    const res = await db.execute(`PRAGMA table_info(aso_rec_occurrences)`);
+    const cols = res.rows.map((r) => r[1] as string);
+    expect(cols).toContain('tenant_id');
+    db.close();
+  });
 });

@@ -192,6 +192,11 @@ export const MIGRATIONS: readonly string[] = [
     ON aso_identity_versions (tenant_id, app_id, country, version DESC)`,
   `CREATE INDEX IF NOT EXISTS aso_competitor_tombstones_tenant_app
     ON aso_competitor_tombstones (tenant_id, app_id, country)`,
+
+  // aso_rec_occurrences has no app_id/country (it joins via rec_id → aso_recommendations);
+  // index tenant_id alone for any future per-tenant queries.
+  `CREATE INDEX IF NOT EXISTS aso_rec_occurrences_tenant
+    ON aso_rec_occurrences (tenant_id)`,
 ];
 
 /** Open a raw LibSQL client against the given url (defaults to the app DB). */

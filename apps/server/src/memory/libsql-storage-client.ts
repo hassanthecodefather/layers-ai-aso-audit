@@ -148,6 +148,8 @@ export class LibSqlStorageClient implements StorageClient {
          proof_regime     = excluded.proof_regime`,
       [
         rec.id,
+        // TODO(6a-Task2): replace 'default' with the tenantId parameter once
+        // StorageClient interface is updated to accept tenantId as first param.
         'default',
         rec.appId,
         rec.country,
