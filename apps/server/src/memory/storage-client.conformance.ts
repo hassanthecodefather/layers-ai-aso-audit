@@ -80,17 +80,15 @@ function report(appId = 'app1', country = 'us') {
   };
 }
 
-function snapshot(over: Partial<ListingSnapshot> = {}): ListingSnapshot {
-  const appId = over.appId ?? 'app1';
-  const country = over.country ?? 'us';
+function snapshot(appId = 'app1', country = 'us', over: Partial<ListingSnapshot> = {}): ListingSnapshot {
   return {
     id: over.id ?? 'snap-1',
-    appId,
-    country,
+    appId: over.appId ?? appId,
+    country: over.country ?? country,
     fetchedAt: over.fetchedAt ?? '2026-06-24T00:00:00.000Z',
-    listing: over.listing ?? listing(appId, country),
+    listing: over.listing ?? listing(over.appId ?? appId, over.country ?? country),
     signals: over.signals ?? { ok: true },
-    report: over.report ?? (report(appId, country) as ListingSnapshot['report']),
+    report: over.report ?? (report(over.appId ?? appId, over.country ?? country) as ListingSnapshot['report']),
     rubricVersion: over.rubricVersion ?? 'rubric-abc',
     promptHash: over.promptHash ?? 'prompt-xyz',
     modelId: over.modelId ?? 'gemini-2.5-flash',
@@ -172,8 +170,8 @@ export function storageClientConformance(
     it('round-trips a snapshot through put/latest, preserving domain types', async () => {
       const h = await makeClient();
       try {
-        unwrap(await h.client.putSnapshot(snapshot()));
-        const got = unwrap(await h.client.latestSnapshot('app1', 'us'));
+        unwrap(await h.client.putSnapshot('tenant-test', snapshot()));
+        const got = unwrap(await h.client.latestSnapshot('tenant-test', 'app1', 'us'));
         expect(got).not.toBeNull();
         expect(got?.id).toBe('snap-1');
         // Nested domain objects survive serialisation intact.
@@ -188,9 +186,9 @@ export function storageClientConformance(
     it('latestSnapshot returns the most recent by fetched_at', async () => {
       const h = await makeClient();
       try {
-        unwrap(await h.client.putSnapshot(snapshot({ id: 'old', fetchedAt: '2026-06-01T00:00:00.000Z' })));
-        unwrap(await h.client.putSnapshot(snapshot({ id: 'new', fetchedAt: '2026-06-20T00:00:00.000Z' })));
-        const got = unwrap(await h.client.latestSnapshot('app1', 'us'));
+        unwrap(await h.client.putSnapshot('tenant-test', snapshot('app1', 'us', { id: 'old', fetchedAt: '2026-06-01T00:00:00.000Z' })));
+        unwrap(await h.client.putSnapshot('tenant-test', snapshot('app1', 'us', { id: 'new', fetchedAt: '2026-06-20T00:00:00.000Z' })));
+        const got = unwrap(await h.client.latestSnapshot('tenant-test', 'app1', 'us'));
         expect(got?.id).toBe('new');
       } finally {
         h.close();
@@ -200,7 +198,7 @@ export function storageClientConformance(
     it('latestSnapshot returns null when there is no history', async () => {
       const h = await makeClient();
       try {
-        expect(unwrap(await h.client.latestSnapshot('nobody', 'us'))).toBeNull();
+        expect(unwrap(await h.client.latestSnapshot('tenant-test', 'nobody', 'us'))).toBeNull();
       } finally {
         h.close();
       }
@@ -209,10 +207,10 @@ export function storageClientConformance(
     it('isolates snapshots by (app_id, country)', async () => {
       const h = await makeClient();
       try {
-        unwrap(await h.client.putSnapshot(snapshot({ id: 's-us', country: 'us' })));
-        unwrap(await h.client.putSnapshot(snapshot({ id: 's-gb', country: 'gb' })));
-        expect(unwrap(await h.client.latestSnapshot('app1', 'us'))?.id).toBe('s-us');
-        expect(unwrap(await h.client.latestSnapshot('app1', 'gb'))?.id).toBe('s-gb');
+        unwrap(await h.client.putSnapshot('tenant-test', snapshot('app1', 'us', { id: 's-us', country: 'us' })));
+        unwrap(await h.client.putSnapshot('tenant-test', snapshot('app1', 'gb', { id: 's-gb', country: 'gb' })));
+        expect(unwrap(await h.client.latestSnapshot('tenant-test', 'app1', 'us'))?.id).toBe('s-us');
+        expect(unwrap(await h.client.latestSnapshot('tenant-test', 'app1', 'gb'))?.id).toBe('s-gb');
       } finally {
         h.close();
       }
@@ -223,8 +221,8 @@ export function storageClientConformance(
       const h = await makeClient();
       try {
         const vr = { screenshotSetVerdict: { coarseScore: 8, confidence: 'observed', critiques: [], competitorComparison: { value: null } } };
-        unwrap(await h.client.putSnapshot(snapshot({ visionResult: vr })));
-        const got = unwrap(await h.client.latestSnapshot('app1', 'us'));
+        unwrap(await h.client.putSnapshot('tenant-test', snapshot('app1', 'us', { visionResult: vr })));
+        const got = unwrap(await h.client.latestSnapshot('tenant-test', 'app1', 'us'));
         expect(got?.visionResult).toEqual(vr);
       } finally {
         h.close();
@@ -235,8 +233,8 @@ export function storageClientConformance(
       const h = await makeClient();
       try {
         const cr = { candidates: [{ term: 'charging', normalizedKey: 'charging', source: 'description', volumeLabel: 'popularity unavailable', volumeAvailable: false }], gap: [], popularityAvailable: false };
-        unwrap(await h.client.putSnapshot(snapshot({ candidateResult: cr })));
-        const got = unwrap(await h.client.latestSnapshot('app1', 'us'));
+        unwrap(await h.client.putSnapshot('tenant-test', snapshot('app1', 'us', { candidateResult: cr })));
+        const got = unwrap(await h.client.latestSnapshot('tenant-test', 'app1', 'us'));
         expect(got?.candidateResult).toEqual(cr);
       } finally {
         h.close();
@@ -254,8 +252,8 @@ export function storageClientConformance(
           featureRequests: ['Offline mode'],
           taxonomyVersion: 'theme-taxonomy@1',
         };
-        unwrap(await h.client.putSnapshot(snapshot({ themeResult: tr })));
-        const got = unwrap(await h.client.latestSnapshot('app1', 'us'));
+        unwrap(await h.client.putSnapshot('tenant-test', snapshot('app1', 'us', { themeResult: tr })));
+        const got = unwrap(await h.client.latestSnapshot('tenant-test', 'app1', 'us'));
         expect(got?.themeResult).toEqual(tr);
       } finally {
         h.close();
@@ -266,8 +264,8 @@ export function storageClientConformance(
       const h = await makeClient();
       try {
         const seeds = ['ev charging', 'electric vehicle'];
-        unwrap(await h.client.putSnapshot(snapshot({ functionCompetitorSeeds: seeds })));
-        const got = unwrap(await h.client.latestSnapshot('app1', 'us'));
+        unwrap(await h.client.putSnapshot('tenant-test', snapshot('app1', 'us', { functionCompetitorSeeds: seeds })));
+        const got = unwrap(await h.client.latestSnapshot('tenant-test', 'app1', 'us'));
         expect(got?.functionCompetitorSeeds).toEqual(seeds);
       } finally {
         h.close();
@@ -278,8 +276,8 @@ export function storageClientConformance(
       const h = await makeClient();
       try {
         const mining = { painPoints: [{ bucket: 'crash_stability', text: 'App crashes', reviewCount: 5, competitors: ['CompA'] }], competitorsCovered: ['CompA'], lowRatingReviewCount: 5 };
-        unwrap(await h.client.putSnapshot(snapshot({ competitorMiningResult: mining })));
-        const got = unwrap(await h.client.latestSnapshot('app1', 'us'));
+        unwrap(await h.client.putSnapshot('tenant-test', snapshot('app1', 'us', { competitorMiningResult: mining })));
+        const got = unwrap(await h.client.latestSnapshot('tenant-test', 'app1', 'us'));
         expect(got?.competitorMiningResult).toEqual(mining);
       } finally {
         h.close();
@@ -289,8 +287,8 @@ export function storageClientConformance(
     it('leaves visionResult, candidateResult, themeResult, functionCompetitorSeeds, and competitorMiningResult undefined when absent', async () => {
       const h = await makeClient();
       try {
-        unwrap(await h.client.putSnapshot(snapshot()));
-        const got = unwrap(await h.client.latestSnapshot('app1', 'us'));
+        unwrap(await h.client.putSnapshot('tenant-test', snapshot()));
+        const got = unwrap(await h.client.latestSnapshot('tenant-test', 'app1', 'us'));
         expect(got?.visionResult).toBeUndefined();
         expect(got?.candidateResult).toBeUndefined();
         expect(got?.themeResult).toBeUndefined();
@@ -305,8 +303,8 @@ export function storageClientConformance(
     it('inserts a recommendation and reads it back from the ledger', async () => {
       const h = await makeClient();
       try {
-        unwrap(await h.client.upsertRecommendation(rec()));
-        const ledger = unwrap(await h.client.ledger('app1', 'us'));
+        unwrap(await h.client.upsertRecommendation('tenant-test', rec()));
+        const ledger = unwrap(await h.client.ledger('tenant-test', 'app1', 'us'));
         expect(ledger).toHaveLength(1);
         expect(ledger[0]!.recKey).toBe('key-1');
       } finally {
@@ -317,9 +315,10 @@ export function storageClientConformance(
     it('upserts on rec_key — a re-raise is one row with bumped last_seen_at and refreshed evidence', async () => {
       const h = await makeClient();
       try {
-        unwrap(await h.client.upsertRecommendation(rec({ id: 'rec-1', lastSeenAt: '2026-06-01T00:00:00.000Z' })));
+        unwrap(await h.client.upsertRecommendation('tenant-test', rec({ id: 'rec-1', lastSeenAt: '2026-06-01T00:00:00.000Z' })));
         unwrap(
           await h.client.upsertRecommendation(
+            'tenant-test',
             rec({
               id: 'rec-2', // a different id, same logical rec_key
               recKey: 'key-1',
@@ -329,7 +328,7 @@ export function storageClientConformance(
             }),
           ),
         );
-        const ledger = unwrap(await h.client.ledger('app1', 'us'));
+        const ledger = unwrap(await h.client.ledger('tenant-test', 'app1', 'us'));
         expect(ledger).toHaveLength(1);
         expect(ledger[0]!.lastSeenAt).toBe('2026-06-20T00:00:00.000Z');
         expect(ledger[0]!.body).toBe('Re-raised with fresher wording.');
@@ -342,9 +341,9 @@ export function storageClientConformance(
     it('keeps two different rec_keys as two distinct rows', async () => {
       const h = await makeClient();
       try {
-        unwrap(await h.client.upsertRecommendation(rec({ id: 'r1', recKey: 'key-tracker', valueKey: 'tracker' })));
-        unwrap(await h.client.upsertRecommendation(rec({ id: 'r2', recKey: 'key-budget', valueKey: 'budget' })));
-        const ledger = unwrap(await h.client.ledger('app1', 'us'));
+        unwrap(await h.client.upsertRecommendation('tenant-test', rec({ id: 'r1', recKey: 'key-tracker', valueKey: 'tracker' })));
+        unwrap(await h.client.upsertRecommendation('tenant-test', rec({ id: 'r2', recKey: 'key-budget', valueKey: 'budget' })));
+        const ledger = unwrap(await h.client.ledger('tenant-test', 'app1', 'us'));
         expect(ledger).toHaveLength(2);
         expect(new Set(ledger.map((r) => r.recKey))).toEqual(new Set(['key-tracker', 'key-budget']));
       } finally {
@@ -356,11 +355,11 @@ export function storageClientConformance(
     it('records an occurrence and is idempotent on (rec_id, snapshot_id)', async () => {
       const h = await makeClient();
       try {
-        unwrap(await h.client.upsertRecommendation(rec({ id: 'rec-1' })));
-        unwrap(await h.client.putSnapshot(snapshot({ id: 'snap-1' })));
-        unwrap(await h.client.recordOccurrence('rec-1', 'snap-1', false));
+        unwrap(await h.client.upsertRecommendation('tenant-test', rec({ id: 'rec-1' })));
+        unwrap(await h.client.putSnapshot('tenant-test', snapshot('app1', 'us', { id: 'snap-1' })));
+        unwrap(await h.client.recordOccurrence('tenant-test', 'rec-1', 'snap-1', false));
         // Running again must not throw on the composite primary key.
-        unwrap(await h.client.recordOccurrence('rec-1', 'snap-1', true));
+        unwrap(await h.client.recordOccurrence('tenant-test', 'rec-1', 'snap-1', true));
       } finally {
         h.close();
       }
@@ -370,9 +369,9 @@ export function storageClientConformance(
     it('appends identity versions and latestIdentity returns the highest version', async () => {
       const h = await makeClient();
       try {
-        unwrap(await h.client.appendIdentity(identity({ id: 'v0', version: 0, category: 'Productivity' })));
-        unwrap(await h.client.appendIdentity(identity({ id: 'v1', version: 1, category: 'Utilities', stage: 'full' })));
-        const got = unwrap(await h.client.latestIdentity('app1', 'us'));
+        unwrap(await h.client.appendIdentity('tenant-test', identity({ id: 'v0', version: 0, category: 'Productivity' })));
+        unwrap(await h.client.appendIdentity('tenant-test', identity({ id: 'v1', version: 1, category: 'Utilities', stage: 'full' })));
+        const got = unwrap(await h.client.latestIdentity('tenant-test', 'app1', 'us'));
         expect(got?.version).toBe(1);
         expect(got?.category).toBe('Utilities');
         expect(got?.stage).toBe('full');
@@ -386,10 +385,10 @@ export function storageClientConformance(
     it('latestIdentity prefers the full row even when a newer lite row exists', async () => {
       const h = await makeClient();
       try {
-        unwrap(await h.client.appendIdentity(identity({ id: 'v0', version: 0 })));
-        unwrap(await h.client.appendIdentity(identity({ id: 'v1', version: 1, stage: 'full', category: 'Navigation' })));
-        unwrap(await h.client.appendIdentity(identity({ id: 'v2', version: 2, stage: 'lite', category: 'Updated' })));
-        const got = unwrap(await h.client.latestIdentity('app1', 'us'));
+        unwrap(await h.client.appendIdentity('tenant-test', identity({ id: 'v0', version: 0 })));
+        unwrap(await h.client.appendIdentity('tenant-test', identity({ id: 'v1', version: 1, stage: 'full', category: 'Navigation' })));
+        unwrap(await h.client.appendIdentity('tenant-test', identity({ id: 'v2', version: 2, stage: 'lite', category: 'Updated' })));
+        const got = unwrap(await h.client.latestIdentity('tenant-test', 'app1', 'us'));
         // v2 is newest by version but full row (v1) should win.
         expect(got?.stage).toBe('full');
         expect(got?.version).toBe(1);
@@ -402,11 +401,11 @@ export function storageClientConformance(
     it('maxIdentityVersion returns the true MAX regardless of stage', async () => {
       const h = await makeClient();
       try {
-        expect(unwrap(await h.client.maxIdentityVersion('app1', 'us'))).toBe(-1); // empty
-        unwrap(await h.client.appendIdentity(identity({ id: 'v0', version: 0 })));
-        unwrap(await h.client.appendIdentity(identity({ id: 'v1', version: 1, stage: 'full' })));
-        unwrap(await h.client.appendIdentity(identity({ id: 'v2', version: 2, stage: 'lite' })));
-        expect(unwrap(await h.client.maxIdentityVersion('app1', 'us'))).toBe(2);
+        expect(unwrap(await h.client.maxIdentityVersion('tenant-test', 'app1', 'us'))).toBe(-1); // empty
+        unwrap(await h.client.appendIdentity('tenant-test', identity({ id: 'v0', version: 0 })));
+        unwrap(await h.client.appendIdentity('tenant-test', identity({ id: 'v1', version: 1, stage: 'full' })));
+        unwrap(await h.client.appendIdentity('tenant-test', identity({ id: 'v2', version: 2, stage: 'lite' })));
+        expect(unwrap(await h.client.maxIdentityVersion('tenant-test', 'app1', 'us'))).toBe(2);
       } finally {
         h.close();
       }
@@ -415,7 +414,7 @@ export function storageClientConformance(
     it('latestIdentity returns null when none exists', async () => {
       const h = await makeClient();
       try {
-        expect(unwrap(await h.client.latestIdentity('nobody', 'us'))).toBeNull();
+        expect(unwrap(await h.client.latestIdentity('tenant-test', 'nobody', 'us'))).toBeNull();
       } finally {
         h.close();
       }
@@ -431,10 +430,11 @@ export function storageClientConformance(
         };
         unwrap(
           await h.client.appendIdentity(
+            'tenant-test',
             identity({ id: 'id-override', source: 'human_confirmed', overrodeEvidence: marker }),
           ),
         );
-        const got = unwrap(await h.client.latestIdentity('app1', 'us'));
+        const got = unwrap(await h.client.latestIdentity('tenant-test', 'app1', 'us'));
         expect(got).not.toBeNull();
         expect(got?.overrodeEvidence).toEqual(marker);
       } finally {
@@ -447,10 +447,11 @@ export function storageClientConformance(
       try {
         unwrap(
           await h.client.appendIdentity(
+            'tenant-test',
             identity({ id: 'id-no-override', source: 'resolved', overrodeEvidence: null }),
           ),
         );
-        const got = unwrap(await h.client.latestIdentity('app1', 'us'));
+        const got = unwrap(await h.client.latestIdentity('tenant-test', 'app1', 'us'));
         expect(got).not.toBeNull();
         expect(got?.overrodeEvidence).toBeNull();
       } finally {
@@ -462,16 +463,26 @@ export function storageClientConformance(
     it('tombstones a competitor and reports it in the app-scoped set, idempotently', async () => {
       const h = await makeClient();
       try {
-        unwrap(await h.client.tombstoneCompetitor('app1', 'us', 'comp-99'));
-        unwrap(await h.client.tombstoneCompetitor('app1', 'us', 'comp-99')); // idempotent
-        unwrap(await h.client.tombstoneCompetitor('app1', 'us', 'comp-7'));
-        const set = unwrap(await h.client.tombstones('app1', 'us'));
+        unwrap(await h.client.tombstoneCompetitor('tenant-test', 'app1', 'us', 'comp-99'));
+        unwrap(await h.client.tombstoneCompetitor('tenant-test', 'app1', 'us', 'comp-99')); // idempotent
+        unwrap(await h.client.tombstoneCompetitor('tenant-test', 'app1', 'us', 'comp-7'));
+        const set = unwrap(await h.client.tombstones('tenant-test', 'app1', 'us'));
         expect(set).toEqual(new Set(['comp-99', 'comp-7']));
         // Different app shares nothing.
-        expect(unwrap(await h.client.tombstones('other', 'us')).size).toBe(0);
+        expect(unwrap(await h.client.tombstones('tenant-test', 'other', 'us')).size).toBe(0);
       } finally {
         h.close();
       }
+    });
+
+    // ── Cross-tenant isolation (6a DoD gate) ─────────────────────────────
+    it('cross-tenant isolation: snapshot written under tenant-A is invisible to tenant-B', async () => {
+      const { client } = await makeClient();
+      const snap = snapshot('app-cross-tenant', 'us');
+      await client.putSnapshot('tenant-A', snap);
+      const result = await client.latestSnapshot('tenant-B', 'app-cross-tenant', 'us');
+      expect(result.ok).toBe(true);
+      expect(result.value).toBeNull();
     });
   });
 }
