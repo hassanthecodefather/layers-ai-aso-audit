@@ -24,6 +24,7 @@
     "hono": "^4.12.22",
     "jimp": "^1.6.1",
     "jose": "^6.2.3",
+    "postgres": "^3.4.9",
     "zod": "3.25.76"
   },
   "devDependencies": {
