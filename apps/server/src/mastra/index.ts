@@ -84,8 +84,20 @@ export const mastra = new Mastra({
 // outcome — neither should crash boot, and we skip them under test so the
 // suite stays hermetic (no DB writes, no network).
 if (!isTest) {
-  runMigrations(DB_URL).catch((e) =>
-    console.error('[memory] migration failed at startup:', e),
-  );
+  const pgUrl = process.env.DATABASE_URL;
+  if (pgUrl) {
+    import('../memory/pg-migrate').then(({ runPgMigrations }) =>
+      import('../memory').then(({ getPgSql }) => {
+        const sql = getPgSql();
+        if (sql) runPgMigrations(sql).catch((e) =>
+          console.error('[memory] Postgres migration failed at startup:', e),
+        );
+      }),
+    );
+  } else {
+    runMigrations(DB_URL).catch((e) =>
+      console.error('[memory] migration failed at startup:', e),
+    );
+  }
   void verifyLlmStartup();
 }
