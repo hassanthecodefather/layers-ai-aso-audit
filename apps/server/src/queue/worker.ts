@@ -53,6 +53,11 @@ export async function executeJob(job: AuditJob, mastra: Mastra, sql: postgres.Sq
         },
       });
     } else {
+      // If the run already advanced past confirm-app before failing, resumeStream will
+      // receive a non-suspended run and may throw or no-op — all attempts will then
+      // exhaust and the job lands in 'failed'. This is the trade-off of the current
+      // retry model; add step-position tracking to distinguish pre- vs post-resume
+      // failures before tightening this.
       // Resume run — continue from the confirm-app suspend point.
       const resumeData = JSON.parse(job.resumeDataJson) as Record<string, unknown>;
       const wfStream = await run.resumeStream({ step: 'confirm-app', resumeData });
@@ -91,6 +96,10 @@ export function startWorker(mastra: Mastra, sql: postgres.Sql): () => void {
   let stopped = false;
 
   async function loop(): Promise<void> {
+    // Note: 15-minute stale-job threshold is also an implicit per-job runtime ceiling.
+    // An audit running longer than 15 min on a second replica will be reclaimed and
+    // double-executed. With a single worker this is fine; add a heartbeat or raise
+    // the threshold before scaling to multiple replicas.
     const recovered = await recoverStaleJobs(sql).catch((e) => {
       console.error('[worker] recoverStaleJobs failed:', e instanceof Error ? e.message : e);
       return 0;

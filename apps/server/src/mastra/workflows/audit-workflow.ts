@@ -205,18 +205,18 @@ const identifyStep = createStep({
     const footprintState = footprintEntry
       ? (footprintEntry.agrees ? 'corroborated' : 'searched_and_empty')
       : 'none';
-    logger.info({
+    logger.info('step_summary identify-app', {
       event: 'step_summary', step: 'identify-app',
       escalate: identity.escalate,
       divergence: identity.divergence,
       footprintState,
       categoryBand: identity.categoryBand,
-    } as any);
-    logger.debug({
+    });
+    logger.debug('step_payload identify-app', {
       event: 'step_payload', step: 'identify-app',
       factSheet,
       classification: identity,
-    } as any);
+    });
 
     return {
       summary: coreToSummary(core.value),
@@ -289,11 +289,11 @@ export const confirmStep = createStep({
       return suspend({ ...inputData, conflict });
     }
 
-    logger.info({
+    logger.info('step_summary confirm-app', {
       event: 'step_summary', step: 'confirm-app',
       accepted: resumeData.confirmed,
       overridden: Boolean(decision && (decision.action === 'correct' || decision.action === 'pick')),
-    } as any);
+    });
 
     return {
       appId: inputData.summary.appId,
@@ -320,10 +320,10 @@ const scoreStep = createStep({
     }
     try {
     // Log gather-listing summary — inputData is the full listing from that step.
-    logger.info({
+    logger.info('step_summary gather-listing', {
       event: 'step_summary', step: 'gather-listing',
       reviewCount: inputData.reviews.length,
-    } as any);
+    });
 
     const llm = getLlmProvider();
     if (!(await llm.reachable())) {
@@ -718,10 +718,10 @@ const scoreStep = createStep({
       }
     }
 
-    logger.info({
+    logger.info('step_summary score-listing', {
       event: 'step_summary', step: 'score-listing',
       overallScore: report.overallScore ?? null,
-    } as any);
+    });
 
     return { ...report, limitations: [...report.limitations, ...notes] };
     } finally {
