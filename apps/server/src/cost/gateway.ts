@@ -84,7 +84,7 @@ export class PassthroughGateway implements SourceGateway {
       if (pending) {
         const coalescedStartMs = Date.now();
         const text = await pending; // rejects if the primary fetch failed; fetchWithRetry will retry
-        logger.info({
+        logger.info('provider_call coalesced', {
           event: 'provider_call',
           provider: call.upstream,
           operation: call.kind,
@@ -146,7 +146,7 @@ export class PassthroughGateway implements SourceGateway {
   }
 
   #logProviderCall(call: GatewayCall, startMs: number, status: 'ok' | 'error' | 'timeout', extra: { httpStatus?: number; errorMessage?: string } = {}): void {
-    logger.info({
+    logger.info('provider_call', {
       event: 'provider_call',
       provider: call.upstream,
       operation: call.kind,

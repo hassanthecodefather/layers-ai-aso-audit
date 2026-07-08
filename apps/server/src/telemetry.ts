@@ -1,9 +1,10 @@
 import { PinoLogger } from '@mastra/loggers';
+import type { LogLevel } from '@mastra/loggers';
 import { FileTransport } from '@mastra/loggers/file';
 import { mkdirSync, closeSync, openSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-const level = process.env.LOG_LEVEL ?? 'info';
+const level = (process.env.LOG_LEVEL ?? 'info') as LogLevel;
 
 function deriveLogPath(dbUrl: string): string {
   const dbFile = dbUrl.startsWith('file:') ? dbUrl.slice(5) : dbUrl;

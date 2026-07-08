@@ -144,7 +144,7 @@ export const geminiClassifier: IdentityClassifier = async (factSheet) => {
   try {
     result = await agent.generate(factSheet, { modelSettings: { temperature: 0 } });
   } catch (e) {
-    logger.info({
+    logger.info('provider_call gemini classify', {
       event: 'provider_call', provider: 'gemini', operation: 'classify',
       durationMs: Date.now() - startMs, status: 'error',
       errorMessage: e instanceof Error ? e.message : String(e),
@@ -152,7 +152,7 @@ export const geminiClassifier: IdentityClassifier = async (factSheet) => {
     throw e;
   }
   const usage = (result as any).usage as { promptTokens?: number; completionTokens?: number } | undefined;
-  logger.info({
+  logger.info('provider_call gemini classify', {
     event: 'provider_call', provider: 'gemini', operation: 'classify',
     durationMs: Date.now() - startMs, status: 'ok',
     ...(usage?.promptTokens !== undefined ? { inputTokens: usage.promptTokens } : {}),

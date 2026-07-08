@@ -47,9 +47,9 @@ describe('PassthroughGateway', () => {
       kind: 'app', upstream: 'itunes', tenantId: 'tenant_test',
     });
 
-    const call = logSpy.mock.calls.find(([obj]) => (obj as any)?.event === 'provider_call');
+    const call = logSpy.mock.calls.find(([, ctx]) => (ctx as any)?.event === 'provider_call');
     expect(call).toBeDefined();
-    const logObj = call![0] as any;
+    const logObj = call![1] as any;
     expect(logObj.provider).toBe('itunes');
     expect(logObj.status).toBe('ok');
     expect(typeof logObj.durationMs).toBe('number');

@@ -45,14 +45,14 @@ export class PostgresSharedPacer implements Pacer {
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      logger.info({ event: 'provider_call', provider: 'postgres-pacer', operation: 'rate-slot', status: 'error', errorMessage: msg });
+      logger.info('provider_call postgres-pacer rate-slot', { event: 'provider_call', provider: 'postgres-pacer', operation: 'rate-slot', status: 'error', errorMessage: msg });
       throw new PacerError(
         `Rate-slot DB unreachable — check DATABASE_URL. Underlying: ${msg}`,
         e,
       );
     }
 
-    logger.info({ event: 'provider_call', provider: 'postgres-pacer', operation: 'rate-slot', status: 'ok' });
+    logger.info('provider_call postgres-pacer rate-slot', { event: 'provider_call', provider: 'postgres-pacer', operation: 'rate-slot', status: 'ok' });
 
     if (result > 0) await sleep(result);
   }

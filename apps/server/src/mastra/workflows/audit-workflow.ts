@@ -160,8 +160,8 @@ export function buildOverrideNotes(
     const evidenceSlice = evidenceCompetitors.slice(0, 3);
     const confirmedNames = confirmedSlice.map((c) => c.name).join(', ') || '(none found)';
     const evidenceNames = evidenceSlice.map((c) => c.name).join(', ');
-    const confirmedIds = new Set(confirmedSlice.map((c) => c.appStoreId ?? c.name.toLowerCase()));
-    const overlap = evidenceSlice.filter((c) => confirmedIds.has(c.appStoreId ?? c.name.toLowerCase())).length;
+    const confirmedIds = new Set(confirmedSlice.map((c) => c.appId ?? c.name.toLowerCase()));
+    const overlap = evidenceSlice.filter((c) => confirmedIds.has(c.appId ?? c.name.toLowerCase())).length;
     const overlapNote =
       overlap === evidenceSlice.length
         ? 'Results are identical — evidence seeds may be too generic to distinguish. Re-open identity to re-resolve.'
