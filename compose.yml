@@ -3,9 +3,9 @@ services:
     image: postgres:17
     restart: unless-stopped
     environment:
-      POSTGRES_USER: aso
-      POSTGRES_PASSWORD: aso
-      POSTGRES_DB: aso_audit
+      POSTGRES_USER: ${PGUSER:-aso}
+      POSTGRES_PASSWORD: ${PGPASSWORD:-aso}
+      POSTGRES_DB: ${PGDATABASE:-aso_audit}
     ports:
       - "5432:5432"
     volumes:

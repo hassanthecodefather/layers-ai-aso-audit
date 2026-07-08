@@ -14,7 +14,7 @@ export async function signAccessToken(userId: string, secret: string): Promise<s
 
 export async function verifyAccessToken(token: string, secret: string): Promise<{ sub: string }> {
   const key = new TextEncoder().encode(secret);
-  const { payload } = await jwtVerify(token, key);
+  const { payload } = await jwtVerify(token, key, { algorithms: ['HS256'] });
   if (!payload.sub) throw new Error('Missing sub claim');
   return { sub: payload.sub };
 }

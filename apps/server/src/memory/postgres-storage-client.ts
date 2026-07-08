@@ -75,15 +75,21 @@ export class PostgresStorageClient implements StorageClient {
           ${r.firstSeenAt}, ${r.lastSeenAt}, ${r.appliedAt ?? null}, ${r.proofRegime}
         )
         ON CONFLICT (tenant_id, app_id, country, rec_key) DO UPDATE SET
+          value_key        = EXCLUDED.value_key,
+          taxonomy_version = EXCLUDED.taxonomy_version,
+          dimension        = EXCLUDED.dimension,
+          intent           = EXCLUDED.intent,
+          target_field     = EXCLUDED.target_field,
           title            = EXCLUDED.title,
           body             = EXCLUDED.body,
           before_text      = EXCLUDED.before_text,
           after_text       = EXCLUDED.after_text,
           evidence_json    = EXCLUDED.evidence_json,
-          last_seen_at     = EXCLUDED.last_seen_at,
           status           = EXCLUDED.status,
-          value_key        = EXCLUDED.value_key,
-          taxonomy_version = EXCLUDED.taxonomy_version
+          superseded_by    = EXCLUDED.superseded_by,
+          last_seen_at     = EXCLUDED.last_seen_at,
+          applied_at       = EXCLUDED.applied_at,
+          proof_regime     = EXCLUDED.proof_regime
       `;
       return ok(undefined);
     } catch (e) {
@@ -101,7 +107,8 @@ export class PostgresStorageClient implements StorageClient {
       await this.sql`
         INSERT INTO aso_rec_occurrences (rec_id, snapshot_id, tenant_id, was_dismissed)
         VALUES (${recId}, ${snapshotId}, ${tenantId}, ${wasDismissed ? 1 : 0})
-        ON CONFLICT (rec_id, snapshot_id) DO NOTHING
+        ON CONFLICT (tenant_id, rec_id, snapshot_id) DO UPDATE SET
+          was_dismissed = GREATEST(aso_rec_occurrences.was_dismissed, EXCLUDED.was_dismissed)
       `;
       return ok(undefined);
     } catch (e) {

@@ -141,6 +141,9 @@ export class LibSqlStorageClient implements StorageClient {
        ON CONFLICT(tenant_id, app_id, country, rec_key) DO UPDATE SET
          value_key        = excluded.value_key,
          taxonomy_version = excluded.taxonomy_version,
+         dimension        = excluded.dimension,
+         intent           = excluded.intent,
+         target_field     = excluded.target_field,
          title            = excluded.title,
          body             = excluded.body,
          before_text      = excluded.before_text,
@@ -234,8 +237,10 @@ export class LibSqlStorageClient implements StorageClient {
     wasDismissed: boolean,
   ): Promise<Result<void>> {
     const r = await this.#run(
-      `INSERT OR IGNORE INTO aso_rec_occurrences (rec_id, snapshot_id, tenant_id, was_dismissed)
-       VALUES (?,?,?,?)`,
+      `INSERT INTO aso_rec_occurrences (rec_id, snapshot_id, tenant_id, was_dismissed)
+       VALUES (?,?,?,?)
+       ON CONFLICT(rec_id, snapshot_id) DO UPDATE SET
+         was_dismissed = MAX(was_dismissed, excluded.was_dismissed)`,
       [recId, snapshotId, tenantId, wasDismissed ? 1 : 0],
     );
     return r.ok ? ok(undefined) : err(r.error);

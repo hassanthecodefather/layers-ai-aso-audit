@@ -257,8 +257,12 @@ export const auditRoutes = [
 
       const workflow = mastra.getWorkflow(WORKFLOW_ID);
       const stored = pendingRuns.get(runId);
-      if (stored && stored.tenantId !== tenantId) return c.json({ error: 'Not found.' }, 404);
-      const run = stored?.run ?? (await workflow.createRun({ runId }));
+      // Reject if the run is unknown: pendingRuns is in-memory and clears on restart.
+      // Rehydrating an unknown runId would let any authenticated tenant resume another
+      // tenant's persisted workflow. Users must re-run /audit/identify after a restart.
+      if (!stored) return c.json({ error: 'Session not found. Please restart the audit.' }, 404);
+      if (stored.tenantId !== tenantId) return c.json({ error: 'Not found.' }, 404);
+      const run = stored.run;
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return streamSSE(c as any, async (stream) => {

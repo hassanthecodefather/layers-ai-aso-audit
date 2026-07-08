@@ -81,7 +81,7 @@ export async function fetchFunctionGroundedCompetitors(
   resolved: ResolvedIdentity,
   appKittie: AppKittieClient,
   storage: StorageClient,
-  tenantId: string = 'default',
+  tenantId: string,
 ): Promise<Competitor[]> {
   const seeds = seedKeywords(resolved);
   if (seeds.length === 0) return [];
@@ -123,8 +123,8 @@ export async function fetchEvidenceCompetitors(
   marker: OverrodeEvidence,
   appKittie: AppKittieClient,
   storage: StorageClient,
+  tenantId: string,
   limit: number = MAX_EVIDENCE_COMPETITORS,
-  tenantId: string = 'default',
 ): Promise<Competitor[]> {
   // The category phrase (e.g. "Electric vehicle companion") is an internal
   // classifier label, not a searchable keyword — skip it and seed from the

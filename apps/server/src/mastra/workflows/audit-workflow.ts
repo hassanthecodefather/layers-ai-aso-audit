@@ -319,7 +319,8 @@ const scoreStep = createStep({
       | { identityDecision: z.infer<typeof IdentityDecisionSchema> | null }
       | undefined;
 
-    const tenantId = identified?.tenantId ?? 'default';
+    const tenantId = identified?.tenantId;
+    if (!tenantId) throw new Error('[audit] identify-app step result missing — cannot determine tenantId');
 
     let resolved =
       identified?.identity ??
@@ -384,7 +385,7 @@ const scoreStep = createStep({
       const appKittieKey = process.env['APP_KITTI_API_KEY'];
       if (appKittieKey) {
         evidenceCompetitors = await fetchEvidenceCompetitors(
-          ref, resolved.overrodeEvidence, new AppKittieClient(appKittieKey), storage, undefined, tenantId,
+          ref, resolved.overrodeEvidence, new AppKittieClient(appKittieKey), storage, tenantId,
         );
       }
     }

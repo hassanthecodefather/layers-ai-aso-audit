@@ -62,7 +62,11 @@ let _pacer: Pacer | null = null;
 export function getPacer(): Pacer {
   if (!_pacer) {
     const dbUrl = process.env.DATABASE_URL;
-    _pacer = dbUrl ? new PostgresSharedPacer(postgres(dbUrl)) : new SerialPacer();
+    // Separate pool from the storage pool to avoid head-of-line blocking.
+    // max:10 (postgres.js default) — the FOR UPDATE tx is fast (no sleep inside),
+    // so connections return quickly and concurrent callers don't queue long enough
+    // for the elapsed-wait time to skew their next_allowed_at read.
+    _pacer = dbUrl ? new PostgresSharedPacer(postgres(dbUrl, { max: 10 })) : new SerialPacer();
   }
   return _pacer;
 }

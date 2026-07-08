@@ -53,7 +53,25 @@ export const authRoutes = [
       const userId = randomUUID();
       const passwordHash = await hashPassword(password);
       const now = new Date().toISOString();
-      await store.createUser({ id: userId, email, passwordHash, createdAt: now });
+      try {
+        await store.createUser({ id: userId, email, passwordHash, createdAt: now });
+      } catch (e) {
+        // Concurrent signup race: both requests passed findUserByEmail before either
+        // INSERT committed. Map the UNIQUE constraint violation to 409.
+        // SQLite/LibSQL: message contains 'UNIQUE constraint failed'
+        // LibSQL HTTP mode: message contains 'unique constraint'
+        // Postgres (postgres.js): error.code === '23505' (unique_violation)
+        const msg = e instanceof Error ? e.message : String(e);
+        const code = (e as { code?: string })?.code;
+        if (
+          code === '23505' ||
+          msg.includes('UNIQUE constraint failed') ||
+          msg.includes('unique constraint')
+        ) {
+          return c.json({ error: 'Email already registered.' }, 409);
+        }
+        throw e;
+      }
 
       const accessToken = await signAccessToken(userId, jwtSecret());
       const rawRefresh = generateRefreshToken();

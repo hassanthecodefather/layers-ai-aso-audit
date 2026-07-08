@@ -168,6 +168,22 @@ export const MIGRATIONS: readonly string[] = [
   `CREATE INDEX IF NOT EXISTS aso_refresh_tokens_user
     ON aso_refresh_tokens (user_id, revoked_at)`,
 
+  // Remove duplicate token_hash rows before creating the UNIQUE INDEX.
+  // On a clean DB this is a no-op; on a pre-fix dev/beta DB that accepted
+  // duplicate inserts it prevents the CREATE UNIQUE INDEX from failing and
+  // halting all subsequent migrations. Keep the newest row per hash
+  // (latest created_at, then latest id as a tie-breaker). Uses ROW_NUMBER()
+  // window function which is supported in SQLite 3.25+ and Postgres.
+  `DELETE FROM aso_refresh_tokens WHERE id NOT IN (
+    SELECT id FROM (
+      SELECT id,
+             ROW_NUMBER() OVER (PARTITION BY token_hash ORDER BY created_at DESC, id DESC) AS rn
+      FROM aso_refresh_tokens
+    ) ranked WHERE rn = 1
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS aso_refresh_tokens_token_hash
+    ON aso_refresh_tokens (token_hash)`,
+
   // ── Phase 6a: Tenant isolation — add tenant_id to all aso_* data tables ──────
   // DEFAULT 'default' lets all existing single-user beta rows migrate forward.
   `ALTER TABLE aso_listing_snapshots     ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`,

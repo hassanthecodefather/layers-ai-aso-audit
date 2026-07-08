@@ -59,41 +59,50 @@ export class UserStore {
    * also revokes all tokens for that user (family revocation).
    */
   async findAndConsumeRefreshToken(tokenHash: string): Promise<RefreshTokenRow | null> {
+    // Single atomic UPDATE…RETURNING: only one concurrent caller can match
+    // the WHERE revoked_at IS NULL condition — the second caller's UPDATE affects
+    // 0 rows (compare-and-swap semantics, no multi-statement transaction needed).
+    const now = new Date().toISOString();
     const res = await this.#db.execute({
-      sql: `SELECT id, user_id, token_hash, expires_at, created_at, revoked_at
-            FROM aso_refresh_tokens
-            WHERE token_hash = ? LIMIT 1`,
-      args: [tokenHash],
-    });
-    const row = res.rows[0];
-    if (!row) return null;
-
-    const userId = row['user_id'] as string;
-
-    // Already revoked — full family revocation (reuse detection)
-    if (row['revoked_at'] !== null) {
-      await this.revokeAllUserTokens(userId);
-      return null;
-    }
-
-    // Expired
-    if ((row['expires_at'] as string) < new Date().toISOString()) {
-      return null;
-    }
-
-    // Mark revoked
-    await this.#db.execute({
-      sql: `UPDATE aso_refresh_tokens SET revoked_at = ? WHERE id = ?`,
-      args: [new Date().toISOString(), row['id'] as string],
+      sql: `UPDATE aso_refresh_tokens
+            SET revoked_at = ?
+            WHERE token_hash = ? AND revoked_at IS NULL AND expires_at > ?
+            RETURNING id, user_id, token_hash, expires_at, created_at`,
+      args: [now, tokenHash, now],
     });
 
-    return {
-      id: row['id'] as string,
-      userId,
-      tokenHash: row['token_hash'] as string,
-      expiresAt: row['expires_at'] as string,
-      createdAt: row['created_at'] as string,
-    };
+    if (res.rows.length > 0) {
+      const row = res.rows[0];
+      return {
+        id: row['id'] as string,
+        userId: row['user_id'] as string,
+        tokenHash: row['token_hash'] as string,
+        expiresAt: row['expires_at'] as string,
+        createdAt: row['created_at'] as string,
+      };
+    }
+
+    // Zero rows updated: token is missing, expired, or already revoked.
+    //
+    // Distinguish genuine reuse (old rotated token replayed) from a concurrent
+    // refresh (two tabs called /refresh simultaneously; one won the UPDATE, the
+    // other sees 0 rows for a token that was just revoked moments ago).
+    //
+    // Grace window: if revoked_at is within the last REUSE_GRACE_MS we treat the
+    // caller as the losing half of a concurrent pair — return null without family
+    // revocation. Only tokens revoked before the window are real reuse attacks.
+    const REUSE_GRACE_MS = 30_000;
+    const graceCutoff = new Date(Date.now() - REUSE_GRACE_MS).toISOString();
+    const check = await this.#db.execute({
+      sql: `SELECT user_id FROM aso_refresh_tokens
+            WHERE token_hash = ? AND revoked_at IS NOT NULL AND revoked_at < ? LIMIT 1`,
+      args: [tokenHash, graceCutoff],
+    });
+    if (check.rows.length > 0) {
+      await this.revokeAllUserTokens(check.rows[0]['user_id'] as string);
+    }
+
+    return null;
   }
 
   async revokeAllUserTokens(userId: string): Promise<void> {
