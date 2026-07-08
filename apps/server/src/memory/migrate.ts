@@ -111,26 +111,24 @@ export const MIGRATIONS: readonly string[] = [
   // ── Phase B1: Vision Pass — add vision_result column ────────────────────────
   // Append-only, idempotent: ALTER TABLE fails silently if the column already
   // exists in SQLite (PRAGMA table_info guard would be more portable but SQLite
-  // does not support IF NOT EXISTS on ALTER TABLE). We rely on the try/catch in
-  // runMigrations to make this safe on repeated boots.
-  // NOTE: This migration is wrapped specially in runMigrations below.
-  `ALTER TABLE aso_listing_snapshots ADD COLUMN vision_result_json TEXT`,
+  // does not support IF NOT EXISTS on ALTER TABLE). Postgres supports IF NOT EXISTS natively.
+  `ALTER TABLE aso_listing_snapshots ADD COLUMN IF NOT EXISTS vision_result_json TEXT`,
 
   // ── Phase C4: Keyword Candidates — add candidate_result column ──────────────
-  `ALTER TABLE aso_listing_snapshots ADD COLUMN candidate_result_json TEXT`,
+  `ALTER TABLE aso_listing_snapshots ADD COLUMN IF NOT EXISTS candidate_result_json TEXT`,
 
   // ── Phase D2: Theme Analysis — add theme_result column ──────────────────────
-  `ALTER TABLE aso_listing_snapshots ADD COLUMN theme_result_json TEXT`,
+  `ALTER TABLE aso_listing_snapshots ADD COLUMN IF NOT EXISTS theme_result_json TEXT`,
 
   // ── Phase D3: Function-grounded competitor seeds — add column ───────────────
   // Stores the identity seeds (niche + category strings) used for AppKittie lookup
   // so selectFunctionCompetitors can skip the API on unchanged identity.
-  `ALTER TABLE aso_listing_snapshots ADD COLUMN function_competitor_seeds_json TEXT`,
+  `ALTER TABLE aso_listing_snapshots ADD COLUMN IF NOT EXISTS function_competitor_seeds_json TEXT`,
 
   // ── Phase F-K2: Competitor review mining result — add column ────────────────
   // Stores the mined competitor pain points so we can skip the LLM+review-fetch
   // on re-audits with unchanged D3 competitors.
-  `ALTER TABLE aso_listing_snapshots ADD COLUMN competitor_mining_result_json TEXT`,
+  `ALTER TABLE aso_listing_snapshots ADD COLUMN IF NOT EXISTS competitor_mining_result_json TEXT`,
 
   // ── Phase E1: Source cache ────────────────────────────────────────────────────
   `CREATE TABLE IF NOT EXISTS aso_cache (
@@ -145,8 +143,8 @@ export const MIGRATIONS: readonly string[] = [
   // ── Phase B-Vision: Identity override evidence marker ─────────────────────────
   // Stores the evidence a human override contested so later runs can re-surface
   // the conflict. Added to the CREATE TABLE above for fresh DBs; this ALTER
-  // handles existing databases (idempotent via runMigrations error-suppression).
-  `ALTER TABLE aso_identity_versions ADD COLUMN overrode_evidence_json TEXT`,
+  // handles existing databases (idempotent via Postgres IF NOT EXISTS support).
+  `ALTER TABLE aso_identity_versions ADD COLUMN IF NOT EXISTS overrode_evidence_json TEXT`,
 
   // ── Phase 6a: Auth — user accounts + refresh tokens ──────────────────────────
   `CREATE TABLE IF NOT EXISTS aso_users (
@@ -170,11 +168,11 @@ export const MIGRATIONS: readonly string[] = [
 
   // ── Phase 6a: Tenant isolation — add tenant_id to all aso_* data tables ──────
   // DEFAULT 'default' lets all existing single-user beta rows migrate forward.
-  `ALTER TABLE aso_listing_snapshots     ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`,
-  `ALTER TABLE aso_recommendations       ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`,
-  `ALTER TABLE aso_rec_occurrences       ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`,
-  `ALTER TABLE aso_identity_versions     ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`,
-  `ALTER TABLE aso_competitor_tombstones ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`,
+  `ALTER TABLE aso_listing_snapshots     ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default'`,
+  `ALTER TABLE aso_recommendations       ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default'`,
+  `ALTER TABLE aso_rec_occurrences       ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default'`,
+  `ALTER TABLE aso_identity_versions     ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default'`,
+  `ALTER TABLE aso_competitor_tombstones ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default'`,
 
   // Fix the aso_recommendations unique index to include tenant_id, so two
   // tenants auditing the same app do not corrupt each other's recommendations
