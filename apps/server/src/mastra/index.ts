@@ -93,7 +93,7 @@ if (!isTest) {
           console.error('[memory] Postgres migration failed at startup:', e),
         );
       }),
-    );
+    ).catch((e) => console.error('[memory] Postgres migration bootstrap failed:', e));
   } else {
     runMigrations(DB_URL).catch((e) =>
       console.error('[memory] migration failed at startup:', e),

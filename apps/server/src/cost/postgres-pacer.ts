@@ -19,6 +19,7 @@ export class PostgresSharedPacer implements Pacer {
         WHERE key = 'itunes'
         FOR UPDATE
       `;
+      if (!row) throw new Error("aso_rate_slots 'itunes' row missing — run runPgMigrations()");
       const now = new Date();
       const waitMs = Math.max(row.next_allowed_at.getTime() - now.getTime(), 0);
       const newNext = new Date(
