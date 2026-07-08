@@ -5,7 +5,7 @@ contracts live elsewhere: [`specification.md`](specification.md) is the *what*,
 [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) is the *how-to-build*. This
 file is the *where-we-are* — read it first, trust the tests over the prose.
 
-_Last updated: 2026-07-08 · spec v1.3.2 · **Phase E complete (400 tests); Phase F base DoD met + F-K5 shipped (437 tests); F-K2 ✅ + F-K3 ✅ shipped (475 tests); F-K4 pending; Identity-confirmation guard (Fix 5) ✅ shipped + live-smoke corrections ✅ — 534 tests; Phase 6a (auth + Postgres swap + shared rate limiter) ✅ shipped — 584 tests, tsc clean both apps**_
+_Last updated: 2026-07-08 · spec v1.3.2 · **Phase E complete (400 tests); Phase F base DoD met + F-K5 shipped (437 tests); F-K2 ✅ + F-K3 ✅ shipped (475 tests); F-K4 pending; Identity-confirmation guard (Fix 5) ✅ shipped + live-smoke corrections ✅ — 534 tests; Phase 6a (auth + Postgres swap + shared rate limiter) ✅ shipped — 584 tests, tsc clean both apps; Phase 6a security hardening ✅ (3 review passes, 23 fixes) + websearch probe correctness ✅**_
 
 Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferred (by design)
 
@@ -275,6 +275,16 @@ Phase A carry-overs: **all closed in B4** (applied-detection extended, escalate 
 | 6 | `libsql-storage-client.ts:141` + `postgres-storage-client.ts:77` | Medium | `upsertRecommendation` ON CONFLICT SET was missing `dimension` and `intent` — a recommendation re-raised after a taxonomy reclassification retained stale `dimension`/`intent`. Added both columns to both clients. |
 | 7 | `cost/pacer.ts:67` | Medium (plausible) | Pacer Postgres pool `max:2` could leave a 3rd concurrent caller queueing without a FOR UPDATE lock. Increased to `max:10` (postgres.js default); the FOR UPDATE tx is fast (sleep is outside the transaction), so connections return quickly. |
 | 8 | `memory/postgres-storage-client.ts:108` + `pg-migrate.ts` | Medium | `recordOccurrence` ON CONFLICT `(rec_id, snapshot_id)` missing `tenant_id` — two tenants with the same `(rec_id, snapshot_id)` (rec_id is a UUID from a per-tenant table, so astronomically unlikely but structurally wrong) would share one row. Added PK rebuild `DO` block in `pg-migrate.ts` and updated ON CONFLICT to `(tenant_id, rec_id, snapshot_id)`. |
+
+## Websearch probe correctness fixes (2026-07-08)
+
+3 issues found and fixed in `sources/websearch/websearch.ts` (both `TavilyWebSearch` and `ExaWebSearch`):
+
+| # | Issue | Fix |
+|---|---|---|
+| 1 | Cache key hashed the uncapped query while the API call sent the capped query — two queries >400 chars sharing the same 400-char prefix produced different cache keys but made identical API calls, paying double. | `queryKey(cappedQuery)` instead of `queryKey(query)` in both providers. |
+| 2 | Non-OK response body was never drained — repeated 429s/5xxs progressively exhausted the HTTP connection pool (undici marks the connection as "response body pending"). | Added `await res.body?.cancel()` before the errored return in both providers. |
+| 3 | `state` was derived for the log but the return statements re-evaluated `genuine.length` independently — adding a third state would produce a log/return mismatch. | `state` is now used directly in both the log and the returns (`if (state === 'searched_and_empty') return ok({ state })`). |
 
 ## Known gaps / deviations (conscious, not bugs)
 
