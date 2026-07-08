@@ -97,6 +97,7 @@ describe('fetchFunctionGroundedCompetitors', () => {
       makeResolved(),
       mockAppKittie,
       mockStorage,
+      'test-tenant',
     );
 
     expect(result).toEqual(mockCompetitors);
@@ -122,7 +123,7 @@ describe('fetchFunctionGroundedCompetitors', () => {
     const mockCompetitors = [makeCompetitor('111', 'ChargePoint'), makeCompetitor('222', 'Electrify America')];
     vi.mocked(batchLookupCompetitors).mockResolvedValue(mockCompetitors);
 
-    await fetchFunctionGroundedCompetitors(REF, makeResolved(), mockAppKittie, mockStorage);
+    await fetchFunctionGroundedCompetitors(REF, makeResolved(), mockAppKittie, mockStorage, 'test-tenant');
 
     // batchLookupCompetitors should NOT have been called with '999'
     const calledIds = vi.mocked(batchLookupCompetitors).mock.calls[0]![0] as string[];
@@ -142,6 +143,7 @@ describe('fetchFunctionGroundedCompetitors', () => {
       makeResolved(),
       mockAppKittie,
       mockStorage,
+      'test-tenant',
     );
 
     expect(result).toEqual([]);
@@ -161,7 +163,7 @@ describe('fetchFunctionGroundedCompetitors', () => {
     } as unknown as AppKittieClient;
     const mockStorage = makeStorage();
 
-    await fetchFunctionGroundedCompetitors(REF, resolved, mockAppKittie, mockStorage);
+    await fetchFunctionGroundedCompetitors(REF, resolved, mockAppKittie, mockStorage, 'test-tenant');
 
     const calls = vi.mocked(mockAppKittie.getTopApps).mock.calls;
     // First call should be the niche
@@ -187,6 +189,7 @@ describe('fetchFunctionGroundedCompetitors', () => {
       makeResolved(),
       mockAppKittie,
       mockStorage,
+      'test-tenant',
     );
 
     expect(result).toEqual([]);
@@ -205,7 +208,7 @@ describe('fetchFunctionGroundedCompetitors', () => {
     const mockStorage = makeStorage();
     vi.mocked(batchLookupCompetitors).mockResolvedValue([]);
 
-    await fetchFunctionGroundedCompetitors(REF, makeResolved(), mockAppKittie, mockStorage);
+    await fetchFunctionGroundedCompetitors(REF, makeResolved(), mockAppKittie, mockStorage, 'test-tenant');
 
     const calledIds = vi.mocked(batchLookupCompetitors).mock.calls[0]![0] as string[];
     // '222' should appear only once
@@ -223,7 +226,7 @@ describe('fetchFunctionGroundedCompetitors', () => {
     } as unknown as AppKittieClient;
     const mockStorage = makeStorage();
 
-    await fetchFunctionGroundedCompetitors(REF, resolved, mockAppKittie, mockStorage);
+    await fetchFunctionGroundedCompetitors(REF, resolved, mockAppKittie, mockStorage, 'test-tenant');
 
     const calls = vi.mocked(mockAppKittie.getTopApps).mock.calls;
     expect(calls.length).toBe(1);
@@ -241,7 +244,7 @@ describe('fetchFunctionGroundedCompetitors', () => {
     const mockCompetitors = [makeCompetitor('111', 'ChargePoint')];
     vi.mocked(batchLookupCompetitors).mockResolvedValue(mockCompetitors);
 
-    const result = await fetchFunctionGroundedCompetitors(REF, makeResolved(), mockAppKittie, mockStorage);
+    const result = await fetchFunctionGroundedCompetitors(REF, makeResolved(), mockAppKittie, mockStorage, 'test-tenant');
 
     // Should still return competitors — tombstone failure doesn't abort
     expect(result).toEqual(mockCompetitors);
@@ -363,6 +366,7 @@ describe('fetchEvidenceCompetitors', () => {
       { category: 'Electric vehicle companion', niche: 'EV companion', functionTerms: [] },
       mockAppKittie,
       mockStorage,
+      'test-tenant',
       3,
     );
 

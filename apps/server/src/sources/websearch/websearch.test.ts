@@ -29,7 +29,7 @@ const TAVILY_EMPTY = { results: [] };
 
 const EXA_RESULTS = {
   results: [
-    { title: 'Rivian App Coverage', url: 'https://news.example.com/rivian-app' },
+    { title: 'Rivian App Coverage', url: 'https://news.example.com/rivian-app', text: 'Rivian companion app controls charging' },
   ],
 };
 const EXA_EMPTY = { results: [] };
@@ -64,6 +64,7 @@ describe('TavilyWebSearch', () => {
     if (result.value.state !== 'corroborated') return;
     expect(result.value.sources).toHaveLength(1);
     expect(result.value.sources[0]!.title).toBe('Rivian R1T Review');
+    expect(result.value.sources[0]!.snippet).toBe('Great truck');
   });
 
   it('returns searched_and_empty when results array is empty', async () => {
@@ -196,6 +197,20 @@ describe('ExaWebSearch', () => {
     expect(result.value.state).toBe('corroborated');
     if (result.value.state !== 'corroborated') return;
     expect(result.value.sources[0]!.url).toBe('https://news.example.com/rivian-app');
+    expect(result.value.sources[0]!.snippet).toBe('Rivian companion app controls charging');
+  });
+
+  it('requests page text via contents.text in the request body', async () => {
+    const captured: RequestInit[] = [];
+    vi.stubGlobal('fetch', vi.fn((_url: string, init?: RequestInit) => {
+      if (init) captured.push(init);
+      return Promise.resolve(new Response(JSON.stringify(EXA_RESULTS), { status: 200 }));
+    }));
+    const client = new ExaWebSearch('test-key');
+    await client.probe('Rivian electric truck app');
+    expect(captured.length).toBeGreaterThan(0);
+    const body = JSON.parse(String(captured[0]!.body)) as { contents?: { text?: { maxCharacters?: number } } };
+    expect(body.contents?.text?.maxCharacters).toBe(500);
   });
 
   it('returns searched_and_empty when results array is empty', async () => {

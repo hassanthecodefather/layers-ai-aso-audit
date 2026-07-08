@@ -251,6 +251,7 @@ export interface PersistResult {
  */
 export async function persistAudit(
   storage: StorageClient,
+  tenantId: string,
   input: PersistInput,
 ): Promise<PersistResult> {
   const { listing, report, resolved, now } = input;
@@ -262,7 +263,7 @@ export async function persistAudit(
   if (input.priorSnapshot !== undefined) {
     priorSnapshot = input.priorSnapshot;
   } else {
-    const priorSnapshotR = await storage.latestSnapshot(appId, country);
+    const priorSnapshotR = await storage.latestSnapshot(tenantId, appId, country);
     priorSnapshot = priorSnapshotR.ok ? priorSnapshotR.value : null;
   }
 
@@ -270,14 +271,14 @@ export async function persistAudit(
   if (input.priorLedger !== undefined) {
     priorLedger = input.priorLedger;
   } else {
-    const priorLedgerR = await storage.ledger(appId, country);
+    const priorLedgerR = await storage.ledger(tenantId, appId, country);
     priorLedger = priorLedgerR.ok ? priorLedgerR.value : [];
   }
 
   // Use the true MAX version (not latestIdentity which prefers full rows) to
   // ensure monotonic version numbers even when the full-preferred read returns
   // an older full row as the semantic head.
-  const maxVersionR = await storage.maxIdentityVersion(appId, country);
+  const maxVersionR = await storage.maxIdentityVersion(tenantId, appId, country);
   const priorVersion = maxVersionR.ok ? maxVersionR.value : -1;
 
   // 1. Write the immutable snapshot first — evidence chips freeze to its id.
@@ -299,7 +300,7 @@ export async function persistAudit(
     themeResult: input.themeResult,
     competitorMiningResult: input.competitorMiningResult,
   };
-  await storage.putSnapshot(snapshot);
+  await storage.putSnapshot(tenantId, snapshot);
 
   // 2. Append the identity version (stage=lite).
   const identityVersion = priorVersion + 1;
@@ -307,14 +308,14 @@ export async function persistAudit(
     version: identityVersion,
     createdAt: now,
   });
-  await storage.appendIdentity(idRow);
+  await storage.appendIdentity(tenantId, idRow);
 
   // 3. Applied-detection over the prior ledger against the new listing.
   const applied = detectApplied(priorLedger, listing, now);
   const appliedKeys = new Set(applied.map((r) => r.recKey));
   for (const rec of applied) {
-    await storage.upsertRecommendation(rec);
-    await storage.recordOccurrence(rec.id, snapshotId, false);
+    await storage.upsertRecommendation(tenantId, rec);
+    await storage.recordOccurrence(tenantId, rec.id, snapshotId, false);
   }
 
   // 4. Upsert this run's recommendations, flagging contradictions.
@@ -344,12 +345,12 @@ export async function persistAudit(
     // dismissed→proposed). Honour the dismissal: record that it recurred this
     // audit (against the live dismissed row) and leave its status untouched.
     if (conflict && conflict.recKey === rec.recKey && conflict.status === 'dismissed') {
-      await storage.recordOccurrence(conflict.id, snapshotId, true);
+      await storage.recordOccurrence(tenantId, conflict.id, snapshotId, true);
       continue;
     }
-    await storage.upsertRecommendation(rec);
+    await storage.upsertRecommendation(tenantId, rec);
     // Use the stored row's id — on re-raises the original row survives ON CONFLICT.
-    await storage.recordOccurrence(priorIdByRecKey.get(rec.recKey) ?? rec.id, snapshotId, false);
+    await storage.recordOccurrence(tenantId, priorIdByRecKey.get(rec.recKey) ?? rec.id, snapshotId, false);
     } // end expandAddKeywordRec inner loop
   }
 

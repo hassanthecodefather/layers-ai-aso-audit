@@ -1,14 +1,18 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { IdentityVersionSchema } from '../../domain/identity';
 import { loadFixtureListing } from '../../identity/__fixtures__/load';
 import {
   resolveAppIdentity,
   toIdentityVersion,
   buildFactSheet,
+  buildClassifierInput,
   parseClassificationText,
 } from './resolve-identity';
 import { extractIdentitySignals } from '../../identity/signals';
 import type { IdentityClassifier } from './resolve-identity';
+import { setWebSearch, resetWebSearch } from '../../sources/websearch/websearch';
+import type { WebSearchProvider } from '../../sources/websearch/websearch';
+import { ok } from '../../domain/result';
 
 /**
  * The ID-lite tool composition (signals → classify → resolve → stamp). The
@@ -50,6 +54,115 @@ describe('resolveAppIdentity + toIdentityVersion (ID-lite)', () => {
     expect(sheet).toContain('Bundle id org segment: rivian');
     expect(sheet).toContain('Marketing domain: rivian');
     expect(sheet).toContain('Declared store category: Travel');
+  });
+});
+
+describe('buildClassifierInput', () => {
+  it('returns the fact sheet unchanged when probe is undefined', () => {
+    expect(buildClassifierInput('FACTS', undefined)).toBe('FACTS');
+  });
+
+  it('returns the fact sheet unchanged when probe is searched_and_empty', () => {
+    expect(buildClassifierInput('FACTS', { state: 'searched_and_empty' })).toBe('FACTS');
+  });
+
+  it('returns the fact sheet unchanged when probe is errored', () => {
+    expect(buildClassifierInput('FACTS', { state: 'errored', reason: 'timeout' })).toBe('FACTS');
+  });
+
+  it('returns the fact sheet unchanged when corroborated sources all have empty snippets', () => {
+    const probe = {
+      state: 'corroborated' as const,
+      sources: [
+        { title: 'Article', url: 'https://example.com', snippet: '' },
+        { title: 'Post', url: 'https://blog.example.com', snippet: '   ' },
+      ],
+    };
+    expect(buildClassifierInput('FACTS', probe)).toBe('FACTS');
+  });
+
+  it('prepends a web evidence block when corroborated with snippets', () => {
+    const probe = {
+      state: 'corroborated' as const,
+      sources: [
+        { title: 'Rivian Review', url: 'https://techcrunch.com/rivian', snippet: 'EV companion app' },
+      ],
+    };
+    const result = buildClassifierInput('FACTS', probe);
+    expect(result).toContain('Web evidence');
+    expect(result).toContain('Rivian Review');
+    expect(result).toContain('techcrunch.com');
+    expect(result).toContain('EV companion app');
+    expect(result).toContain('FACTS');
+  });
+
+  it('caps at 3 sources even when more are available', () => {
+    const probe = {
+      state: 'corroborated' as const,
+      sources: [
+        { title: 'S1', url: 'https://a.com', snippet: 'alpha' },
+        { title: 'S2', url: 'https://b.com', snippet: 'beta' },
+        { title: 'S3', url: 'https://c.com', snippet: 'gamma' },
+        { title: 'S4', url: 'https://d.com', snippet: 'delta' },
+        { title: 'S5', url: 'https://e.com', snippet: 'epsilon' },
+      ],
+    };
+    const result = buildClassifierInput('FACTS', probe);
+    expect(result).toContain('alpha');
+    expect(result).toContain('beta');
+    expect(result).toContain('gamma');
+    expect(result).not.toContain('delta');
+    expect(result).not.toContain('epsilon');
+  });
+});
+
+describe('resolveAppIdentity — web search enrichment', () => {
+  afterEach(() => resetWebSearch());
+
+  it('passes enriched input (with web evidence) to the classifier when probe is corroborated', async () => {
+    const fakeSearch: WebSearchProvider = {
+      id: 'fake',
+      available: true,
+      probe: async () => ok({
+        state: 'corroborated',
+        sources: [{ title: 'Rivian Coverage', url: 'https://techcrunch.com/rivian', snippet: 'EV truck app' }],
+      }),
+    };
+    setWebSearch(fakeSearch);
+
+    let capturedInput = '';
+    const capturingClassifier: IdentityClassifier = async (input) => {
+      capturedInput = input;
+      return { functionCategory: 'EV companion', functionNiche: null, functionTerms: [] };
+    };
+
+    const listing = loadFixtureListing('rivian');
+    await resolveAppIdentity(listing, capturingClassifier);
+
+    expect(capturedInput).toContain('Web evidence');
+    expect(capturedInput).toContain('EV truck app');
+    expect(capturedInput).toContain('techcrunch.com');
+  });
+
+  it('passes the plain fact sheet to the classifier when probe returns searched_and_empty', async () => {
+    const fakeSearch: WebSearchProvider = {
+      id: 'fake',
+      available: false,
+      probe: async () => ok({ state: 'searched_and_empty' }),
+    };
+    setWebSearch(fakeSearch);
+
+    let capturedInput = '';
+    const capturingClassifier: IdentityClassifier = async (input) => {
+      capturedInput = input;
+      return { functionCategory: 'EV companion', functionNiche: null, functionTerms: [] };
+    };
+
+    const listing = loadFixtureListing('rivian');
+    await resolveAppIdentity(listing, capturingClassifier);
+
+    expect(capturedInput).not.toContain('Web evidence');
+    expect(capturedInput).toContain('Developer:');
   });
 });
 

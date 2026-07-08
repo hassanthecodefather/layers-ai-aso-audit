@@ -6,6 +6,7 @@ import { fetchITunesCore } from '../sources/itunes';
 import { sweepStorefronts, DEFAULT_SWEEP_COUNTRIES } from '../sources/storefront-sweep';
 import { AuditReportSchema } from '../domain/audit';
 import { reportToMarkdown, markdownFilename } from '../export/markdown';
+import { getAuthenticatedTenantId } from '../auth/middleware';
 
 /**
  * Custom HTTP routes that drive the audit workflow for the chat UI.
@@ -28,7 +29,7 @@ const WORKFLOW_ID = 'asoAuditWorkflow';
  * also persists the run to LibSQL, so this is an in-process fast path with a
  * `createRun({ runId })` rehydration fallback below.
  */
-const pendingRuns = new Map<string, any>();
+const pendingRuns = new Map<string, { run: any; tenantId: string }>();
 
 /** First non-nullish candidate — for reading Mastra result shapes defensively. */
 function firstOf<T>(...candidates: (T | null | undefined)[]): T | undefined {
@@ -112,6 +113,8 @@ export const auditRoutes = [
   registerApiRoute('/audit/export/markdown', {
     method: 'POST',
     handler: async (c) => {
+      const tenantId = await getAuthenticatedTenantId(c);
+      if (!tenantId) return c.json({ error: 'Unauthorized' }, 401);
       try {
         const body = await c.req.json().catch(() => ({}));
         const parsed = AuditReportSchema.safeParse(body?.report);
@@ -134,6 +137,8 @@ export const auditRoutes = [
   registerApiRoute('/audit/health', {
     method: 'GET',
     handler: async (c) => {
+      const tenantId = await getAuthenticatedTenantId(c);
+      if (!tenantId) return c.json({ error: 'Unauthorized' }, 401);
       const llm = getLlmProvider();
       const crawler = getCrawler();
       return c.json({
@@ -152,6 +157,8 @@ export const auditRoutes = [
   registerApiRoute('/audit/identify', {
     method: 'POST',
     handler: async (c) => {
+      const tenantId = await getAuthenticatedTenantId(c);
+      if (!tenantId) return c.json({ error: 'Unauthorized' }, 401);
       try {
         const mastra = c.get('mastra');
         const body = await c.req.json().catch(() => ({}));
@@ -161,7 +168,7 @@ export const auditRoutes = [
         const workflow = mastra.getWorkflow(WORKFLOW_ID);
         const run = await workflow.createRun();
         const reopenIdentity = body?.reopenIdentity === true;
-        const result: any = await run.start({ inputData: { url, reopenIdentity } });
+        const result: any = await run.start({ inputData: { url, reopenIdentity, tenantId } });
 
         if (result?.status === 'suspended') {
           const payload = extractSuspendPayload(result);
@@ -177,7 +184,7 @@ export const auditRoutes = [
               500,
             );
           }
-          pendingRuns.set(run.runId, run);
+          pendingRuns.set(run.runId, { run, tenantId });
           // Surface the resolved identity too, so the UI can widen the prompt to
           // "here's what we think your app is — confirm, correct, or pick" when
           // the identity escalates (spec ID). Most apps need no identity ask.
@@ -205,6 +212,8 @@ export const auditRoutes = [
   registerApiRoute('/audit/sweep', {
     method: 'POST',
     handler: async (c) => {
+      const tenantId = await getAuthenticatedTenantId(c);
+      if (!tenantId) return c.json({ error: 'Unauthorized' }, 401);
       try {
         const body = await c.req.json().catch(() => ({}));
         const appId = typeof body?.appId === 'string' ? body.appId.trim() : '';
@@ -234,6 +243,8 @@ export const auditRoutes = [
   registerApiRoute('/audit/run', {
     method: 'POST',
     handler: async (c) => {
+      const tenantId = await getAuthenticatedTenantId(c);
+      if (!tenantId) return c.json({ error: 'Unauthorized' }, 401);
       const mastra = c.get('mastra');
       const body = await c.req.json().catch(() => ({}));
       const runId = typeof body?.runId === 'string' ? body.runId : '';
@@ -245,8 +256,13 @@ export const auditRoutes = [
       const fresh = typeof body?.fresh === 'boolean' ? body.fresh : false;
 
       const workflow = mastra.getWorkflow(WORKFLOW_ID);
-      const run =
-        pendingRuns.get(runId) ?? (await workflow.createRun({ runId }));
+      const stored = pendingRuns.get(runId);
+      // Reject if the run is unknown: pendingRuns is in-memory and clears on restart.
+      // Rehydrating an unknown runId would let any authenticated tenant resume another
+      // tenant's persisted workflow. Users must re-run /audit/identify after a restart.
+      if (!stored) return c.json({ error: 'Session not found. Please restart the audit.' }, 404);
+      if (stored.tenantId !== tenantId) return c.json({ error: 'Not found.' }, 404);
+      const run = stored.run;
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return streamSSE(c as any, async (stream) => {

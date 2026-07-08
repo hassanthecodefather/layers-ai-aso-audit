@@ -347,27 +347,20 @@ describe('coarseOrdinalScore — title', () => {
       title: { value: 'X', length: Math.round(utilizationPct * 0.3), limit: 30, utilizationPct, overLimit: false },
     });
 
-  it('returns 0 for model score 0-2 (poor)', () => {
-    expect(coarseOrdinalScore('title', 2, title(80))).toBe(0);
+  it('returns 0 for model score 0-1 only (truly terrible title)', () => {
+    expect(coarseOrdinalScore('title', 0, title(80))).toBe(0);
+    expect(coarseOrdinalScore('title', 1, title(80))).toBe(0);
   });
 
-  it('returns 5 for model score 3-7 (acceptable)', () => {
-    expect(coarseOrdinalScore('title', 5, title(80))).toBe(5);
+  it('returns 5 for model score 2-7 — brand-only short names (Rivian, Spotify) land here', () => {
+    expect(coarseOrdinalScore('title', 2, title(20))).toBe(5); // brand-only, 20% util
+    expect(coarseOrdinalScore('title', 4, title(23))).toBe(5); // Spotify-like (7/30)
     expect(coarseOrdinalScore('title', 7, title(80))).toBe(5);
   });
 
-  it('returns 10 for model score 8-10 (excellent)', () => {
+  it('returns 10 for model score 8-10 (keyword-optimized title)', () => {
     expect(coarseOrdinalScore('title', 8, title(80))).toBe(10);
     expect(coarseOrdinalScore('title', 10, title(80))).toBe(10);
-  });
-
-  it('deterministic floor: returns 0 when utilizationPct < 20 regardless of model score', () => {
-    expect(coarseOrdinalScore('title', 9, title(19))).toBe(0);
-    expect(coarseOrdinalScore('title', 7, title(0))).toBe(0);
-  });
-
-  it('does NOT apply the floor at exactly 20 %', () => {
-    expect(coarseOrdinalScore('title', 7, title(20))).toBe(5);
   });
 });
 
@@ -389,8 +382,8 @@ describe('coarseOrdinalScore — subtitle', () => {
     expect(coarseOrdinalScore('subtitle', 9, sub(true, 50))).toBe(10);
   });
 
-  it('applies utilization floor (< 20%) even when observable', () => {
-    expect(coarseOrdinalScore('subtitle', 9, sub(true, 10))).toBe(0);
+  it('snaps score 0-2 to 0 even when observable and short', () => {
+    expect(coarseOrdinalScore('subtitle', 2, sub(true, 10))).toBe(0);
   });
 });
 
@@ -402,7 +395,12 @@ describe('coarseOrdinalScore — other dimensions return null', () => {
   it('ratings → null', () => { expect(coarseOrdinalScore('ratings', 7, makeSignals())).toBeNull(); });
   it('icon → null', () => { expect(coarseOrdinalScore('icon', 7, makeSignals())).toBeNull(); });
   it('conversion → null', () => { expect(coarseOrdinalScore('conversion', 7, makeSignals())).toBeNull(); });
-  it('competitive → null', () => { expect(coarseOrdinalScore('competitive', 7, makeSignals())).toBeNull(); });
+});
+
+describe('coarseOrdinalScore — competitive snaps to ordinal', () => {
+  it('score 2 → 0 (poor)', () => { expect(coarseOrdinalScore('competitive', 2, makeSignals())).toBe(0); });
+  it('score 7 → 5 (acceptable)', () => { expect(coarseOrdinalScore('competitive', 7, makeSignals())).toBe(5); });
+  it('score 9 → 10 (excellent)', () => { expect(coarseOrdinalScore('competitive', 9, makeSignals())).toBe(10); });
 });
 
 // ── visionUsable ─────────────────────────────────────────────────────────────

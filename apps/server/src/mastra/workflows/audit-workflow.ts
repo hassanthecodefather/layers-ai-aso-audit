@@ -65,6 +65,7 @@ const SummaryAndIdentitySchema = z.object({
   identity: ResolvedIdentitySchema,
   /** True only when the resolved identity escalates (cross-domain / low). */
   identityNeedsConfirm: z.boolean(),
+  tenantId: z.string(),
 });
 
 const EvidenceLineSchema = z.object({
@@ -177,7 +178,7 @@ export function buildOverrideNotes(
 // ── Step 1: resolve surface metadata AND the ID-lite identity ──────────────
 const identifyStep = createStep({
   id: 'identify-app',
-  inputSchema: z.object({ url: z.string(), reopenIdentity: z.boolean().optional() }),
+  inputSchema: z.object({ url: z.string(), reopenIdentity: z.boolean().optional(), tenantId: z.string().default('default') }),
   outputSchema: SummaryAndIdentitySchema,
   execute: async ({ inputData }) => {
     const ref = parseAppStoreUrl(inputData.url);
@@ -189,7 +190,7 @@ const identifyStep = createStep({
     // marketing-domain). A prior human-confirmed identity is respected and
     // re-asked only if its signals materially changed and the answer flips.
     const storage = await getStorage();
-    const priorR = await storage.latestIdentity(core.value.appId, core.value.country);
+    const priorR = await storage.latestIdentity(inputData.tenantId, core.value.appId, core.value.country);
     const priorRow = priorR.ok ? priorR.value : null;
     const prior = selectPrior(priorRow, inputData.reopenIdentity);
     const identity = await resolveWithHistory(
@@ -202,6 +203,7 @@ const identifyStep = createStep({
       summary: coreToSummary(core.value),
       identity,
       identityNeedsConfirm: identity.escalate,
+      tenantId: inputData.tenantId,
     };
   },
 });
@@ -317,6 +319,9 @@ const scoreStep = createStep({
       | { identityDecision: z.infer<typeof IdentityDecisionSchema> | null }
       | undefined;
 
+    const tenantId = identified?.tenantId;
+    if (!tenantId) throw new Error('[audit] identify-app step result missing — cannot determine tenantId');
+
     let resolved =
       identified?.identity ??
       // Defensive fallback: if the step result is somehow missing, resolve now.
@@ -333,8 +338,8 @@ const scoreStep = createStep({
     // the ledger into the prompt caused the model to diversify away from past recs,
     // growing the ledger every run instead of stabilising it.
     const ref = { appId: listing.appId, country: listing.country };
-    const priorSnapR = await storage.latestSnapshot(listing.appId, listing.country);
-    const priorLedgerR = await storage.ledger(listing.appId, listing.country);
+    const priorSnapR = await storage.latestSnapshot(tenantId, listing.appId, listing.country);
+    const priorLedgerR = await storage.ledger(tenantId, listing.appId, listing.country);
     const priorSnap = priorSnapR.ok ? priorSnapR.value : null;
 
     const priorContext = buildPriorContext({
@@ -364,6 +369,7 @@ const scoreStep = createStep({
           resolved,
           new AppKittieClient(appKittieKey),
           storage,
+          tenantId,
         );
         if (functionCompetitors.length > 0) {
           listing = { ...listing, competitors: functionCompetitors };
@@ -379,7 +385,7 @@ const scoreStep = createStep({
       const appKittieKey = process.env['APP_KITTI_API_KEY'];
       if (appKittieKey) {
         evidenceCompetitors = await fetchEvidenceCompetitors(
-          ref, resolved.overrodeEvidence, new AppKittieClient(appKittieKey), storage,
+          ref, resolved.overrodeEvidence, new AppKittieClient(appKittieKey), storage, tenantId,
         );
       }
     }
@@ -565,7 +571,7 @@ const scoreStep = createStep({
     }
 
     // ── P1: persist snapshot + identity + ledger; apply memory uplifts ────
-    const memo = await persistAudit(storage, {
+    const memo = await persistAudit(storage, tenantId, {
       listing,
       signals,
       report,
@@ -602,7 +608,7 @@ const scoreStep = createStep({
         now,
       );
       // Write the new stage='full' version row.
-      await storage.appendIdentity(idFullResult.identityVersion);
+      await storage.appendIdentity(tenantId, idFullResult.identityVersion);
     }
 
     // ── B3: secondary uplifts — screenshot intelligence, cross-device matrix, PPO brief ──
@@ -690,7 +696,7 @@ const scoreStep = createStep({
 
 export const asoAuditWorkflow = createWorkflow({
   id: 'aso-audit',
-  inputSchema: z.object({ url: z.string(), reopenIdentity: z.boolean().optional() }),
+  inputSchema: z.object({ url: z.string(), reopenIdentity: z.boolean().optional(), tenantId: z.string().default('default') }),
   outputSchema: AuditReportSchema,
 })
   .then(identifyStep)

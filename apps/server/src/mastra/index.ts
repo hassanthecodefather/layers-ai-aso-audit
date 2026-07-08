@@ -7,6 +7,7 @@ import { FileTransport } from '@mastra/loggers/file';
 import { asoAuditor } from './agents/aso-auditor';
 import { asoAuditWorkflow } from './workflows/audit-workflow';
 import { auditRoutes } from './routes';
+import { authRoutes } from '../auth/routes';
 import { verifyLlmStartup } from '../llm';
 import { runMigrations } from '../memory/migrate';
 
@@ -74,7 +75,7 @@ export const mastra = new Mastra({
   // Traces needs a storage that supports it (e.g. Postgres at P6) or a non-LibSQL
   // exporter; Studio Logs still work via the PinoLogger file transport above.
   server: {
-    apiRoutes: auditRoutes,
+    apiRoutes: [...auditRoutes, ...authRoutes],
   },
 });
 
@@ -83,8 +84,20 @@ export const mastra = new Mastra({
 // outcome — neither should crash boot, and we skip them under test so the
 // suite stays hermetic (no DB writes, no network).
 if (!isTest) {
-  runMigrations(DB_URL).catch((e) =>
-    console.error('[memory] migration failed at startup:', e),
-  );
+  const pgUrl = process.env.DATABASE_URL;
+  if (pgUrl) {
+    import('../memory/pg-migrate').then(({ runPgMigrations }) =>
+      import('../memory').then(({ getPgSql }) => {
+        const sql = getPgSql();
+        if (sql) runPgMigrations(sql).catch((e) =>
+          console.error('[memory] Postgres migration failed at startup:', e),
+        );
+      }),
+    ).catch((e) => console.error('[memory] Postgres migration bootstrap failed:', e));
+  } else {
+    runMigrations(DB_URL).catch((e) =>
+      console.error('[memory] migration failed at startup:', e),
+    );
+  }
   void verifyLlmStartup();
 }

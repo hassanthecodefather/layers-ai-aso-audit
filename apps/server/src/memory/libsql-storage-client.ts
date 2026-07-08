@@ -17,6 +17,10 @@ import type { StorageClient } from './storage-client';
  *
  * Crucially, nothing SQL leaks past this class: every method takes and returns
  * domain types only. That is the contract the LibSQL↔Postgres swap rests on.
+ *
+ * Phase 6a: every method gains `tenantId` as its first parameter. Every SQL
+ * read/write is scoped to that tenant — cross-tenant access is impossible by
+ * construction (the WHERE clause enforces it).
  */
 export class LibSqlStorageClient implements StorageClient {
   readonly #db: Client;
@@ -35,18 +39,19 @@ export class LibSqlStorageClient implements StorageClient {
   }
 
   // ── Snapshots ──────────────────────────────────────────────────────────
-  async putSnapshot(s: ListingSnapshot): Promise<Result<void>> {
+  async putSnapshot(tenantId: string, s: ListingSnapshot): Promise<Result<void>> {
     const r = await this.#run(
       `INSERT INTO aso_listing_snapshots
-        (id, app_id, country, fetched_at, listing_json, signals_json,
+        (id, app_id, country, tenant_id, fetched_at, listing_json, signals_json,
          report_json, rubric_version, prompt_hash, model_id, vision_result_json,
          candidate_result_json, theme_result_json,
          function_competitor_seeds_json, competitor_mining_result_json)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         s.id,
         s.appId,
         s.country,
+        tenantId,
         s.fetchedAt,
         JSON.stringify(s.listing),
         JSON.stringify(s.signals ?? null),
@@ -65,14 +70,15 @@ export class LibSqlStorageClient implements StorageClient {
   }
 
   async latestSnapshot(
+    tenantId: string,
     appId: string,
     country: string,
   ): Promise<Result<ListingSnapshot | null>> {
     const r = await this.#run(
       `SELECT * FROM aso_listing_snapshots
-        WHERE app_id = ? AND country = ?
+        WHERE tenant_id = ? AND app_id = ? AND country = ?
         ORDER BY fetched_at DESC LIMIT 1`,
-      [appId, country],
+      [tenantId, appId, country],
     );
     if (!r.ok) return err(r.error);
     const [row] = r.value;
@@ -121,20 +127,22 @@ export class LibSqlStorageClient implements StorageClient {
   }
 
   // ── Recommendations ──────────────────────────────────────────────────────
-  async upsertRecommendation(rec: LedgerRecommendation): Promise<Result<void>> {
-    // Dedup on (app_id, country, rec_key): a re-raise refreshes the mutable
-    // fields and bumps last_seen_at, but keeps the original row's identity
-    // (id, first_seen_at) — the ledger holds one live row per logical rec.
+  async upsertRecommendation(tenantId: string, rec: LedgerRecommendation): Promise<Result<void>> {
+    // Dedup on (tenant_id, app_id, country, rec_key): a re-raise refreshes the
+    // mutable fields and bumps last_seen_at, but keeps the original row's
+    // identity (id, first_seen_at) — the ledger holds one live row per logical rec.
     const r = await this.#run(
       `INSERT INTO aso_recommendations
-        (id, app_id, country, rec_key, value_key, taxonomy_version, dimension,
-         intent, target_field, title, body, before_text, after_text,
+        (id, app_id, country, tenant_id, rec_key, value_key, taxonomy_version,
+         dimension, intent, target_field, title, body, before_text, after_text,
          evidence_json, status, superseded_by, first_seen_at, last_seen_at,
          applied_at, proof_regime)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-       ON CONFLICT (app_id, country, rec_key) DO UPDATE SET
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+       ON CONFLICT(tenant_id, app_id, country, rec_key) DO UPDATE SET
          value_key        = excluded.value_key,
          taxonomy_version = excluded.taxonomy_version,
+         dimension        = excluded.dimension,
+         intent           = excluded.intent,
          target_field     = excluded.target_field,
          title            = excluded.title,
          body             = excluded.body,
@@ -150,22 +158,23 @@ export class LibSqlStorageClient implements StorageClient {
         rec.id,
         rec.appId,
         rec.country,
+        tenantId,
         rec.recKey,
         rec.valueKey,
-        rec.taxonomyVersion,
+        rec.taxonomyVersion ?? null,
         rec.dimension,
         rec.intent,
-        rec.targetField,
+        rec.targetField ?? null,
         rec.title,
         rec.body,
-        rec.beforeText,
-        rec.afterText,
+        rec.beforeText ?? null,
+        rec.afterText ?? null,
         JSON.stringify(rec.evidence),
         rec.status,
-        rec.supersededBy,
+        rec.supersededBy ?? null,
         rec.firstSeenAt,
         rec.lastSeenAt,
-        rec.appliedAt,
+        rec.appliedAt ?? null,
         rec.proofRegime,
       ],
     );
@@ -173,14 +182,15 @@ export class LibSqlStorageClient implements StorageClient {
   }
 
   async ledger(
+    tenantId: string,
     appId: string,
     country: string,
   ): Promise<Result<LedgerRecommendation[]>> {
     const r = await this.#run(
       `SELECT * FROM aso_recommendations
-        WHERE app_id = ? AND country = ?
+        WHERE tenant_id = ? AND app_id = ? AND country = ?
         ORDER BY first_seen_at ASC, id ASC`,
-      [appId, country],
+      [tenantId, appId, country],
     );
     if (!r.ok) return err(r.error);
     const out: LedgerRecommendation[] = [];
@@ -221,38 +231,40 @@ export class LibSqlStorageClient implements StorageClient {
   }
 
   async recordOccurrence(
+    tenantId: string,
     recId: string,
     snapshotId: string,
     wasDismissed: boolean,
   ): Promise<Result<void>> {
     const r = await this.#run(
-      `INSERT INTO aso_rec_occurrences (rec_id, snapshot_id, was_dismissed)
-       VALUES (?,?,?)
-       ON CONFLICT (rec_id, snapshot_id) DO UPDATE SET
-         was_dismissed = excluded.was_dismissed`,
-      [recId, snapshotId, wasDismissed ? 1 : 0],
+      `INSERT INTO aso_rec_occurrences (rec_id, snapshot_id, tenant_id, was_dismissed)
+       VALUES (?,?,?,?)
+       ON CONFLICT(rec_id, snapshot_id) DO UPDATE SET
+         was_dismissed = MAX(was_dismissed, excluded.was_dismissed)`,
+      [recId, snapshotId, tenantId, wasDismissed ? 1 : 0],
     );
     return r.ok ? ok(undefined) : err(r.error);
   }
 
   // ── Identity ─────────────────────────────────────────────────────────────
-  async appendIdentity(v: IdentityVersion): Promise<Result<void>> {
+  async appendIdentity(tenantId: string, v: IdentityVersion): Promise<Result<void>> {
     const r = await this.#run(
       `INSERT INTO aso_identity_versions
-        (id, app_id, country, version, stage, category, category_band, niche,
-         niche_band, audience_json, tally_json, divergence, escalate, source,
-         created_at, overrode_evidence_json)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        (id, app_id, country, tenant_id, version, stage, category, category_band,
+         niche, niche_band, audience_json, tally_json, divergence, escalate,
+         source, created_at, overrode_evidence_json)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         v.id,
         v.appId,
         v.country,
+        tenantId,
         v.version,
         v.stage,
         v.category,
         v.categoryBand,
-        v.niche,
-        v.nicheBand,
+        v.niche ?? null,
+        v.nicheBand ?? null,
         v.audience == null ? null : JSON.stringify(v.audience),
         JSON.stringify(v.tally),
         v.divergence,
@@ -265,17 +277,18 @@ export class LibSqlStorageClient implements StorageClient {
     return r.ok ? ok(undefined) : err(r.error);
   }
 
-  async maxIdentityVersion(appId: string, country: string): Promise<Result<number>> {
+  async maxIdentityVersion(tenantId: string, appId: string, country: string): Promise<Result<number>> {
     const r = await this.#run(
       `SELECT COALESCE(MAX(version), -1) AS max_version
-         FROM aso_identity_versions WHERE app_id = ? AND country = ?`,
-      [appId, country],
+         FROM aso_identity_versions WHERE tenant_id = ? AND app_id = ? AND country = ?`,
+      [tenantId, appId, country],
     );
     if (!r.ok) return err(r.error);
     return ok(Number(r.value[0]?.max_version ?? -1));
   }
 
   async latestIdentity(
+    tenantId: string,
     appId: string,
     country: string,
   ): Promise<Result<IdentityVersion | null>> {
@@ -287,17 +300,21 @@ export class LibSqlStorageClient implements StorageClient {
     //     full human_confirmed row even though full > lite for resolved rows.
     const r = await this.#run(
       `SELECT * FROM aso_identity_versions
-        WHERE app_id = ? AND country = ?
+        WHERE tenant_id = ? AND app_id = ? AND country = ?
         ORDER BY
           CASE WHEN source = 'human_confirmed' THEN 0 ELSE 1 END,
           CASE WHEN source != 'human_confirmed' AND stage = 'full' THEN 0 ELSE 1 END,
           version DESC
         LIMIT 1`,
-      [appId, country],
+      [tenantId, appId, country],
     );
     if (!r.ok) return err(r.error);
     const [row] = r.value;
     if (!row) return ok(null);
+    return this.#parseIdentity(row);
+  }
+
+  #parseIdentity(row: Row): Result<IdentityVersion> {
     const parsed = IdentityVersionSchema.safeParse({
       id: row.id,
       appId: row.app_id,
@@ -325,28 +342,29 @@ export class LibSqlStorageClient implements StorageClient {
 
   // ── Competitor tombstones (app-scoped, version-independent) ───────────────
   async tombstoneCompetitor(
+    tenantId: string,
     appId: string,
     country: string,
     competitorAppId: string,
   ): Promise<Result<void>> {
     const r = await this.#run(
-      `INSERT INTO aso_competitor_tombstones
-        (app_id, country, competitor_app_id, rejected_at)
-       VALUES (?,?,?,?)
-       ON CONFLICT (app_id, country, competitor_app_id) DO NOTHING`,
-      [appId, country, competitorAppId, new Date().toISOString()],
+      `INSERT OR IGNORE INTO aso_competitor_tombstones
+        (app_id, country, tenant_id, competitor_app_id, rejected_at)
+       VALUES (?,?,?,?,?)`,
+      [appId, country, tenantId, competitorAppId, new Date().toISOString()],
     );
     return r.ok ? ok(undefined) : err(r.error);
   }
 
   async tombstones(
+    tenantId: string,
     appId: string,
     country: string,
   ): Promise<Result<Set<string>>> {
     const r = await this.#run(
       `SELECT competitor_app_id FROM aso_competitor_tombstones
-        WHERE app_id = ? AND country = ?`,
-      [appId, country],
+        WHERE tenant_id = ? AND app_id = ? AND country = ?`,
+      [tenantId, appId, country],
     );
     if (!r.ok) return err(r.error);
     return ok(new Set(r.value.map((row) => String(row.competitor_app_id))));

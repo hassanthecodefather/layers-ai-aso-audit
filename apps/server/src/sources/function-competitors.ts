@@ -81,6 +81,7 @@ export async function fetchFunctionGroundedCompetitors(
   resolved: ResolvedIdentity,
   appKittie: AppKittieClient,
   storage: StorageClient,
+  tenantId: string,
 ): Promise<Competitor[]> {
   const seeds = seedKeywords(resolved);
   if (seeds.length === 0) return [];
@@ -101,7 +102,7 @@ export async function fetchFunctionGroundedCompetitors(
   if (collectedIds.length === 0) return [];
 
   // 2. Filter tombstoned peers (human-rejected competitors never re-surface).
-  const tombstonesR = await storage.tombstones(ref.appId, ref.country);
+  const tombstonesR = await storage.tombstones(tenantId, ref.appId, ref.country);
   const tombstones = tombstonesR.ok ? tombstonesR.value : new Set<string>();
   const filtered = collectedIds.filter((id) => !tombstones.has(id));
 
@@ -122,6 +123,7 @@ export async function fetchEvidenceCompetitors(
   marker: OverrodeEvidence,
   appKittie: AppKittieClient,
   storage: StorageClient,
+  tenantId: string,
   limit: number = MAX_EVIDENCE_COMPETITORS,
 ): Promise<Competitor[]> {
   // The category phrase (e.g. "Electric vehicle companion") is an internal
@@ -149,7 +151,7 @@ export async function fetchEvidenceCompetitors(
   }
   if (collectedIds.length === 0) return [];
 
-  const tombstonesR = await storage.tombstones(ref.appId, ref.country);
+  const tombstonesR = await storage.tombstones(tenantId, ref.appId, ref.country);
   const tombstones = tombstonesR.ok ? tombstonesR.value : new Set<string>();
   const filtered = collectedIds.filter((id) => !tombstones.has(id));
   if (filtered.length === 0) return [];

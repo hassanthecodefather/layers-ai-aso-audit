@@ -68,7 +68,7 @@ suite('Phase 0 smoke: full audit on Gemini', () => {
     const db = openDb(':memory:');
     await runMigrations(db);
     const storage = new LibSqlStorageClient(db);
-    const memo = await persistAudit(storage, {
+    const memo = await persistAudit(storage, 'tenant-test', {
       listing: listing.value,
       signals: computeSignals(listing.value),
       report,
@@ -80,9 +80,9 @@ suite('Phase 0 smoke: full audit on Gemini', () => {
       now: '2026-06-24T00:00:00.000Z',
     });
     // The snapshot + identity row were written; ledger reads back.
-    const idRow = await storage.latestIdentity(listing.value.appId, listing.value.country);
+    const idRow = await storage.latestIdentity('tenant-test', listing.value.appId, listing.value.country);
     expect(idRow.ok && idRow.value?.stage).toBe('lite');
-    const led = await storage.ledger(listing.value.appId, listing.value.country);
+    const led = await storage.ledger('tenant-test', listing.value.appId, listing.value.country);
     expect(led.ok).toBe(true);
     expect(memo.identityVersion).toBe(0);
     db.close();

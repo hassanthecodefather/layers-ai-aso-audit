@@ -15,7 +15,7 @@ import { getGateway } from '../../cost/gateway';
  * REST over the gateway (metered + cached 7d), never MCP (browser-auth only).
  */
 export type WebSearchProbe =
-  | { state: 'corroborated'; sources: { title: string; url: string }[] }
+  | { state: 'corroborated'; sources: { title: string; url: string; snippet: string }[] }
   | { state: 'searched_and_empty' }
   | { state: 'errored'; reason: string };
 
@@ -104,7 +104,10 @@ export class TavilyWebSearch implements WebSearchProvider {
       });
       const res = await getGateway().fetch(
         TAVILY_URL,
-        { kind: 'app', upstream: 'websearch', entityId: `tavily:${queryKey(query)}` },
+        // Cache key must hash the capped query — that is what Tavily actually receives.
+        // Hashing the raw query would produce different keys for queries whose only
+        // difference is beyond the 400-char cap, causing duplicate API calls.
+        { kind: 'app', upstream: 'websearch', entityId: `tavily:${queryKey(cappedQuery)}` },
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -112,19 +115,29 @@ export class TavilyWebSearch implements WebSearchProvider {
         },
       );
       if (!res.ok) {
+        // Drain the response body so the underlying connection returns to the pool.
+        // Skipping this on repeated 429s / 5xxs progressively exhausts the pool.
+        await res.body?.cancel();
         console.warn(`[tavily] HTTP ${res.status} — treating as errored`);
         return ok({ state: 'errored', reason: `HTTP ${res.status}` });
       }
-      const json = await res.json() as { results?: { title: string; url: string }[] };
+      const json = await res.json() as { results?: { title: string; url: string; content?: string }[] };
       const results = json.results ?? [];
       const genuine = results.filter((r) => !isMirrorUrl(r.url));
-      const state = genuine.length === 0 ? 'searched_and_empty' : 'corroborated';
+      // Derive state once and use it in both the log and the return — a single
+      // source of truth so adding a third state can't produce a log/return mismatch.
+      const state: 'searched_and_empty' | 'corroborated' =
+        genuine.length === 0 ? 'searched_and_empty' : 'corroborated';
       const survivorNote = genuine.length > 0 ? ` · survivors: ${survivorHosts(genuine)}` : '';
       console.log(`[tavily] results=${results.length} raw (${results.length - genuine.length} mirror-filtered) → ${state}${survivorNote}`);
-      if (genuine.length === 0) return ok({ state: 'searched_and_empty' });
+      if (state === 'searched_and_empty') return ok({ state });
       return ok({
-        state: 'corroborated',
-        sources: genuine.map((r) => ({ title: r.title, url: r.url })),
+        state,
+        sources: genuine.map((r) => ({
+          title: r.title,
+          url: r.url,
+          snippet: (r.content ?? '').slice(0, 500),
+        })),
       });
     } catch (e) {
       return ok({ state: 'errored', reason: e instanceof Error ? e.message : String(e) });
@@ -148,10 +161,12 @@ export class ExaWebSearch implements WebSearchProvider {
   async probe(query: string): Promise<Result<WebSearchProbe>> {
     try {
       const cappedQuery = capQuery(query);
-      const body = JSON.stringify({ query: cappedQuery, num_results: 5 });
+      // contents.text requests page-extract snippets (up to 500 chars each) so the
+      // classifier can use them as first-round grounding context.
+      const body = JSON.stringify({ query: cappedQuery, num_results: 5, contents: { text: { maxCharacters: 500 } } });
       const res = await getGateway().fetch(
         EXA_URL,
-        { kind: 'app', upstream: 'websearch', entityId: `exa:${queryKey(query)}` },
+        { kind: 'app', upstream: 'websearch', entityId: `exa:${queryKey(cappedQuery)}` },
         {
           method: 'POST',
           headers: {
@@ -162,19 +177,25 @@ export class ExaWebSearch implements WebSearchProvider {
         },
       );
       if (!res.ok) {
+        await res.body?.cancel();
         console.warn(`[exa] HTTP ${res.status} — treating as errored`);
         return ok({ state: 'errored', reason: `HTTP ${res.status}` });
       }
-      const json = await res.json() as { results?: { title: string; url: string }[] };
+      const json = await res.json() as { results?: { title: string; url: string; text?: string }[] };
       const results = json.results ?? [];
       const genuine = results.filter((r) => !isMirrorUrl(r.url));
-      const state = genuine.length === 0 ? 'searched_and_empty' : 'corroborated';
+      const state: 'searched_and_empty' | 'corroborated' =
+        genuine.length === 0 ? 'searched_and_empty' : 'corroborated';
       const survivorNote = genuine.length > 0 ? ` · survivors: ${survivorHosts(genuine)}` : '';
       console.log(`[exa] results=${results.length} raw (${results.length - genuine.length} mirror-filtered) → ${state}${survivorNote}`);
-      if (genuine.length === 0) return ok({ state: 'searched_and_empty' });
+      if (state === 'searched_and_empty') return ok({ state });
       return ok({
-        state: 'corroborated',
-        sources: genuine.map((r) => ({ title: r.title, url: r.url })),
+        state,
+        sources: genuine.map((r) => ({
+          title: r.title,
+          url: r.url,
+          snippet: r.text ?? '',
+        })),
       });
     } catch (e) {
       return ok({ state: 'errored', reason: e instanceof Error ? e.message : String(e) });

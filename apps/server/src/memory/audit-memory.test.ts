@@ -81,9 +81,9 @@ describe('persistAudit — the memory loop', () => {
     try {
       // Audit 1: subtitle is empty; we suggest adding "Budget Tracker & Planner".
       const l1 = listingWith({ subtitle: null });
-      await persistAudit(h.client, persistArgs(l1, report([rec({})], 60), '2026-06-01T00:00:00.000Z'));
+      await persistAudit(h.client, 'tenant-test', persistArgs(l1, report([rec({})], 60), '2026-06-01T00:00:00.000Z'));
 
-      let ledger = unwrap(await h.client.ledger('1', 'us'));
+      let ledger = unwrap(await h.client.ledger('tenant-test', '1', 'us'));
       expect(ledger).toHaveLength(1);
       expect(ledger[0]!.status).toBe('proposed');
 
@@ -92,10 +92,11 @@ describe('persistAudit — the memory loop', () => {
       const l2 = listingWith({ subtitle: 'Budget Tracker & Planner' });
       const memo = await persistAudit(
         h.client,
+        'tenant-test',
         persistArgs(l2, report([rec({})], 75), '2026-06-20T00:00:00.000Z'),
       );
 
-      ledger = unwrap(await h.client.ledger('1', 'us'));
+      ledger = unwrap(await h.client.ledger('tenant-test', '1', 'us'));
       expect(ledger).toHaveLength(1); // ← never repeats
       expect(ledger[0]!.status).toBe('applied'); // ← marked applied (match, not cause)
       expect(ledger[0]!.appliedAt).toBe('2026-06-20T00:00:00.000Z');
@@ -113,11 +114,11 @@ describe('persistAudit — the memory loop', () => {
     try {
       const escalating: ResolvedIdentity = { ...CONFIDENT, categoryBand: 'low', divergence: 'cross_domain', escalate: true };
       const l = listingWith({});
-      await persistAudit(h.client, {
+      await persistAudit(h.client, 'tenant-test', {
         ...persistArgs(l, report([rec({ dimension: 'competitive', category: 'strategic', intent: 'reposition_identity', referent: { kind: 'none' }, title: 'Reposition around EVs', after: null })]), '2026-06-01T00:00:00.000Z'),
         resolved: escalating,
       });
-      const ledger = unwrap(await h.client.ledger('1', 'us'));
+      const ledger = unwrap(await h.client.ledger('tenant-test', '1', 'us'));
       // The reposition_identity rec was withheld.
       expect(ledger.find((r) => r.intent === 'reposition_identity')).toBeUndefined();
     } finally {
@@ -133,13 +134,13 @@ describe('persistAudit — the memory loop', () => {
         ...CONFIDENT, category: 'EV companion', divergence: 'cross_domain', escalate: false, source: 'human_confirmed',
       };
       const l = listingWith({});
-      await persistAudit(h.client, {
+      await persistAudit(h.client, 'tenant-test', {
         ...persistArgs(l, report([rec({ dimension: 'competitive', category: 'strategic', intent: 'reposition_identity', referent: { kind: 'none' }, title: 'Reposition around EVs', after: null })]), '2026-06-01T00:00:00.000Z'),
         resolved: confirmed,
       });
-      const idRow = unwrap(await h.client.latestIdentity('1', 'us'));
+      const idRow = unwrap(await h.client.latestIdentity('tenant-test', '1', 'us'));
       expect(idRow?.source).toBe('human_confirmed');
-      const ledger = unwrap(await h.client.ledger('1', 'us'));
+      const ledger = unwrap(await h.client.ledger('tenant-test', '1', 'us'));
       // Identity is confirmed, so the identity-rewriting rec is allowed through.
       expect(ledger.find((r) => r.intent === 'reposition_identity')).toBeDefined();
     } finally {
@@ -152,7 +153,7 @@ describe('persistAudit — the memory loop', () => {
     try {
       const l = listingWith({ subtitle: null });
       // Run 1: recommend adding keyword "tracker" with one phrasing.
-      await persistAudit(h.client, persistArgs(l, report([rec({})]), '2026-06-01T00:00:00.000Z'));
+      await persistAudit(h.client, 'tenant-test', persistArgs(l, report([rec({})]), '2026-06-01T00:00:00.000Z'));
 
       // Run 2: same referent (keyword: "tracker") but completely different prose.
       // Pre-fix, this minted a new row because rec_key used rec.after prose.
@@ -161,9 +162,9 @@ describe('persistAudit — the memory loop', () => {
         title: 'Include the word tracker in your subtitle copy',
         after: 'Tracker - Budget Planner',
       });
-      await persistAudit(h.client, persistArgs(l, report([reworded]), '2026-06-20T00:00:00.000Z'));
+      await persistAudit(h.client, 'tenant-test', persistArgs(l, report([reworded]), '2026-06-20T00:00:00.000Z'));
 
-      const ledger = unwrap(await h.client.ledger('1', 'us'));
+      const ledger = unwrap(await h.client.ledger('tenant-test', '1', 'us'));
       expect(ledger).toHaveLength(1); // ← must collapse, not duplicate
       expect(ledger[0]!.status).toBe('proposed');
     } finally {
@@ -176,19 +177,20 @@ describe('persistAudit — the memory loop', () => {
     try {
       const l = listingWith({ subtitle: null });
       // Audit 1: raise the rec.
-      await persistAudit(h.client, persistArgs(l, report([rec({})]), '2026-06-01T00:00:00.000Z'));
-      let ledger = unwrap(await h.client.ledger('1', 'us'));
+      await persistAudit(h.client, 'tenant-test', persistArgs(l, report([rec({})]), '2026-06-01T00:00:00.000Z'));
+      let ledger = unwrap(await h.client.ledger('tenant-test', '1', 'us'));
       expect(ledger).toHaveLength(1);
       // The operator dismisses it.
-      await h.client.upsertRecommendation({ ...ledger[0]!, status: 'dismissed' });
+      await h.client.upsertRecommendation('tenant-test', { ...ledger[0]!, status: 'dismissed' });
 
       // Audit 2: the model re-proposes the exact same suggestion (same rec_key).
       const memo = await persistAudit(
         h.client,
+        'tenant-test',
         persistArgs(l, report([rec({})]), '2026-06-20T00:00:00.000Z'),
       );
 
-      ledger = unwrap(await h.client.ledger('1', 'us'));
+      ledger = unwrap(await h.client.ledger('tenant-test', '1', 'us'));
       expect(ledger).toHaveLength(1);
       expect(ledger[0]!.status).toBe('dismissed'); // ← NOT re-opened to 'proposed'
       // ...and the re-raise is surfaced as a contradiction, never silently dropped.
@@ -203,9 +205,9 @@ describe('persistAudit — the memory loop', () => {
     try {
       const l = listingWith({ subtitle: null });
       // Audit 1: raise "add tracker", operator dismisses it.
-      await persistAudit(h.client, persistArgs(l, report([rec({})]), '2026-06-01T00:00:00.000Z'));
-      let ledger = unwrap(await h.client.ledger('1', 'us'));
-      await h.client.upsertRecommendation({ ...ledger[0]!, status: 'dismissed' });
+      await persistAudit(h.client, 'tenant-test', persistArgs(l, report([rec({})]), '2026-06-01T00:00:00.000Z'));
+      let ledger = unwrap(await h.client.ledger('tenant-test', '1', 'us'));
+      await h.client.upsertRecommendation('tenant-test', { ...ledger[0]!, status: 'dismissed' });
 
       // Audit 2: model rewords the same suggestion (same referent: keyword "tracker")
       // but uses completely different title and after-text prose.
@@ -218,10 +220,11 @@ describe('persistAudit — the memory loop', () => {
       });
       const memo = await persistAudit(
         h.client,
+        'tenant-test',
         persistArgs(l, report([reworded]), '2026-06-20T00:00:00.000Z'),
       );
 
-      ledger = unwrap(await h.client.ledger('1', 'us'));
+      ledger = unwrap(await h.client.ledger('tenant-test', '1', 'us'));
       expect(ledger).toHaveLength(1);
       expect(ledger[0]!.status).toBe('dismissed'); // ← dismissal sticky across rewordings
       expect(memo.contradictions.length).toBeGreaterThan(0); // ← surfaced, not silently dropped
@@ -240,8 +243,8 @@ describe('persistAudit — the memory loop', () => {
     const client = new LibSqlStorageClient(db);
     try {
       const l = listingWith({ subtitle: null });
-      await persistAudit(client, persistArgs(l, report([rec({})]), '2026-06-01T00:00:00.000Z'));
-      await persistAudit(client, persistArgs(l, report([rec({})]), '2026-06-20T00:00:00.000Z'));
+      await persistAudit(client, 'tenant-test', persistArgs(l, report([rec({})]), '2026-06-01T00:00:00.000Z'));
+      await persistAudit(client, 'tenant-test', persistArgs(l, report([rec({})]), '2026-06-20T00:00:00.000Z'));
 
       const result = await db.execute('SELECT rec_id FROM aso_rec_occurrences');
       expect(result.rows).toHaveLength(2);
@@ -345,7 +348,7 @@ describe('identity version monotonicity — Fix 3 regression', () => {
       const l = listingWith({});
 
       // Audit 1: persistAudit writes lite v0.
-      const memo1 = await persistAudit(h.client, persistArgs(l, report([]), '2026-06-01T00:00:00.000Z'));
+      const memo1 = await persistAudit(h.client, 'tenant-test', persistArgs(l, report([]), '2026-06-01T00:00:00.000Z'));
       expect(memo1.identityVersion).toBe(0);
 
       // B2 simulation: append full v1 (as the workflow does when visionWasFresh=true).
@@ -358,14 +361,14 @@ describe('identity version monotonicity — Fix 3 regression', () => {
         tally: [], divergence: 'none', escalate: false, source: 'resolved',
         createdAt: '2026-06-01T00:01:00.000Z',
       };
-      unwrap(await h.client.appendIdentity(fullRow));
+      unwrap(await h.client.appendIdentity('tenant-test', fullRow));
 
       // Audit 2 (images unchanged, visionWasFresh=false → B2 skipped).
-      const memo2 = await persistAudit(h.client, persistArgs(l, report([]), '2026-06-15T00:00:00.000Z'));
+      const memo2 = await persistAudit(h.client, 'tenant-test', persistArgs(l, report([]), '2026-06-15T00:00:00.000Z'));
       expect(memo2.identityVersion).toBe(2); // must advance past full v1
 
       // Audit 3 (unchanged again).
-      const memo3 = await persistAudit(h.client, persistArgs(l, report([]), '2026-06-20T00:00:00.000Z'));
+      const memo3 = await persistAudit(h.client, 'tenant-test', persistArgs(l, report([]), '2026-06-20T00:00:00.000Z'));
       expect(memo3.identityVersion).toBe(3); // must advance past lite v2
 
       // No duplicates: all four written versions are distinct.
@@ -373,7 +376,7 @@ describe('identity version monotonicity — Fix 3 regression', () => {
       expect(new Set(versions).size).toBe(versions.length);
 
       // latestIdentity returns the full row (v1), not the most-recent lite (v3).
-      const latest = unwrap(await h.client.latestIdentity('1', 'us'));
+      const latest = unwrap(await h.client.latestIdentity('tenant-test', '1', 'us'));
       expect(latest?.stage).toBe('full');
       expect(latest?.version).toBe(1);
       expect(latest?.audience).toMatchObject({ description: 'Task managers' });
@@ -435,10 +438,10 @@ describe('expandAddKeywordRec', () => {
       const l = listingWith({});
 
       // Audit 1: rec with "a,b" referent → splits into two rows ("a", "b").
-      await persistAudit(h.client, persistArgs(l, report([
+      await persistAudit(h.client, 'tenant-test', persistArgs(l, report([
         rec({ referent: { kind: 'keyword', value: 'a,b' } }),
       ]), '2026-06-01T00:00:00.000Z'));
-      const ledger1 = unwrap(await h.client.ledger('1', 'us'));
+      const ledger1 = unwrap(await h.client.ledger('tenant-test', '1', 'us'));
       expect(ledger1).toHaveLength(2);
       const keyA = ledger1.find((r) => r.valueKey === 'a');
       const keyB = ledger1.find((r) => r.valueKey === 'b');
@@ -446,10 +449,10 @@ describe('expandAddKeywordRec', () => {
       expect(keyB).toBeDefined();
 
       // Audit 2: standalone "a" rec → must upsert onto the existing "a" row (no new row).
-      await persistAudit(h.client, persistArgs(l, report([
+      await persistAudit(h.client, 'tenant-test', persistArgs(l, report([
         rec({ referent: { kind: 'keyword', value: 'a' } }),
       ]), '2026-06-02T00:00:00.000Z'));
-      const ledger2 = unwrap(await h.client.ledger('1', 'us'));
+      const ledger2 = unwrap(await h.client.ledger('tenant-test', '1', 'us'));
       expect(ledger2).toHaveLength(2); // still 2, not 3
     } finally {
       h.close();

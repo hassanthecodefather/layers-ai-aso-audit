@@ -5,7 +5,7 @@ contracts live elsewhere: [`specification.md`](specification.md) is the *what*,
 [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) is the *how-to-build*. This
 file is the *where-we-are* — read it first, trust the tests over the prose.
 
-_Last updated: 2026-07-08 · spec v1.3.2 · **Phase E complete (400 tests); Phase F base DoD met + F-K5 shipped (437 tests); F-K2 ✅ + F-K3 ✅ shipped (475 tests); F-K4 pending; Identity-confirmation guard (Fix 5) ✅ shipped + live-smoke corrections ✅ — 534 tests, tsc clean both apps**_
+_Last updated: 2026-07-08 · spec v1.3.2 · **Phase E complete (400 tests); Phase F base DoD met + F-K5 shipped (437 tests); F-K2 ✅ + F-K3 ✅ shipped (475 tests); F-K4 pending; Identity-confirmation guard (Fix 5) ✅ shipped + live-smoke corrections ✅ — 534 tests; Phase 6a (auth + Postgres swap + shared rate limiter) ✅ shipped — 584 tests, tsc clean both apps; Phase 6a security hardening ✅ (3 review passes, 23 fixes) + websearch probe correctness ✅**_
 
 Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferred (by design)
 
@@ -20,7 +20,8 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
 | **D** | P4 deep review analysis | ✅ | RSS→500, 15-bucket theme taxonomy + per-version delta, multi-instance graduation; **`other`-bucket embedding dedup** (cosine ≥ 0.85, merge bug fixed); **D3 function-grounded competitors** (identity-seeded → AppKittie topApps → iTunes listings, #1/#2 fixed). §F P4 both paths green. 1 carry-over (#3 re-embed cost) |
 | **E** | P5 cost & courtesy control | ✅ | Gateway chokepoint; governor (count 2000/hr, run-entry 2s, wall-clock 5min); pacer (iTunes ≥3.5s, Retry-After); LibSQL `aso_cache` (iTunes 24h, reviews 2h, appkittie 24h); `observedFromCache` provenance. 400 tests, tsc clean. |
 | **F** | Net-new uplifts (storefront sweep, export, …) | 🚧 | Base DoD met (415/418 tests): storefront sweep + proof regime + Markdown export + F-K1 keyword ranking. F-K2 (competitor review mining), F-K3 (competitor tiering), F-K4 (competitor visual benchmarking), F-K5 (web-search corroboration) still open. |
-| **P6+** | Multi-tenant, ASC, write-path, North Star | ⏸ | planned at their tier, not now |
+| **6a** | Auth + Postgres swap + shared rate limiter | ✅ | JWT auth · `PostgresStorageClient` conformance suite green · `PostgresSharedPacer` two-instance serialization. 584 tests, tsc clean. |
+| **P6b+** | Scale-out, ASC, write-path, North Star | ⏸ | planned at their tier, not now |
 
 ## Identity-confirmation guard (Fix 5) — detail
 
@@ -51,6 +52,49 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
 | 7 | Re-audit silently accepted contested override (challenge never re-fired) | `confirmStep`: re-suspend when `decision === null && overrodeEvidence && !overrideAcknowledged`; fix `confirmAnyway` guard to allow `pendingDecision === null` |
 
 **Also added:** "Previously confirmed" banner (re-audit lightweight card); "Change identity" button (`reopenIdentity` force-fresh resolve).
+
+## Phase 6a — detail
+
+**Status: ✅ shipped** (branch `phase-6a-multi-tenant`, 584 tests / tsc clean). Specs: [`docs/superpowers/specs/2026-07-08-6a-postgres-swap-design.md`](docs/superpowers/specs/2026-07-08-6a-postgres-swap-design.md) + [`docs/superpowers/specs/2026-07-08-6a-shared-limiter-design.md`](docs/superpowers/specs/2026-07-08-6a-shared-limiter-design.md). Plans: [`docs/superpowers/plans/2026-07-08-6a-postgres-swap.md`](docs/superpowers/plans/2026-07-08-6a-postgres-swap.md) + [`docs/superpowers/plans/2026-07-08-6a-shared-limiter.md`](docs/superpowers/plans/2026-07-08-6a-shared-limiter.md).
+
+### 6a Auth (prior session)
+
+JWT-based authentication: signup / login / logout / refresh (token rotation), HMAC-signed JWTs, refresh-token rotation, cross-tenant IDOR fix, timing-attack mitigation via constant-time compare, frontend auth gate. `getUserStore()` stays LibSQL; tenant isolation confirmed by conformance suite.
+
+### 6a Postgres Swap
+
+| Component | What shipped | Lives in |
+|---|---|---|
+| **Infrastructure** | Docker Compose (`postgres:17`), healthcheck via `pg_isready`; `DATABASE_URL` / `DATABASE_TEST_URL` env vars | `compose.yml`, `.env` |
+| **Migration runner** | `runPgMigrations(sql)` applies shared `MIGRATIONS` + `PG_ONLY_MIGRATIONS` (PG-only DDL: `TIMESTAMPTZ`, `ADD COLUMN IF NOT EXISTS` via regex, `aso_competitor_tombstones` PK rebuild to include `tenant_id`) | `memory/pg-migrate.ts` |
+| **Storage client** | `PostgresStorageClient` — all 10 `StorageClient` methods via postgres.js tagged-template SQL | `memory/postgres-storage-client.ts` |
+| **Conformance suite** | Schema-per-test-run isolation; all conformance tests pass against Postgres | `memory/postgres-storage-client.test.ts` |
+| **Factory** | `getStorage()` returns `PostgresStorageClient` when `DATABASE_URL` set, `LibSqlStorageClient` otherwise; `getPgSql()` singleton | `memory/index.ts` |
+| **Boot** | Postgres migration runs eagerly at startup from `mastra/index.ts` when `DATABASE_URL` present | `mastra/index.ts` |
+
+**`getUserStore()` and Mastra's `LibSQLStore` remain on LibSQL throughout** — auth + workflow state are not affected by the swap.
+
+**Key bugs caught by conformance suite and final review:**
+- `maxIdentityVersion` returned 0 for empty table (should be −1) → `COALESCE(MAX(version), -1)`
+- `latestIdentity` sorted by version only → add `human_confirmed`-first + `full`-stage-first ordering
+- Nullable recommendation fields returning `undefined` (`.nullable()` rejects `undefined`) → return `null`
+- Optional snapshot blobs stored as JSON `"null"` string → stored as SQL NULL
+- `aso_competitor_tombstones` PK missing `tenant_id` → cross-tenant tombstone collision → added PK rebuild in `PG_ONLY_MIGRATIONS`
+- `#parseIdentity` `niche`/`nicheBand`/`audience` returning `undefined` instead of `null` → Zod `.nullable()` rejection in production → fixed to `null`
+
+### 6a Shared Rate Limiter
+
+`PostgresSharedPacer` replaces the process-local `SerialPacer` when `DATABASE_URL` is set. Uses `SELECT … FOR UPDATE` inside a `sql.begin()` transaction to serialize slot claims across multiple server instances, keeping the aggregate Apple API call rate within the ~20 calls/min ceiling.
+
+| Component | What shipped | Lives in |
+|---|---|---|
+| **Slot table** | `aso_rate_slots (key TEXT PRIMARY KEY, next_allowed_at TIMESTAMPTZ)` seeded with `'itunes'` row | `memory/pg-migrate.ts` (`PG_ONLY_MIGRATIONS`) |
+| **Pacer** | `PostgresSharedPacer` — `wait(retryAfterMs?)` claims a slot atomically, sleeps only after the transaction commits; `reset()` is a no-op | `cost/postgres-pacer.ts` |
+| **Factory** | `getPacer()` returns `PostgresSharedPacer` when `DATABASE_URL` set, `SerialPacer` otherwise; pacer uses its own connection pool (does not share `getPgSql()`) | `cost/pacer.ts` |
+| **Tests** | Sequential spacing ≥ 3500ms; concurrent callers serialize (the §F DoD gate) | `cost/postgres-pacer.test.ts` |
+
+**Known gaps / deferred:**
+- **6a entity-shared cache** — still deferred; cache is process-local for now.
 
 ## Phase D — detail
 
@@ -185,6 +229,62 @@ Phase A carry-overs: **all closed in B4** (applied-detection extended, escalate 
 **Post-review fixes (final whole-branch review):** B2/B3 vision calls now gated on `visionWasFresh` — they only run when `selectVisionResult` returned null (images changed), so unchanged re-audits skip B2/B3 calls entirely. `pHashDistance.confidence` is `'inferred'` when competitor icon URLs are empty (placeholder 64 is not an observed measurement). Identity row de-dup is resolved by the same gate. Then the **B5 live-integration hardening** (above) closed the real-vision-path honesty gaps. Suite is now **365 tests** green (3 live smokes skipped).
 
 **Snapshot blob round-trip fix (`4393c35` + `845de56`) — corrects the Phase-B/C reuse record.** Both optional snapshot blobs (`visionResult`, `candidateResult`) were silently writing `null` to their columns (pass-through omission in `persistAudit` + `?? null` in the store), so `selectVisionResult` / `selectCandidateResult` always read empty → **vision reuse was dead through all of Phase B** (every re-audit re-called Gemini vision) and candidate reuse was dead in C4. The unit tests missed it (they pass in-memory snapshots, never the DB round-trip). Now both are correctly persisted, and `storageClientConformance` has explicit **put→latest round-trip guards** for each blob (so it can't silently regress, and the guards run against Postgres at 6a).
+
+## Code review — Phase 6a security pass (2026-07-08)
+
+11 findings reviewed (1 refuted); 8 fixed, 2 documented as known limitations:
+
+| # | File | Severity | Fix |
+|---|---|---|---|
+| 1 | `mastra/routes.ts:260` | Critical | Reject unknown `runId` — `pendingRuns` is in-memory; post-restart rehydration would let any tenant resume any run. Users must re-identify after a restart. |
+| 2 | `auth/token.ts:16` | Critical | `jwtVerify` now passes `{ algorithms: ['HS256'] }` — prevents algorithm substitution attacks. |
+| 3 | `memory/migrate.ts:162` | High | Added `CREATE UNIQUE INDEX aso_refresh_tokens_token_hash` — prevents duplicate token_hash rows from surviving revocation. |
+| 4 | `cost/postgres-pacer.ts:19` | High | **By design.** Global `'itunes'` slot is correct: Apple bans the server IP, not per-tenant. One burst from any tenant counts against the shared ceiling. Fairness queuing is a future feature. |
+| 5 | `audit-workflow.ts:322` | High | `tenantId ?? 'default'` replaced with an explicit throw — a missing `identifyStep` result now fails loudly instead of silently writing all data to a phantom `'default'` tenant. |
+| 6 | `libsql-storage-client.ts:346` | High | **LibSQL limitation.** `aso_competitor_tombstones` PK is `(app_id, country, competitor_app_id)` and SQLite cannot rebuild it. The Postgres path already has the correct 4-col PK via `PG_ONLY_MIGRATIONS`. On LibSQL, a tombstone from any tenant blocks the same competitor for all tenants (beta single-tenant path, acceptable). |
+| 7 | `libsql-storage-client.ts:237` | Medium | `INSERT OR IGNORE` → `ON CONFLICT DO UPDATE SET was_dismissed = MAX(was_dismissed, excluded.was_dismissed)` — dismissal state is no longer silently dropped on an existing row. Same fix applied to `postgres-storage-client.ts` using `GREATEST()`. |
+| 8 | `libsql-storage-client.ts:141` | Medium | Added `target_field = excluded.target_field` to `upsertRecommendation` DO UPDATE — stale slot label no longer persists. Same fix applied to `postgres-storage-client.ts`. |
+| 9 | `memory/pg-migrate.ts:20` | Medium | Replaced two separate ALTER TABLE statements with a single PL/pgSQL DO block — the `IF NOT EXISTS` + `EXCEPTION WHEN others` guard makes concurrent startup idempotent. |
+| 10 | `cost/pacer.ts:65` | Medium | `postgres(dbUrl, { max: 2 })` — limits the pacer's independent pool to 2 connections (one active FOR UPDATE tx + one queued) vs. the default 10, keeping combined pool count bounded. |
+
+## Code review — Phase 6a security pass 2 (2026-07-08)
+
+7 findings reviewed (1 refuted); 6 fixed, 1 known structural limitation:
+
+| # | File | Severity | Fix |
+|---|---|---|---|
+| 1 | `auth/user-store.ts:findAndConsumeRefreshToken` | Critical | TOCTOU in refresh-token rotation: two concurrent requests could both pass `revoked_at IS NULL`. Fixed with atomic `UPDATE … RETURNING … WHERE revoked_at IS NULL AND expires_at > ?` — no transaction needed; SQLite's row-level compare-and-swap ensures only one caller wins. |
+| 2 | `auth/routes.ts:49` | High | Concurrent signup race (both requests pass `findUserByEmail` before either INSERT commits): wrapped `createUser` in try/catch, maps UNIQUE constraint violation → 409. |
+| 3 | `memory/migrate.ts` | High | `getCache()` opened a new LibSQL connection without running migrations — `aso_cache` table absent in Postgres mode. Added `runMigrations(db)` fire-and-forget call in `cost/cache.ts:getCache`. |
+| 4 | `sources/function-competitors.ts` | High | `tenantId: string = 'default'` silent fallback replaced with required `tenantId: string` in both `fetchFunctionGroundedCompetitors` and `fetchEvidenceCompetitors`. `audit-workflow.ts` updated to pass real tenantId; call sites in `function-competitors.test.ts` updated with `'test-tenant'`. |
+| 5 | `compose.yml` | Medium | Hardcoded `POSTGRES_PASSWORD: aso` replaced with `${PGPASSWORD:-aso}` (and same for `PGUSER`, `PGDATABASE`) — credentials overrideable via env without editing the file. |
+| 6 | `auth/token.ts` | **Refuted** | The dummy bcrypt hash `$2b$12$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ012345` is a valid `$2b$12$` string — `verifyPassword` runs a full bcrypt comparison and the login timing guard works correctly. No fix needed. |
+| 7 | `memory/libsql-storage-client.ts` + `postgres-storage-client.ts` | Medium | `upsertRecommendation` ON CONFLICT DO UPDATE was missing `target_field`, `superseded_by`, `applied_at`, `proof_regime` columns — stale values persisted after an update. Added all four to both clients. |
+
+## Code review — Phase 6a security pass 3 (2026-07-08)
+
+8 findings reviewed (1 plausible, 2 refuted); 8 fixed:
+
+| # | File | Severity | Fix |
+|---|---|---|---|
+| 1 | `auth/user-store.ts:87` | Critical | Reuse-detection SELECT fired on legitimately concurrent refresh (two tabs racing on the same token) → forced logout of all sessions. Fixed with 30-second grace window: `AND revoked_at < graceCutoff` distinguishes concurrent refresh (revoked_at just now) from genuine stale-token replay. |
+| 2 | `memory/pg-migrate.ts:33` | High | `EXCEPTION WHEN others THEN NULL` swallowed ALL Postgres errors — constraint violations from pre-existing dirty data silently left the PK unrebuilt. Narrowed to `EXCEPTION WHEN duplicate_object OR duplicate_table OR lock_not_available THEN NULL` (concurrent-startup races only). Applied to both DO blocks. |
+| 3 | `memory/migrate.ts:171` | High | `CREATE UNIQUE INDEX` halted migration runner on dirty-data DBs with pre-existing duplicate token_hash rows, skipping all subsequent steps. Added `DELETE … WHERE id NOT IN (SELECT id FROM (ROW_NUMBER() OVER PARTITION BY token_hash …) WHERE rn = 1)` immediately before the index — works on both SQLite and Postgres, no-op on clean DBs. |
+| 4 | `cost/cache.ts:95` | High | `runMigrations(db)` fire-and-forget — first-request `cache.set()` calls raced the migration and silently failed. Threaded the migration promise into `LibSqlCache` constructor; `set()` now awaits `#ready` before writing. `get()` is unaffected (a miss on a missing table is equivalent to a miss). |
+| 5 | `auth/routes.ts:62` | Medium | SQLite-only error string check (`UNIQUE constraint failed`) missed Postgres UNIQUE violations (error code `23505`) — concurrent signup race still returned 500 in Postgres mode. Added `code === '23505'` branch. |
+| 6 | `libsql-storage-client.ts:141` + `postgres-storage-client.ts:77` | Medium | `upsertRecommendation` ON CONFLICT SET was missing `dimension` and `intent` — a recommendation re-raised after a taxonomy reclassification retained stale `dimension`/`intent`. Added both columns to both clients. |
+| 7 | `cost/pacer.ts:67` | Medium (plausible) | Pacer Postgres pool `max:2` could leave a 3rd concurrent caller queueing without a FOR UPDATE lock. Increased to `max:10` (postgres.js default); the FOR UPDATE tx is fast (sleep is outside the transaction), so connections return quickly. |
+| 8 | `memory/postgres-storage-client.ts:108` + `pg-migrate.ts` | Medium | `recordOccurrence` ON CONFLICT `(rec_id, snapshot_id)` missing `tenant_id` — two tenants with the same `(rec_id, snapshot_id)` (rec_id is a UUID from a per-tenant table, so astronomically unlikely but structurally wrong) would share one row. Added PK rebuild `DO` block in `pg-migrate.ts` and updated ON CONFLICT to `(tenant_id, rec_id, snapshot_id)`. |
+
+## Websearch probe correctness fixes (2026-07-08)
+
+3 issues found and fixed in `sources/websearch/websearch.ts` (both `TavilyWebSearch` and `ExaWebSearch`):
+
+| # | Issue | Fix |
+|---|---|---|
+| 1 | Cache key hashed the uncapped query while the API call sent the capped query — two queries >400 chars sharing the same 400-char prefix produced different cache keys but made identical API calls, paying double. | `queryKey(cappedQuery)` instead of `queryKey(query)` in both providers. |
+| 2 | Non-OK response body was never drained — repeated 429s/5xxs progressively exhausted the HTTP connection pool (undici marks the connection as "response body pending"). | Added `await res.body?.cancel()` before the errored return in both providers. |
+| 3 | `state` was derived for the log but the return statements re-evaluated `genuine.length` independently — adding a third state would produce a log/return mismatch. | `state` is now used directly in both the log and the returns (`if (state === 'searched_and_empty') return ok({ state })`). |
 
 ## Known gaps / deviations (conscious, not bugs)
 

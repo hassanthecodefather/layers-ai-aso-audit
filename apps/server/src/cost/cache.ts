@@ -11,7 +11,7 @@
  */
 
 import type { Client } from '@libsql/client';
-import { openDb } from '../memory/migrate';
+import { openDb, runMigrations } from '../memory/migrate';
 
 export type EntityKey = string; // `${upstream}:${entityId}`
 
@@ -39,8 +39,15 @@ export class NoOpCache implements Cache {
 export class LibSqlCache implements Cache {
   #db: Client;
   #hits = 0;
+  // Resolved once the aso_cache table exists. set() awaits this before writing
+  // so the first-boot race between migration and first request is closed.
+  // get() does not await — a miss on a missing table is equivalent to a miss.
+  readonly #ready: Promise<void>;
 
-  constructor(db: Client) { this.#db = db; }
+  constructor(db: Client, ready: Promise<void> = Promise.resolve()) {
+    this.#db = db;
+    this.#ready = ready;
+  }
 
   async get<T>(key: EntityKey): Promise<CacheEntry<T> | null> {
     const now = new Date().toISOString();
@@ -66,6 +73,7 @@ export class LibSqlCache implements Cache {
     const now = new Date().toISOString();
     const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
     try {
+      await this.#ready;
       await this.#db.execute({
         sql: `INSERT INTO aso_cache (key, value, fetched_at, expires_at)
               VALUES (?, ?, ?, ?)
@@ -90,7 +98,11 @@ export function getCache(): Cache {
   if (!_cache) {
     const url = process.env.ASO_DB_URL?.trim() || 'file:./aso-audit.db';
     const db = openDb(url);
-    _cache = new LibSqlCache(db);
+    // Pass the migration promise into LibSqlCache so set() awaits table existence
+    // before writing — closes the first-boot race where Postgres mode skips the
+    // LibSQL startup migration and the cache table may not exist yet.
+    const ready = runMigrations(db).catch((e) => console.error('[cache] migration failed:', e));
+    _cache = new LibSqlCache(db, ready);
   }
   return _cache;
 }

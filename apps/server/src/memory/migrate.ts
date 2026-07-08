@@ -109,11 +109,10 @@ export const MIGRATIONS: readonly string[] = [
   )`,
 
   // ── Phase B1: Vision Pass — add vision_result column ────────────────────────
-  // Append-only, idempotent: ALTER TABLE fails silently if the column already
-  // exists in SQLite (PRAGMA table_info guard would be more portable but SQLite
-  // does not support IF NOT EXISTS on ALTER TABLE). We rely on the try/catch in
-  // runMigrations to make this safe on repeated boots.
-  // NOTE: This migration is wrapped specially in runMigrations below.
+  // Append-only ALTER TABLE statements are run with error suppression in
+  // runMigrations — SQLite does not support IF NOT EXISTS on ALTER TABLE;
+  // the LibSQL runner catches "duplicate column" errors so this is safe to
+  // re-run on an existing DB.
   `ALTER TABLE aso_listing_snapshots ADD COLUMN vision_result_json TEXT`,
 
   // ── Phase C4: Keyword Candidates — add candidate_result column ──────────────
@@ -145,8 +144,75 @@ export const MIGRATIONS: readonly string[] = [
   // ── Phase B-Vision: Identity override evidence marker ─────────────────────────
   // Stores the evidence a human override contested so later runs can re-surface
   // the conflict. Added to the CREATE TABLE above for fresh DBs; this ALTER
-  // handles existing databases (idempotent via runMigrations error-suppression).
+  // handles existing databases (error-suppressed in runMigrations for LibSQL;
+  // pg-migrate.ts injects IF NOT EXISTS for Postgres).
   `ALTER TABLE aso_identity_versions ADD COLUMN overrode_evidence_json TEXT`,
+
+  // ── Phase 6a: Auth — user accounts + refresh tokens ──────────────────────────
+  `CREATE TABLE IF NOT EXISTS aso_users (
+    id            TEXT PRIMARY KEY,
+    email         TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    created_at    TEXT NOT NULL
+  )`,
+
+  `CREATE TABLE IF NOT EXISTS aso_refresh_tokens (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES aso_users(id) ON DELETE CASCADE,
+    token_hash  TEXT NOT NULL,
+    expires_at  TEXT NOT NULL,
+    revoked_at  TEXT,
+    created_at  TEXT NOT NULL
+  )`,
+
+  `CREATE INDEX IF NOT EXISTS aso_refresh_tokens_user
+    ON aso_refresh_tokens (user_id, revoked_at)`,
+
+  // Remove duplicate token_hash rows before creating the UNIQUE INDEX.
+  // On a clean DB this is a no-op; on a pre-fix dev/beta DB that accepted
+  // duplicate inserts it prevents the CREATE UNIQUE INDEX from failing and
+  // halting all subsequent migrations. Keep the newest row per hash
+  // (latest created_at, then latest id as a tie-breaker). Uses ROW_NUMBER()
+  // window function which is supported in SQLite 3.25+ and Postgres.
+  `DELETE FROM aso_refresh_tokens WHERE id NOT IN (
+    SELECT id FROM (
+      SELECT id,
+             ROW_NUMBER() OVER (PARTITION BY token_hash ORDER BY created_at DESC, id DESC) AS rn
+      FROM aso_refresh_tokens
+    ) ranked WHERE rn = 1
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS aso_refresh_tokens_token_hash
+    ON aso_refresh_tokens (token_hash)`,
+
+  // ── Phase 6a: Tenant isolation — add tenant_id to all aso_* data tables ──────
+  // DEFAULT 'default' lets all existing single-user beta rows migrate forward.
+  `ALTER TABLE aso_listing_snapshots     ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`,
+  `ALTER TABLE aso_recommendations       ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`,
+  `ALTER TABLE aso_rec_occurrences       ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`,
+  `ALTER TABLE aso_identity_versions     ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`,
+  `ALTER TABLE aso_competitor_tombstones ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'`,
+
+  // Fix the aso_recommendations unique index to include tenant_id, so two
+  // tenants auditing the same app do not corrupt each other's recommendations
+  // via the ON CONFLICT clause.
+  `DROP INDEX IF EXISTS aso_recommendations_reckey`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS aso_recommendations_tenant_reckey
+    ON aso_recommendations (tenant_id, app_id, country, rec_key)`,
+
+  // Composite indexes for fast per-tenant lookups (supplement existing indexes)
+  `CREATE INDEX IF NOT EXISTS aso_listing_snapshots_tenant_app
+    ON aso_listing_snapshots (tenant_id, app_id, country, fetched_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS aso_recommendations_tenant_app
+    ON aso_recommendations (tenant_id, app_id, country)`,
+  `CREATE INDEX IF NOT EXISTS aso_identity_versions_tenant_app
+    ON aso_identity_versions (tenant_id, app_id, country, version DESC)`,
+  `CREATE INDEX IF NOT EXISTS aso_competitor_tombstones_tenant_app
+    ON aso_competitor_tombstones (tenant_id, app_id, country)`,
+
+  // aso_rec_occurrences has no app_id/country (it joins via rec_id → aso_recommendations);
+  // index tenant_id alone for any future per-tenant queries.
+  `CREATE INDEX IF NOT EXISTS aso_rec_occurrences_tenant
+    ON aso_rec_occurrences (tenant_id)`,
 ];
 
 /** Open a raw LibSQL client against the given url (defaults to the app DB). */

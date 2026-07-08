@@ -309,7 +309,12 @@ The interactive half of the spec's identity-escalation logic (the A2 line above 
 
 ## Deferred (planned at their tier, not now)
 
-- **P6 (→1K):** 6a correctness gates (auth, row-level isolation, singletons→Redis shared limiter, LibSQL→Postgres swap *via the same StorageClient suite*, entity-shared cache) then 6b scale-out (durable queue, horizontal workers, observability, golden-set eval). The **6b golden set** is also where §C/§E thresholds get formally retuned.
+- **P6 (→1K):**
+  - ✅ **6a auth** — JWT auth (signup / login / logout / refresh, token rotation), cross-tenant IDOR fix, timing-attack mitigation, frontend auth gate. Row-level isolation confirmed by conformance suite.
+  - ✅ **6a Postgres swap** — `PostgresStorageClient` validated by the engine-agnostic conformance suite; `pg-migrate.ts` (shared + PG-only migrations, idempotent re-run via `ADD COLUMN IF NOT EXISTS` regex); Docker Compose (`postgres:17`); `getStorage()` factory (Postgres when `DATABASE_URL` set, LibSQL fallback). `getUserStore()` and Mastra `LibSQLStore` stay LibSQL. `aso_competitor_tombstones` PK rebuilt to include `tenant_id` (PG-only migration). 584 tests, tsc clean.
+  - ✅ **6a shared rate limiter** — `PostgresSharedPacer` (`SELECT … FOR UPDATE` inside a transaction serializes slot claims across instances); `aso_rate_slots` table (`key TEXT PRIMARY KEY, next_allowed_at TIMESTAMPTZ`); `getPacer()` factory (Postgres when `DATABASE_URL` set, `SerialPacer` fallback). Two instances share one limiter: aggregate iTunes rate ≤ ceiling. Pacer uses its own connection pool, separate from storage.
+  - ⬜ **6a entity-shared cache** — deferred; still Redis-shaped.
+  - ⬜ **6b scale-out** — durable queue, horizontal workers, observability (OTLP/Mastra Cloud), golden-set eval. The **6b golden set** is also where §C/§E thresholds get formally retuned.
 - **P7 (→5K):** ASC integration (JWT/ES256 + Analytics Reports request→instance→poll — *verify lifecycle at kickoff*), continuous tracking, real measurement, cost/unit-economics.
 - **P8:** write path — pending-version bundle, submit→review→rejection state machine, stop-loss, `superseded_by` migration on first taxonomy bump.
 - **North Star:** daily digest, PPO-proven visual wins, self-measurement.
