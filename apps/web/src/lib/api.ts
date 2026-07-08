@@ -23,6 +23,7 @@ async function authedFetch(url: string, init: RequestInit = {}): Promise<Respons
   const res = await fetch(url, { ...init, headers });
 
   if (res.status === 401 && _refreshToken) {
+    res.body?.cancel();
     const newToken = await _refreshToken();
     if (newToken) {
       headers.set('Authorization', `Bearer ${newToken}`);
