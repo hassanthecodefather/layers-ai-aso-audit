@@ -66,7 +66,7 @@ export const authRoutes = [
       });
 
       setRefreshCookie(c, rawRefresh);
-      return c.json({ userId, accessToken });
+      return c.json({ userId, accessToken }, 201);
     },
   }),
 
