@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import type postgres from 'postgres';
 import {
   insertJob, claimNextJob, getJobByRunId,
-  markJobSuspended, markJobPending, markJobDone,
+  markJobRunning, markJobSuspended, markJobPending, markJobDone,
   markJobFailed, markJobRequeued, recoverStaleJobs,
 } from './job-store';
 
@@ -73,6 +73,14 @@ describe('markJobSuspended', () => {
   it('calls sql with the job id and payload', async () => {
     const { sql, fn } = makeSql([]);
     await markJobSuspended(sql, 'job_1', '{"summary":{}}');
+    expect(fn).toHaveBeenCalled();
+  });
+});
+
+describe('markJobRunning', () => {
+  it('calls sql with the job id and step name', async () => {
+    const { sql, fn } = makeSql([]);
+    await markJobRunning(sql, 'job_1', 'identify-app');
     expect(fn).toHaveBeenCalled();
   });
 });
