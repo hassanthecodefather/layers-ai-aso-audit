@@ -121,7 +121,7 @@ export async function markJobDone(
   await sql`
     UPDATE aso_audit_jobs
     SET status = 'done', result_json = ${resultJson}, completed_at = NOW()
-    WHERE id = ${id}
+    WHERE id = ${id} AND status = 'running'
   `;
 }
 
@@ -131,7 +131,7 @@ export async function markJobFailed(
   await sql`
     UPDATE aso_audit_jobs
     SET status = 'failed', error_message = ${errorMessage}, completed_at = NOW()
-    WHERE id = ${id}
+    WHERE id = ${id} AND status = 'running'
   `;
 }
 

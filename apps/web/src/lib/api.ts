@@ -82,7 +82,7 @@ export async function confirmAudit(params: {
   identityDecision?: IdentityDecision | null;
   overrideAcknowledged?: boolean;
   fresh?: boolean;
-}): Promise<void> {
+}): Promise<{ alreadyRunning?: boolean }> {
   const res = await authedFetch('/audit/confirm', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -93,10 +93,16 @@ export async function confirmAudit(params: {
       fresh: params.fresh ?? false,
     }),
   });
+  if (res.status === 409) {
+    // Job is already running (concurrent duplicate click) — not an error.
+    res.body?.cancel();
+    return { alreadyRunning: true };
+  }
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(data.error ?? 'Could not confirm audit.');
   }
+  return {};
 }
 
 export interface Health {

@@ -45,6 +45,7 @@ export async function executeJob(job: AuditJob, mastra: Mastra, sql: postgres.Sq
 
     if (!job.resumeDataJson) {
       // Fresh run — run start from beginning through to first suspend or completion.
+      await markJobRunning(sql, job.id, 'identify-app');
       result = await run.start({
         inputData: {
           url: job.url,
