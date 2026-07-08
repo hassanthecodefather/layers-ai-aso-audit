@@ -8,6 +8,13 @@ import { MIGRATIONS } from './migrate';
  */
 export const PG_ONLY_MIGRATIONS: readonly string[] = [
   // Phase 6a: rate slot table — added by shared-limiter plan
+  `CREATE TABLE IF NOT EXISTS aso_rate_slots (
+    key             TEXT PRIMARY KEY,
+    next_allowed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `INSERT INTO aso_rate_slots (key, next_allowed_at)
+     VALUES ('itunes', NOW())
+     ON CONFLICT (key) DO NOTHING`,
   // Fix aso_competitor_tombstones PRIMARY KEY to include tenant_id for correct cross-tenant isolation.
   // LibSQL does not support DROP/ADD CONSTRAINT so this must live here, not in MIGRATIONS.
   `ALTER TABLE aso_competitor_tombstones DROP CONSTRAINT IF EXISTS aso_competitor_tombstones_pkey`,
