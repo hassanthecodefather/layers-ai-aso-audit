@@ -34,6 +34,28 @@ afterEach(() => {
 });
 
 describe('PassthroughGateway', () => {
+  it('emits a provider_call log line on a successful upstream fetch', async () => {
+    const { logger } = await import('../telemetry');
+    const logSpy = vi.spyOn(logger, 'info');
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response('{"results":[]}', { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
+
+    const gw = new PassthroughGateway();
+    await gw.fetch('https://example.com/api', {
+      kind: 'app', upstream: 'itunes', tenantId: 'tenant_test',
+    });
+
+    const call = logSpy.mock.calls.find(([obj]) => (obj as any)?.event === 'provider_call');
+    expect(call).toBeDefined();
+    const logObj = call![0] as any;
+    expect(logObj.provider).toBe('itunes');
+    expect(logObj.status).toBe('ok');
+    expect(typeof logObj.durationMs).toBe('number');
+    logSpy.mockRestore();
+  });
+
   it('passes the fetch through to the underlying global fetch with same URL and init', async () => {
     const mockResponse = new Response('ok', { status: 200 });
     const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(mockResponse);

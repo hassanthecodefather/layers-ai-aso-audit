@@ -11,6 +11,7 @@ import { createHash } from 'node:crypto';
 import { getGovernor, GovernorDenialError } from './governor';
 import { getPacer } from './pacer';
 import { getCache } from './cache';
+import { logger } from '../telemetry';
 
 export { GovernorDenialError } from './governor';
 
@@ -35,6 +36,8 @@ export interface GatewayCall {
   entityId?: string;
   /** Set true for --fresh runs to bypass cache lookup. */
   skipCache?: boolean;
+  /** Audit tenant — threaded through for telemetry. */
+  tenantId?: string;
 }
 
 export interface SourceGateway {
@@ -98,6 +101,8 @@ export class PassthroughGateway implements SourceGateway {
       await getPacer().wait();
     }
 
+    const startMs = Date.now();
+
     // 5a. Cacheable path: register an in-flight promise BEFORE awaiting the fetch
     //     so any concurrent caller that passes step 2 after us coalesces correctly.
     if (key) {
@@ -111,9 +116,13 @@ export class PassthroughGateway implements SourceGateway {
       this.#inFlight.set(key, bodyPromise); // synchronous — before any await
       try {
         const text = await bodyPromise;
+        this.#logProviderCall(call, startMs, 'ok', { httpStatus: 200 });
         return new Response(text, { status: 200, headers: { 'Content-Type': 'application/json' } });
       } catch (e) {
-        if (e instanceof Response) return e; // non-OK HTTP: pass through to fetchWithRetry
+        if (e instanceof Response) {
+          this.#logProviderCall(call, startMs, 'error', { httpStatus: (e as Response).status });
+          return e; // non-OK HTTP: pass through to fetchWithRetry
+        }
         throw e; // network / timeout error
       } finally {
         this.#inFlight.delete(key);
@@ -121,7 +130,22 @@ export class PassthroughGateway implements SourceGateway {
     }
 
     // 5b. Non-cacheable path: plain pass-through.
-    return fetch(url, init);
+    const res = await fetch(url, init);
+    this.#logProviderCall(call, startMs, res.ok ? 'ok' : 'error', { httpStatus: res.status });
+    return res;
+  }
+
+  #logProviderCall(call: GatewayCall, startMs: number, status: 'ok' | 'error' | 'timeout', extra: { httpStatus?: number; errorMessage?: string } = {}): void {
+    logger.info({
+      event: 'provider_call',
+      provider: call.upstream,
+      operation: call.kind,
+      durationMs: Date.now() - startMs,
+      status,
+      ...(call.tenantId ? { tenantId: call.tenantId } : {}),
+      ...(extra.httpStatus !== undefined ? { httpStatus: extra.httpStatus } : {}),
+      ...(extra.errorMessage ? { errorMessage: extra.errorMessage } : {}),
+    });
   }
 }
 
