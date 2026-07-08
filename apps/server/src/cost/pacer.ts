@@ -5,6 +5,9 @@
  * stay safely under the ceiling and avoid IP bans.
  */
 
+import postgres from 'postgres';
+import { PostgresSharedPacer } from './postgres-pacer';
+
 const MIN_INTERVAL_MS = 3500; // ~17 calls/min — safely under Apple's ~20/min ceiling
 // Full-jitter: spread calls across [MIN_INTERVAL_MS, MIN_INTERVAL_MS + JITTER_MS]
 // so concurrent callers don't produce a synchronized burst after a shared wait.
@@ -57,7 +60,10 @@ export class SerialPacer implements Pacer {
 let _pacer: Pacer | null = null;
 
 export function getPacer(): Pacer {
-  if (!_pacer) _pacer = new SerialPacer();
+  if (!_pacer) {
+    const dbUrl = process.env.DATABASE_URL;
+    _pacer = dbUrl ? new PostgresSharedPacer(postgres(dbUrl)) : new SerialPacer();
+  }
   return _pacer;
 }
 
