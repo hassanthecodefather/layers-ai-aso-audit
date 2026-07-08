@@ -32,3 +32,25 @@ export function getStorage(
 export function __resetStorageForTests(): void {
   pending = null;
 }
+
+import { UserStore } from '../auth/user-store';
+
+let pendingUserStore: Promise<UserStore> | null = null;
+
+export function getUserStore(
+  url = process.env.ASO_DB_URL?.trim() || 'file:./aso-audit.db',
+): Promise<UserStore> {
+  if (!pendingUserStore) {
+    pendingUserStore = (async () => {
+      const db = openDb(url);
+      await runMigrations(db);
+      return new UserStore(db);
+    })();
+  }
+  return pendingUserStore;
+}
+
+/** Reset — tests only. */
+export function __resetUserStoreForTests(): void {
+  pendingUserStore = null;
+}
