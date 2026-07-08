@@ -147,7 +147,9 @@ export class LibSqlStorageClient implements StorageClient {
          after_text       = excluded.after_text,
          evidence_json    = excluded.evidence_json,
          status           = excluded.status,
+         superseded_by    = excluded.superseded_by,
          last_seen_at     = excluded.last_seen_at,
+         applied_at       = excluded.applied_at,
          proof_regime     = excluded.proof_regime`,
       [
         rec.id,

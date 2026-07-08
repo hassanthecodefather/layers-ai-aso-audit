@@ -89,10 +89,11 @@ describe('§F P1: audit the same app twice', () => {
     const h = await freshClient();
     try {
       // Audit 1: raise "add tracker".
-      unwrap(await h.client.upsertRecommendation(makeRec('add_keyword', 'tracker', { id: 'a1' })));
+      unwrap(await h.client.upsertRecommendation('tenant-test', makeRec('add_keyword', 'tracker', { id: 'a1' })));
       // Audit 2: the SAME suggestion, phrased differently and re-dated.
       unwrap(
         await h.client.upsertRecommendation(
+          'tenant-test',
           makeRec('add_keyword', 'Trackers', {
             id: 'a2',
             body: 'rephrased but the same opportunity',
@@ -100,7 +101,7 @@ describe('§F P1: audit the same app twice', () => {
           }),
         ),
       );
-      const ledger = unwrap(await h.client.ledger(APP, CC));
+      const ledger = unwrap(await h.client.ledger('tenant-test', APP, CC));
       expect(ledger).toHaveLength(1); // ← no duplicate
       expect(ledger[0]!.lastSeenAt).toBe('2026-06-20T00:00:00.000Z'); // ← bumped
     } finally {
@@ -111,9 +112,9 @@ describe('§F P1: audit the same app twice', () => {
   it('two distinct add_keyword recs for the same field survive as two rows', async () => {
     const h = await freshClient();
     try {
-      unwrap(await h.client.upsertRecommendation(makeRec('add_keyword', 'tracker', { id: 'a1' })));
-      unwrap(await h.client.upsertRecommendation(makeRec('add_keyword', 'budget', { id: 'a2' })));
-      const ledger = unwrap(await h.client.ledger(APP, CC));
+      unwrap(await h.client.upsertRecommendation('tenant-test', makeRec('add_keyword', 'tracker', { id: 'a1' })));
+      unwrap(await h.client.upsertRecommendation('tenant-test', makeRec('add_keyword', 'budget', { id: 'a2' })));
+      const ledger = unwrap(await h.client.ledger('tenant-test', APP, CC));
       // Both directions asserted: dedup did NOT collapse two real opportunities.
       expect(ledger).toHaveLength(2);
       expect(new Set(ledger.map((r) => r.valueKey))).toEqual(new Set(['tracker', 'budget']));
@@ -125,8 +126,8 @@ describe('§F P1: audit the same app twice', () => {
   it('contradiction guard fires on a reversed rec read back from the ledger', async () => {
     const h = await freshClient();
     try {
-      unwrap(await h.client.upsertRecommendation(makeRec('add_keyword', 'tracker', { id: 'a1' })));
-      const ledger = unwrap(await h.client.ledger(APP, CC));
+      unwrap(await h.client.upsertRecommendation('tenant-test', makeRec('add_keyword', 'tracker', { id: 'a1' })));
+      const ledger = unwrap(await h.client.ledger('tenant-test', APP, CC));
       const reversal = makeRec('remove_wasted_term', 'tracker', { id: 'b1' });
       const hit = findContradiction(ledger, reversal);
       expect(hit).not.toBeNull();
@@ -144,8 +145,8 @@ describe('§F P1: audit the same app twice', () => {
     try {
       const dims = [dim('title', 10), dim('subtitle', 0), dim('keywordField', 5)];
       const rep = report(dims);
-      unwrap(await h.client.putSnapshot(snap('snap-1', rep)));
-      const stored = unwrap(await h.client.latestSnapshot(APP, CC));
+      unwrap(await h.client.putSnapshot('tenant-test', snap('snap-1', rep)));
+      const stored = unwrap(await h.client.latestSnapshot('tenant-test', APP, CC));
       expect(stored).not.toBeNull();
 
       // Replay under the live weights, then under a re-tuned column.

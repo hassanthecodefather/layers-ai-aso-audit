@@ -161,7 +161,7 @@ export const auditRoutes = [
         const workflow = mastra.getWorkflow(WORKFLOW_ID);
         const run = await workflow.createRun();
         const reopenIdentity = body?.reopenIdentity === true;
-        const result: any = await run.start({ inputData: { url, reopenIdentity } });
+        const result: any = await run.start({ inputData: { url, reopenIdentity, tenantId: 'default' } });
 
         if (result?.status === 'suspended') {
           const payload = extractSuspendPayload(result);
