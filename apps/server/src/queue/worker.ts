@@ -3,7 +3,7 @@ import type { Mastra } from '@mastra/core';
 import {
   type AuditJob,
   claimNextJob, markJobRunning, markJobSuspended,
-  markJobPending, markJobDone, markJobFailed,
+  markJobDone, markJobFailed,
   markJobRequeued, recoverStaleJobs,
 } from './job-store';
 
@@ -37,10 +37,10 @@ function extractError(result: any): string {
 
 /** Execute one job to completion (or suspension). Does not throw. */
 export async function executeJob(job: AuditJob, mastra: Mastra, sql: postgres.Sql): Promise<void> {
-  const workflow = mastra.getWorkflow('asoAuditWorkflow');
-  const run = await workflow.createRun({ runId: job.runId });
-
   try {
+    const workflow = mastra.getWorkflow('asoAuditWorkflow');
+    const run = await workflow.createRun({ runId: job.runId });
+
     let result: any;
 
     if (!job.resumeDataJson) {
@@ -91,13 +91,19 @@ export function startWorker(mastra: Mastra, sql: postgres.Sql): () => void {
   let stopped = false;
 
   async function loop(): Promise<void> {
-    const recovered = await recoverStaleJobs(sql).catch(() => 0);
+    const recovered = await recoverStaleJobs(sql).catch((e) => {
+      console.error('[worker] recoverStaleJobs failed:', e instanceof Error ? e.message : e);
+      return 0;
+    });
     if (recovered > 0) {
       console.log(`[worker] recovered ${recovered} stale jobs on startup`);
     }
 
     while (!stopped) {
-      const job = await claimNextJob(sql).catch(() => null);
+      const job = await claimNextJob(sql).catch((e) => {
+        console.error('[worker] claimNextJob failed:', e instanceof Error ? e.message : e);
+        return null;
+      });
       if (job) {
         await executeJob(job, mastra, sql);
       } else {
