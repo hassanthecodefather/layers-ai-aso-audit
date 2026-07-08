@@ -11,7 +11,7 @@ import type { VisionResult } from '../vision/types';
  * predate the change. Without this, old snapshots would serve stale scores
  * for dimensions whose scoring formula changed between Phase A and B.
  */
-export const SCORER_VERSION = 'phase-b-v2';
+export const SCORER_VERSION = 'phase-b-v3';
 
 /**
  * True when a VisionResult contains real Gemini-produced critiques.
@@ -241,13 +241,17 @@ export function coarseOrdinalScore(
 ): number | null {
   switch (id) {
     case 'title':
-      if (signals.title.utilizationPct < 20) return 0;
+      if (signals.title.utilizationPct <= 20) return 0;
       return snapToOrdinal(modelScore);
 
     case 'subtitle':
       // Not observable → confidence is 'unavailable'; snapping doesn't matter.
       if (!signals.subtitle.observable) return null;
-      if (signals.subtitle.utilizationPct < 20) return 0;
+      if (signals.subtitle.utilizationPct <= 20) return 0;
+      return snapToOrdinal(modelScore);
+
+    case 'competitive':
+      // Snap to {0, 5, 10} to eliminate run-to-run drift on this model-judged dimension.
       return snapToOrdinal(modelScore);
 
     default:

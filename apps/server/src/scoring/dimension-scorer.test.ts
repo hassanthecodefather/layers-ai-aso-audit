@@ -361,13 +361,11 @@ describe('coarseOrdinalScore — title', () => {
     expect(coarseOrdinalScore('title', 10, title(80))).toBe(10);
   });
 
-  it('deterministic floor: returns 0 when utilizationPct < 20 regardless of model score', () => {
+  it('deterministic floor: returns 0 when utilizationPct <= 20 regardless of model score', () => {
     expect(coarseOrdinalScore('title', 9, title(19))).toBe(0);
     expect(coarseOrdinalScore('title', 7, title(0))).toBe(0);
-  });
-
-  it('does NOT apply the floor at exactly 20 %', () => {
-    expect(coarseOrdinalScore('title', 7, title(20))).toBe(5);
+    // Exactly 20 % (e.g. "Rivian" = 6/30 chars) is still a severe underuse → 0.
+    expect(coarseOrdinalScore('title', 7, title(20))).toBe(0);
   });
 });
 
@@ -402,7 +400,12 @@ describe('coarseOrdinalScore — other dimensions return null', () => {
   it('ratings → null', () => { expect(coarseOrdinalScore('ratings', 7, makeSignals())).toBeNull(); });
   it('icon → null', () => { expect(coarseOrdinalScore('icon', 7, makeSignals())).toBeNull(); });
   it('conversion → null', () => { expect(coarseOrdinalScore('conversion', 7, makeSignals())).toBeNull(); });
-  it('competitive → null', () => { expect(coarseOrdinalScore('competitive', 7, makeSignals())).toBeNull(); });
+});
+
+describe('coarseOrdinalScore — competitive snaps to ordinal', () => {
+  it('score 2 → 0 (poor)', () => { expect(coarseOrdinalScore('competitive', 2, makeSignals())).toBe(0); });
+  it('score 7 → 5 (acceptable)', () => { expect(coarseOrdinalScore('competitive', 7, makeSignals())).toBe(5); });
+  it('score 9 → 10 (excellent)', () => { expect(coarseOrdinalScore('competitive', 9, makeSignals())).toBe(10); });
 });
 
 // ── visionUsable ─────────────────────────────────────────────────────────────
