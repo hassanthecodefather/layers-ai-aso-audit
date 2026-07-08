@@ -3,6 +3,7 @@ import { hashPassword, verifyPassword } from './password';
 import { signAccessToken, verifyAccessToken, generateRefreshToken, hashRefreshToken } from './token';
 import { openDb, runMigrations } from '../memory/migrate';
 import { UserStore } from './user-store';
+import { getAuthenticatedTenantId } from './middleware';
 
 describe('password', () => {
   it('hashPassword returns a bcrypt hash', async () => {
@@ -102,5 +103,35 @@ describe('UserStore', () => {
     expect(await store.findAndConsumeRefreshToken(hashRefreshToken(t1))).toBeNull();
     expect(await store.findAndConsumeRefreshToken(hashRefreshToken(t2))).toBeNull();
     db.close();
+  });
+});
+
+describe('getAuthenticatedTenantId', () => {
+  const SECRET = 'test-secret-that-is-32-chars-long!!';
+
+  it('returns tenantId for valid Bearer token', async () => {
+    process.env.ASO_JWT_SECRET = SECRET;
+    const token = await signAccessToken('user-abc', SECRET);
+    const mockContext = {
+      req: { header: (name: string) => name === 'Authorization' ? `Bearer ${token}` : undefined },
+    } as any;
+    const result = await getAuthenticatedTenantId(mockContext);
+    expect(result).toBe('user-abc');
+  });
+
+  it('returns null for missing Authorization header', async () => {
+    process.env.ASO_JWT_SECRET = SECRET;
+    const mockContext = {
+      req: { header: () => undefined },
+    } as any;
+    expect(await getAuthenticatedTenantId(mockContext)).toBeNull();
+  });
+
+  it('returns null for invalid token', async () => {
+    process.env.ASO_JWT_SECRET = SECRET;
+    const mockContext = {
+      req: { header: () => 'Bearer not.a.valid.token' },
+    } as any;
+    expect(await getAuthenticatedTenantId(mockContext)).toBeNull();
   });
 });

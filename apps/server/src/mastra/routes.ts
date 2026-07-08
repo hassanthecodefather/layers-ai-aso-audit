@@ -6,6 +6,7 @@ import { fetchITunesCore } from '../sources/itunes';
 import { sweepStorefronts, DEFAULT_SWEEP_COUNTRIES } from '../sources/storefront-sweep';
 import { AuditReportSchema } from '../domain/audit';
 import { reportToMarkdown, markdownFilename } from '../export/markdown';
+import { getAuthenticatedTenantId } from '../auth/middleware';
 
 /**
  * Custom HTTP routes that drive the audit workflow for the chat UI.
@@ -112,6 +113,8 @@ export const auditRoutes = [
   registerApiRoute('/audit/export/markdown', {
     method: 'POST',
     handler: async (c) => {
+      const tenantId = await getAuthenticatedTenantId(c);
+      if (!tenantId) return c.json({ error: 'Unauthorized' }, 401);
       try {
         const body = await c.req.json().catch(() => ({}));
         const parsed = AuditReportSchema.safeParse(body?.report);
@@ -134,6 +137,8 @@ export const auditRoutes = [
   registerApiRoute('/audit/health', {
     method: 'GET',
     handler: async (c) => {
+      const tenantId = await getAuthenticatedTenantId(c);
+      if (!tenantId) return c.json({ error: 'Unauthorized' }, 401);
       const llm = getLlmProvider();
       const crawler = getCrawler();
       return c.json({
@@ -152,6 +157,8 @@ export const auditRoutes = [
   registerApiRoute('/audit/identify', {
     method: 'POST',
     handler: async (c) => {
+      const tenantId = await getAuthenticatedTenantId(c);
+      if (!tenantId) return c.json({ error: 'Unauthorized' }, 401);
       try {
         const mastra = c.get('mastra');
         const body = await c.req.json().catch(() => ({}));
@@ -161,7 +168,7 @@ export const auditRoutes = [
         const workflow = mastra.getWorkflow(WORKFLOW_ID);
         const run = await workflow.createRun();
         const reopenIdentity = body?.reopenIdentity === true;
-        const result: any = await run.start({ inputData: { url, reopenIdentity, tenantId: 'default' } });
+        const result: any = await run.start({ inputData: { url, reopenIdentity, tenantId } });
 
         if (result?.status === 'suspended') {
           const payload = extractSuspendPayload(result);
@@ -205,6 +212,8 @@ export const auditRoutes = [
   registerApiRoute('/audit/sweep', {
     method: 'POST',
     handler: async (c) => {
+      const tenantId = await getAuthenticatedTenantId(c);
+      if (!tenantId) return c.json({ error: 'Unauthorized' }, 401);
       try {
         const body = await c.req.json().catch(() => ({}));
         const appId = typeof body?.appId === 'string' ? body.appId.trim() : '';
@@ -234,6 +243,8 @@ export const auditRoutes = [
   registerApiRoute('/audit/run', {
     method: 'POST',
     handler: async (c) => {
+      const tenantId = await getAuthenticatedTenantId(c);
+      if (!tenantId) return c.json({ error: 'Unauthorized' }, 401);
       const mastra = c.get('mastra');
       const body = await c.req.json().catch(() => ({}));
       const runId = typeof body?.runId === 'string' ? body.runId : '';
