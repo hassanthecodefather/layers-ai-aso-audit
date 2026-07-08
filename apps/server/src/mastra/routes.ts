@@ -149,7 +149,13 @@ export const auditRoutes = [
       const sql = getPgSql();
       if (!sql) return c.json({ error: 'Database not configured.' }, 503);
       const runId = c.req.param('runId');
-      const job = await getJobByRunId(sql, runId);
+      let job;
+      try {
+        job = await getJobByRunId(sql, runId);
+      } catch (e) {
+        console.error('[audit/status] db error:', e);
+        return c.json({ error: 'Could not fetch job.' }, 500);
+      }
       if (!job) return c.json({ error: 'Job not found.' }, 404);
       if (job.tenantId !== tenantId) return c.json({ error: 'Not found.' }, 404);
       const response: Record<string, unknown> = {
