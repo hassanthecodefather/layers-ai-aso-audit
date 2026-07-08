@@ -1,14 +1,29 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import React, { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useAudit, type ChatMessage } from './hooks/useAudit';
 import { Composer } from './components/Composer';
 import { ChallengeCard, ConfirmationCard } from './components/ConfirmationCard';
 import { ProgressTrace } from './components/ProgressTrace';
 import { ReportView } from './components/ReportView';
-import { fetchHealth, type Health } from './lib/api';
+import { fetchHealth, type Health, setAuthCallbacks } from './lib/api';
 import type { IdentityDecision } from './lib/types';
+import { AuthProvider, useAuth } from './lib/auth';
+import { AuthForms } from './components/AuthForms';
 
 /** Top-level chat shell: header, scrolling conversation, composer. */
-export function App() {
+function AppInner() {
+  const { accessToken, refreshToken } = useAuth();
+
+  // Wire auth callbacks into the API layer once on mount / when token changes
+  React.useEffect(() => {
+    setAuthCallbacks(() => accessToken, refreshToken);
+  }, [accessToken, refreshToken]);
+
+  if (!accessToken) return <AuthForms />;
+
+  return <AppContent />;
+}
+
+function AppContent() {
   const { messages, busy, submitUrl, confirm, confirmAnyway, reject, reopenIdentity } = useAudit();
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -247,5 +262,13 @@ function AgentLine({ children }: { children: ReactNode }) {
     <Agent>
       <p className="text-sm leading-relaxed text-zinc-300">{children}</p>
     </Agent>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppInner />
+    </AuthProvider>
   );
 }

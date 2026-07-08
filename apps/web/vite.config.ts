@@ -23,6 +23,10 @@ export default defineConfig({
         target: proxyTarget,
         changeOrigin: true,
       },
+      '/auth': {
+        target: proxyTarget,
+        changeOrigin: true,
+      },
     },
   },
 });

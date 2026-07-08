@@ -5,6 +5,33 @@ import type { AppSummary, AuditReport, ProgressEvent, ResolvedIdentity, Identity
  * Mastra server by Vite (see `vite.config.ts`), so these stay same-origin.
  */
 
+let _getToken: (() => string | null) | null = null;
+let _refreshToken: (() => Promise<string | null>) | null = null;
+
+export function setAuthCallbacks(
+  getToken: () => string | null,
+  refreshFn: () => Promise<string | null>,
+): void {
+  _getToken = getToken;
+  _refreshToken = refreshFn;
+}
+
+async function authedFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  const token = _getToken?.();
+  const headers = new Headers(init.headers);
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  const res = await fetch(url, { ...init, headers });
+
+  if (res.status === 401 && _refreshToken) {
+    const newToken = await _refreshToken();
+    if (newToken) {
+      headers.set('Authorization', `Bearer ${newToken}`);
+      return fetch(url, { ...init, headers });
+    }
+  }
+  return res;
+}
+
 export interface IdentifyResult {
   runId: string;
   summary: AppSummary;
@@ -14,7 +41,7 @@ export interface IdentifyResult {
 
 /** Turn 1 — resolve a pasted URL to an app summary for confirmation. */
 export async function identifyApp(url: string, reopenIdentity = false): Promise<IdentifyResult> {
-  const res = await fetch('/audit/identify', {
+  const res = await authedFetch('/audit/identify', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url, reopenIdentity }),
@@ -50,7 +77,7 @@ export async function runAudit(
   identityDecision?: IdentityDecision | null,
   overrideAcknowledged = false,
 ): Promise<void> {
-  const res = await fetch('/audit/run', {
+  const res = await authedFetch('/audit/run', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ runId, identityDecision: identityDecision ?? null, overrideAcknowledged }),
@@ -109,7 +136,7 @@ export interface Health {
 
 /** Capability probe — whether the LLM is reachable and Firecrawl configured. */
 export async function fetchHealth(): Promise<Health> {
-  const res = await fetch('/audit/health');
+  const res = await authedFetch('/audit/health');
   if (!res.ok) throw new Error('Server unavailable.');
   return res.json();
 }
