@@ -8,7 +8,7 @@ import {
   type IdentityClassification,
   type ResolvedIdentity,
 } from '../../identity/resolve';
-import { getWebSearch } from '../../sources/websearch/websearch';
+import { getWebSearch, type WebSearchProbe } from '../../sources/websearch/websearch';
 import { getLlmProvider } from '../../llm';
 import { extractJsonObject } from '../../scoring/extract';
 import { newId } from '../../memory/ids';
@@ -35,7 +35,9 @@ const ClassificationSchema = z.object({
   functionTerms: z.array(z.string()).default([]),
 });
 
-const CLASSIFIER_INSTRUCTIONS = `You are an app-identity classifier. Given a fact sheet of deterministic signals about an iOS app (developer, bundle id, marketing domain, store category, and review vocabulary), determine what the app actually DOES — its function — independent of its declared App Store category.
+const CLASSIFIER_INSTRUCTIONS = `You are an app-identity classifier. Given signals about an iOS app, determine what the app actually DOES — its function — independent of its declared App Store category.
+
+When web evidence is provided before the fact sheet, treat it as independent third-party context about what the app does. Weight it alongside the store signals — it can resolve ambiguity the metadata alone cannot.
 
 Reply with ONLY a JSON object, no prose:
 {
@@ -58,6 +60,25 @@ export function buildFactSheet(s: RawIdentitySignals): string {
     `Review sample size: ${s.reviewCount}`,
     `Review vocabulary (excerpt): ${reviewExcerpt || '(no reviews)'}`,
   ].join('\n');
+}
+
+const SNIPPET_SOURCES_MAX = 3;
+
+/** Prepend a web-evidence block to the fact sheet when snippets are available. */
+export function buildClassifierInput(factSheet: string, probe: WebSearchProbe | undefined): string {
+  if (!probe || probe.state !== 'corroborated') return factSheet;
+  const snippets = probe.sources
+    .filter(s => s.snippet.trim().length > 0)
+    .slice(0, SNIPPET_SOURCES_MAX);
+  if (snippets.length === 0) return factSheet;
+  const block = snippets
+    .map((s, i) => {
+      let host: string;
+      try { host = new URL(s.url).hostname; } catch { host = s.url; }
+      return `[${i + 1}] "${s.title}" (${host}):\n${s.snippet}`;
+    })
+    .join('\n\n');
+  return `Web evidence (independent off-store sources):\n${block}\n\n---\n\n${factSheet}`;
 }
 
 let classifierAgent: Agent | null = null;
@@ -129,11 +150,13 @@ export async function resolveAppIdentity(
 ): Promise<ResolvedIdentity> {
   const signals = extractIdentitySignals(listing);
   const factSheet = buildFactSheet(signals);
-  const [probeResult, classification] = await Promise.all([
-    getWebSearch().probe(factSheet),
-    classify(factSheet),
-  ]);
+  // Probe first so the classifier receives web evidence as grounding context
+  // in its first (and only) generation — snippets resolve category ambiguity
+  // that metadata alone cannot.
+  const probeResult = await getWebSearch().probe(factSheet);
   const footprintProbe = probeResult.ok ? probeResult.value : undefined;
+  const classifierInput = buildClassifierInput(factSheet, footprintProbe);
+  const classification = await classify(classifierInput);
   return resolveIdentity(signals, classification, { fetchedAt: opts.fetchedAt, footprintProbe });
 }
 
