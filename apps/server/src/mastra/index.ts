@@ -48,9 +48,16 @@ if (!isTest) {
     import('../memory/pg-migrate').then(({ runPgMigrations }) =>
       import('../memory').then(({ getPgSql }) => {
         const sql = getPgSql();
-        if (sql) runPgMigrations(sql).catch((e) =>
-          console.error('[memory] Postgres migration failed at startup:', e),
-        );
+        if (sql) {
+          // Run migrations first, then start the worker only after the schema is ready.
+          runPgMigrations(sql)
+            .then(() => {
+              startWorker(mastra, sql);
+            })
+            .catch((e) => {
+              console.error('[memory] Postgres migration failed at startup:', e);
+            });
+        }
       }),
     ).catch((e) => console.error('[memory] Postgres migration bootstrap failed:', e));
   } else {
@@ -59,12 +66,4 @@ if (!isTest) {
     );
   }
   void verifyLlmStartup();
-
-  // Start the durable job worker (Postgres only — no-op without DATABASE_URL).
-  if (process.env.DATABASE_URL) {
-    import('../memory').then(({ getPgSql }) => {
-      const sql = getPgSql();
-      if (sql) startWorker(mastra, sql);
-    }).catch((e) => console.error('[worker] failed to start:', e));
-  }
 }

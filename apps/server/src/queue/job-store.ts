@@ -63,6 +63,9 @@ export async function insertJob(
   return rowToJob(row!);
 }
 
+// Single-worker assumption: one worker process per deployment, so tenant_id
+// filtering is not required here. If a shared worker pool is added, add a
+// tenant_id predicate to this query to enforce isolation at the DB layer.
 export async function claimNextJob(sql: postgres.Sql): Promise<AuditJob | null> {
   const [row] = await sql<JobRow[]>`
     UPDATE aso_audit_jobs
@@ -103,12 +106,13 @@ export async function markJobSuspended(
 
 export async function markJobPending(
   sql: postgres.Sql, id: string, resumeDataJson: string,
-): Promise<void> {
-  await sql`
+): Promise<number> {
+  const result = await sql`
     UPDATE aso_audit_jobs
     SET status = 'pending', resume_data_json = ${resumeDataJson}
-    WHERE id = ${id}
+    WHERE id = ${id} AND status = 'awaiting_confirmation'
   `;
+  return result.count;
 }
 
 export async function markJobDone(
@@ -139,7 +143,7 @@ export async function recoverStaleJobs(sql: postgres.Sql): Promise<number> {
   const [row] = await sql<[{ count: string }]>`
     WITH updated AS (
       UPDATE aso_audit_jobs
-      SET status = 'pending'
+      SET status = 'pending', attempt = 0
       WHERE status = 'running'
         AND claimed_at < NOW() - INTERVAL '15 minutes'
       RETURNING id

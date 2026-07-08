@@ -40,6 +40,7 @@ export function useAudit(): UseAudit {
   const [pendingUrl, setPendingUrl] = useState<string | null>(null);
   const [pendingDecision, setPendingDecision] = useState<IdentityDecision | null>(null);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const consecutiveErrors = useRef(0);
 
   const add = useCallback((message: ChatMessage) => {
     setMessages((prev) => [...prev, message]);
@@ -63,6 +64,8 @@ export function useAudit(): UseAudit {
     async function tick() {
       try {
         const s = await pollStatus(rid);
+        // Reset consecutive error counter on any successful response.
+        consecutiveErrors.current = 0;
 
         if (s.status === 'pending' || s.status === 'running') {
           patch(progressId, (m) =>
@@ -125,8 +128,16 @@ export function useAudit(): UseAudit {
             setRunId(null);
           }
         }
-      } catch {
-        // Transient network error — keep polling.
+      } catch (err) {
+        // Transient network error — keep polling, but stop after 5 consecutive failures.
+        consecutiveErrors.current += 1;
+        if (consecutiveErrors.current >= 5) {
+          stopPolling();
+          add({ id: nextId(), kind: 'error', text: 'Lost connection to the server. Please refresh and try again.' });
+          setStatus('idle');
+          setRunId(null);
+          return;
+        }
         pollTimer.current = setTimeout(tick, POLL_INTERVAL_MS);
       }
     }

@@ -114,7 +114,11 @@ export function startWorker(mastra: Mastra, sql: postgres.Sql): () => void {
         return null;
       });
       if (job) {
-        await executeJob(job, mastra, sql);
+        try {
+          await executeJob(job, mastra, sql);
+        } catch (err) {
+          console.error('[worker] executeJob threw unexpectedly (DB error during error-handling path) — job may be stuck in running', err instanceof Error ? err.message : err);
+        }
       } else {
         await new Promise<void>((r) => setTimeout(r, POLL_INTERVAL_MS));
       }

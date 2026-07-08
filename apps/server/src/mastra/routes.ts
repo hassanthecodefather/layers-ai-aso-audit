@@ -203,7 +203,10 @@ export const auditRoutes = [
           overrideAcknowledged: body?.overrideAcknowledged === true,
           fresh: body?.fresh === true,
         };
-        await markJobPending(sql, job.id, JSON.stringify(resumeData));
+        const affected = await markJobPending(sql, job.id, JSON.stringify(resumeData));
+        if (affected === 0) {
+          return c.json({ error: 'Job was already claimed by a concurrent request.' }, 409);
+        }
         return c.json({ ok: true });
       } catch (e) {
         console.error('[audit/confirm] failed:', e);

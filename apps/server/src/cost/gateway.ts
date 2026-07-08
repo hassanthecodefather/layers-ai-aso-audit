@@ -82,7 +82,17 @@ export class PassthroughGateway implements SourceGateway {
     if (key) {
       const pending = this.#inFlight.get(key);
       if (pending) {
+        const coalescedStartMs = Date.now();
         const text = await pending; // rejects if the primary fetch failed; fetchWithRetry will retry
+        logger.info({
+          event: 'provider_call',
+          provider: call.upstream,
+          operation: call.kind,
+          durationMs: Date.now() - coalescedStartMs,
+          status: 'ok',
+          coalesced: true,
+          ...(call.tenantId ? { tenantId: call.tenantId } : {}),
+        });
         return new Response(text, {
           status: 200,
           headers: { 'Content-Type': 'application/json', 'X-Cache': 'HIT-COALESCED' },
