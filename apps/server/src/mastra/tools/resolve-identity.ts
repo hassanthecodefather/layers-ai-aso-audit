@@ -12,6 +12,7 @@ import { getWebSearch, type WebSearchProbe } from '../../sources/websearch/webse
 import { getLlmProvider } from '../../llm';
 import { extractJsonObject } from '../../scoring/extract';
 import { newId } from '../../memory/ids';
+import { logger } from '../../telemetry';
 
 /**
  * ID-lite resolution (spec ID, Build Appendix §G). Composes the three pieces:
@@ -138,7 +139,25 @@ export const geminiClassifier: IdentityClassifier = async (factSheet) => {
     );
   }
   const agent = getClassifierAgent();
-  const result = await agent.generate(factSheet, { modelSettings: { temperature: 0 } });
+  const startMs = Date.now();
+  let result: Awaited<ReturnType<typeof agent.generate>>;
+  try {
+    result = await agent.generate(factSheet, { modelSettings: { temperature: 0 } });
+  } catch (e) {
+    logger.info({
+      event: 'provider_call', provider: 'gemini', operation: 'classify',
+      durationMs: Date.now() - startMs, status: 'error',
+      errorMessage: e instanceof Error ? e.message : String(e),
+    });
+    throw e;
+  }
+  const usage = (result as any).usage as { promptTokens?: number; completionTokens?: number } | undefined;
+  logger.info({
+    event: 'provider_call', provider: 'gemini', operation: 'classify',
+    durationMs: Date.now() - startMs, status: 'ok',
+    ...(usage?.promptTokens !== undefined ? { inputTokens: usage.promptTokens } : {}),
+    ...(usage?.completionTokens !== undefined ? { outputTokens: usage.completionTokens } : {}),
+  });
   return parseClassificationText(typeof result.text === 'string' ? result.text : '');
 };
 

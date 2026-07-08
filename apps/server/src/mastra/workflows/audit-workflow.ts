@@ -29,6 +29,7 @@ import { explainIdentityEvidence, describeOverrideConsequences } from '../../ide
 import { ConfidenceBandSchema } from '../../domain/identity';
 import { buildPriorContext, persistAudit } from '../../memory/audit-memory';
 import type { IdentityVersion } from '../../domain/identity';
+import { logger } from '../../telemetry';
 import { getVisionClient, runVision, selectVisionResult } from '../../vision';
 import { getGovernor, GovernorDenialError } from '../../cost/governor';
 import { runIdFull } from '../../identity/id-full';
@@ -199,6 +200,24 @@ const identifyStep = createStep({
       prior,
     );
 
+    const factSheet = buildFactSheet(extractIdentitySignals(coreToIdentityListing(core.value)));
+    const footprintEntry = identity.tally.find((t) => t.family === 'footprint');
+    const footprintState = footprintEntry
+      ? (footprintEntry.agrees ? 'corroborated' : 'searched_and_empty')
+      : 'none';
+    logger.info({
+      event: 'step_summary', step: 'identify-app',
+      escalate: identity.escalate,
+      divergence: identity.divergence,
+      footprintState,
+      categoryBand: identity.categoryBand,
+    } as any);
+    logger.debug({
+      event: 'step_payload', step: 'identify-app',
+      factSheet,
+      classification: identity,
+    } as any);
+
     return {
       summary: coreToSummary(core.value),
       identity,
@@ -270,6 +289,12 @@ export const confirmStep = createStep({
       return suspend({ ...inputData, conflict });
     }
 
+    logger.info({
+      event: 'step_summary', step: 'confirm-app',
+      accepted: resumeData.confirmed,
+      overridden: Boolean(decision && (decision.action === 'correct' || decision.action === 'pick')),
+    } as any);
+
     return {
       appId: inputData.summary.appId,
       country: inputData.summary.country,
@@ -294,6 +319,12 @@ const scoreStep = createStep({
       throw new GovernorDenialError('reentrant', 'audit-run', { kind: 'app', upstream: 'itunes' });
     }
     try {
+    // Log gather-listing summary — inputData is the full listing from that step.
+    logger.info({
+      event: 'step_summary', step: 'gather-listing',
+      reviewCount: inputData.reviews.length,
+    } as any);
+
     const llm = getLlmProvider();
     if (!(await llm.reachable())) {
       throw new Error(
@@ -686,6 +717,11 @@ const scoreStep = createStep({
         );
       }
     }
+
+    logger.info({
+      event: 'step_summary', step: 'score-listing',
+      overallScore: report.overallScore ?? null,
+    } as any);
 
     return { ...report, limitations: [...report.limitations, ...notes] };
     } finally {
