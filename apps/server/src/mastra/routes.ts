@@ -1,5 +1,4 @@
 import { registerApiRoute } from '@mastra/core/server';
-import { streamSSE } from 'hono/streaming';
 import { getLlmProvider } from '../llm';
 import { getCrawler } from '../sources/crawler';
 import { fetchITunesCore } from '../sources/itunes';
@@ -7,97 +6,9 @@ import { sweepStorefronts, DEFAULT_SWEEP_COUNTRIES } from '../sources/storefront
 import { AuditReportSchema } from '../domain/audit';
 import { reportToMarkdown, markdownFilename } from '../export/markdown';
 import { getAuthenticatedTenantId } from '../auth/middleware';
-
-/**
- * Custom HTTP routes that drive the audit workflow for the chat UI.
- *
- * The flow is a suspend/resume workflow, so the server controls the run and
- * hands the browser a dead-simple SSE stream. Two endpoints mirror the two
- * chat turns:
- *
- *   POST /audit/identify  → start the run; it suspends; return the app summary
- *   POST /audit/run       → resume the run; stream progress + the final report
- *
- * A "no" to the confirmation never reaches the server — the UI just starts a
- * fresh run with the next URL, abandoning the suspended one.
- */
-
-const WORKFLOW_ID = 'asoAuditWorkflow';
-
-/**
- * Suspended runs awaiting confirmation, kept between the two requests. Mastra
- * also persists the run to LibSQL, so this is an in-process fast path with a
- * `createRun({ runId })` rehydration fallback below.
- */
-const pendingRuns = new Map<string, { run: any; tenantId: string }>();
-
-/** First non-nullish candidate — for reading Mastra result shapes defensively. */
-function firstOf<T>(...candidates: (T | null | undefined)[]): T | undefined {
-  return candidates.find((c) => c != null) ?? undefined;
-}
-
-/** Locate the confirm-app suspend payload ({ summary, identity, ... }). */
-function extractSuspendPayload(result: any): any {
-  const step = result?.steps?.['confirm-app'];
-  return firstOf(
-    step?.suspendPayload,
-    step?.payload,
-    step?.suspendedPayload,
-    result?.suspendPayload,
-    result?.payload,
-  );
-}
-
-/** Locate the confirmation summary in a suspended workflow result. */
-function extractSummary(result: any): unknown {
-  return extractSuspendPayload(result)?.summary;
-}
-
-/** Locate the challenge conflict payload in a re-suspended confirm step. */
-function extractConflict(result: any): unknown {
-  return extractSuspendPayload(result)?.conflict ?? null;
-}
-
-/** Locate the audit report in a completed workflow result. */
-function extractReport(result: any): unknown {
-  return firstOf(
-    result?.result,
-    result?.output,
-    result?.steps?.['score-listing']?.output,
-    result?.payload?.output,
-  );
-}
-
-/** Build a human-readable message from a failed workflow result. */
-function extractError(result: any): string {
-  const stepError =
-    result?.steps?.['score-listing']?.error ??
-    result?.steps?.['gather-listing']?.error ??
-    result?.steps?.['confirm-app']?.error ??
-    result?.error;
-  if (typeof stepError === 'string') return stepError;
-  if (stepError?.message) return String(stepError.message);
-  return 'The audit failed unexpectedly. Check the server logs.';
-}
-
-/** Translate a workflow step id into a user-facing progress line. */
-function progressFor(stepId: string): { phase: string; message: string } | null {
-  switch (stepId) {
-    case 'gather-listing':
-      return {
-        phase: 'gather',
-        message:
-          'Gathering the App Store listing — metadata, screenshots, reviews and competitors…',
-      };
-    case 'score-listing':
-      return {
-        phase: 'score',
-        message: 'Scoring all ten ASO dimensions with the auditor agent…',
-      };
-    default:
-      return null;
-  }
-}
+import { insertJob, getJobByRunId, markJobPending } from '../queue/job-store';
+import { newId } from '../memory/ids';
+import { getPgSql } from '../memory';
 
 // ── /audit/sweep — storefront sweep (observe-only, free iTunes) ───────────────
 
@@ -157,54 +68,10 @@ export const auditRoutes = [
   registerApiRoute('/audit/identify', {
     method: 'POST',
     handler: async (c) => {
-      const tenantId = await getAuthenticatedTenantId(c);
-      if (!tenantId) return c.json({ error: 'Unauthorized' }, 401);
-      try {
-        const mastra = c.get('mastra');
-        const body = await c.req.json().catch(() => ({}));
-        const url = typeof body?.url === 'string' ? body.url.trim() : '';
-        if (!url) return c.json({ error: 'Paste an App Store URL first.' }, 400);
-
-        const workflow = mastra.getWorkflow(WORKFLOW_ID);
-        const run = await workflow.createRun();
-        const reopenIdentity = body?.reopenIdentity === true;
-        const result: any = await run.start({ inputData: { url, reopenIdentity, tenantId } });
-
-        if (result?.status === 'suspended') {
-          const payload = extractSuspendPayload(result);
-          const summary = payload?.summary;
-          if (!summary) {
-            console.error(
-              '[identify] no summary; result keys:',
-              Object.keys(result ?? {}),
-              JSON.stringify(result?.steps ?? {}).slice(0, 600),
-            );
-            return c.json(
-              { error: 'Could not read the app summary from the workflow.' },
-              500,
-            );
-          }
-          pendingRuns.set(run.runId, { run, tenantId });
-          // Surface the resolved identity too, so the UI can widen the prompt to
-          // "here's what we think your app is — confirm, correct, or pick" when
-          // the identity escalates (spec ID). Most apps need no identity ask.
-          return c.json({
-            runId: run.runId,
-            summary,
-            identity: payload?.identity ?? null,
-            identityNeedsConfirm: Boolean(payload?.identityNeedsConfirm),
-          });
-        }
-
-        // Failing this early means a bad URL or an unknown app.
-        return c.json({ error: extractError(result) }, 422);
-      } catch (e) {
-        console.error('[identify] failed:', e);
-        return c.json(
-          { error: e instanceof Error ? e.message : 'Failed to identify the app.' },
-          422,
-        );
-      }
+      return c.json(
+        { error: 'This endpoint is deprecated. Use POST /audit/start and poll GET /audit/status/:runId.' },
+        410,
+      );
     },
   }),
 
@@ -243,90 +110,99 @@ export const auditRoutes = [
   registerApiRoute('/audit/run', {
     method: 'POST',
     handler: async (c) => {
+      return c.json(
+        { error: 'This endpoint is deprecated. Use POST /audit/confirm and poll GET /audit/status/:runId.' },
+        410,
+      );
+    },
+  }),
+
+  // ── POST /audit/start — enqueue a new audit job ──────────────────────────
+  registerApiRoute('/audit/start', {
+    method: 'POST',
+    handler: async (c) => {
       const tenantId = await getAuthenticatedTenantId(c);
       if (!tenantId) return c.json({ error: 'Unauthorized' }, 401);
-      const mastra = c.get('mastra');
-      const body = await c.req.json().catch(() => ({}));
-      const runId = typeof body?.runId === 'string' ? body.runId : '';
-      if (!runId) return c.json({ error: 'Missing runId.' }, 400);
-      const identityDecision = body?.identityDecision ?? null;
-      const overrideAcknowledged = body?.overrideAcknowledged === true;
-      // When true, all source fetches in gather-listing bypass the cache.
-      // The documented --fresh post-release bypass (spec E1).
-      const fresh = typeof body?.fresh === 'boolean' ? body.fresh : false;
+      const sql = getPgSql();
+      if (!sql) return c.json({ error: 'Database not configured.' }, 503);
+      try {
+        const body = await c.req.json().catch(() => ({}));
+        const url = typeof body?.url === 'string' ? body.url.trim() : '';
+        if (!url) return c.json({ error: 'Paste an App Store URL first.' }, 400);
+        const reopenIdentity = body?.reopenIdentity === true;
+        const runId = newId('run');
+        const job = await insertJob(sql, { runId, tenantId, url, reopenIdentity });
+        return c.json({ jobId: job.id, runId: job.runId, status: job.status });
+      } catch (e) {
+        console.error('[audit/start] failed:', e);
+        return c.json({ error: 'Could not enqueue audit.' }, 500);
+      }
+    },
+  }),
 
-      const workflow = mastra.getWorkflow(WORKFLOW_ID);
-      const stored = pendingRuns.get(runId);
-      // Reject if the run is unknown: pendingRuns is in-memory and clears on restart.
-      // Rehydrating an unknown runId would let any authenticated tenant resume another
-      // tenant's persisted workflow. Users must re-run /audit/identify after a restart.
-      if (!stored) return c.json({ error: 'Session not found. Please restart the audit.' }, 404);
-      if (stored.tenantId !== tenantId) return c.json({ error: 'Not found.' }, 404);
-      const run = stored.run;
+  // ── GET /audit/status/:runId — poll job status ────────────────────────────
+  registerApiRoute('/audit/status/:runId', {
+    method: 'GET',
+    handler: async (c) => {
+      const tenantId = await getAuthenticatedTenantId(c);
+      if (!tenantId) return c.json({ error: 'Unauthorized' }, 401);
+      const sql = getPgSql();
+      if (!sql) return c.json({ error: 'Database not configured.' }, 503);
+      const runId = c.req.param('runId');
+      const job = await getJobByRunId(sql, runId);
+      if (!job) return c.json({ error: 'Job not found.' }, 404);
+      if (job.tenantId !== tenantId) return c.json({ error: 'Not found.' }, 404);
+      const response: Record<string, unknown> = {
+        jobId: job.id,
+        runId: job.runId,
+        status: job.status,
+        step: job.step,
+        attempt: job.attempt,
+        maxAttempts: job.maxAttempts,
+      };
+      if (job.status === 'done' && job.resultJson) {
+        try { response.result = JSON.parse(job.resultJson); } catch { /* malformed */ }
+      }
+      if (job.status === 'failed') {
+        response.errorMessage = job.errorMessage;
+      }
+      if (job.status === 'awaiting_confirmation' && job.suspendPayloadJson) {
+        try { response.suspendPayload = JSON.parse(job.suspendPayloadJson); } catch { /* malformed */ }
+      }
+      return c.json(response);
+    },
+  }),
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return streamSSE(c as any, async (stream) => {
-        // Serialise writes — stream events and the result arrive on different
-        // callstacks, and interleaved SSE frames would corrupt.
-        let chain: Promise<unknown> = Promise.resolve();
-        let wasSuspended = false;
-        const send = (event: string, data: unknown): void => {
-          chain = chain.then(() =>
-            stream.writeSSE({ event, data: JSON.stringify(data) }),
-          );
-        };
-
-        send('progress', {
-          phase: 'confirmed',
-          message: 'Confirmed. Starting the audit…',
-        });
-
-        try {
-          const wfStream = await run.resumeStream({
-            step: 'confirm-app',
-            resumeData: { confirmed: true, identityDecision, overrideAcknowledged, fresh },
-          });
-
-          const seen = new Set<string>();
-          // `fullStream` is the supported async-iterable view of the run.
-          const events: AsyncIterable<any> =
-            (wfStream as any).fullStream ?? wfStream;
-          for await (const chunk of events) {
-            if (chunk?.type !== 'workflow-step-start') continue;
-            const stepId = firstOf<string>(
-              chunk?.payload?.id,
-              chunk?.payload?.stepId,
-              chunk?.payload?.step?.id,
-              chunk?.payload?.stepName,
-            );
-            if (!stepId || seen.has(stepId)) continue;
-            seen.add(stepId);
-            const progress = progressFor(stepId);
-            if (progress) send('progress', progress);
-          }
-
-          const result: any = await wfStream.result;
-          if (result?.status === 'suspended') {
-            // The gate challenged a contested override — send the conflict and keep
-            // the run alive so the UI can resubmit with overrideAcknowledged.
-            wasSuspended = true;
-            send('conflict', extractConflict(result));
-          } else if (result?.status === 'success') {
-            send('report', extractReport(result));
-          } else {
-            send('error', { message: extractError(result) });
-          }
-        } catch (e) {
-          console.error('[run] failed:', e);
-          send('error', {
-            message: e instanceof Error ? e.message : 'The audit failed.',
-          });
-        } finally {
-          if (!wasSuspended) pendingRuns.delete(runId);
-          send('done', {});
-          await chain;
+  // ── POST /audit/confirm — resume after human confirmation ─────────────────
+  registerApiRoute('/audit/confirm', {
+    method: 'POST',
+    handler: async (c) => {
+      const tenantId = await getAuthenticatedTenantId(c);
+      if (!tenantId) return c.json({ error: 'Unauthorized' }, 401);
+      const sql = getPgSql();
+      if (!sql) return c.json({ error: 'Database not configured.' }, 503);
+      try {
+        const body = await c.req.json().catch(() => ({}));
+        const runId = typeof body?.runId === 'string' ? body.runId : '';
+        if (!runId) return c.json({ error: 'Missing runId.' }, 400);
+        const job = await getJobByRunId(sql, runId);
+        if (!job) return c.json({ error: 'Job not found.' }, 404);
+        if (job.tenantId !== tenantId) return c.json({ error: 'Not found.' }, 404);
+        if (job.status !== 'awaiting_confirmation') {
+          return c.json({ error: `Job is not awaiting confirmation (status: ${job.status}).` }, 409);
         }
-      });
+        const resumeData = {
+          confirmed: true,
+          identityDecision: body?.identityDecision ?? null,
+          overrideAcknowledged: body?.overrideAcknowledged === true,
+          fresh: body?.fresh === true,
+        };
+        await markJobPending(sql, job.id, JSON.stringify(resumeData));
+        return c.json({ ok: true });
+      } catch (e) {
+        console.error('[audit/confirm] failed:', e);
+        return c.json({ error: 'Could not confirm audit.' }, 500);
+      }
     },
   }),
 ];
