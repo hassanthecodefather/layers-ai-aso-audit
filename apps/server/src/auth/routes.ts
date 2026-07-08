@@ -10,6 +10,7 @@ const REFRESH_COOKIE = 'aso_refresh';
 function jwtSecret(): string {
   const s = process.env.ASO_JWT_SECRET?.trim() ?? '';
   if (!s) throw new Error('ASO_JWT_SECRET is not set');
+  if (s.length < 32) throw new Error('ASO_JWT_SECRET must be at least 32 characters');
   return s;
 }
 
@@ -82,7 +83,10 @@ export const authRoutes = [
 
       const store = await getUserStore();
       const user = await store.findUserByEmail(email);
-      if (!user) return c.json({ error: INVALID }, 401);
+      if (!user) {
+        await verifyPassword(password, '$2b$12$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ012345');
+        return c.json({ error: INVALID }, 401);
+      }
 
       const valid = await verifyPassword(password, user.passwordHash);
       if (!valid) return c.json({ error: INVALID }, 401);

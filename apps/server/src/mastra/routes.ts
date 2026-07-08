@@ -29,7 +29,7 @@ const WORKFLOW_ID = 'asoAuditWorkflow';
  * also persists the run to LibSQL, so this is an in-process fast path with a
  * `createRun({ runId })` rehydration fallback below.
  */
-const pendingRuns = new Map<string, any>();
+const pendingRuns = new Map<string, { run: any; tenantId: string }>();
 
 /** First non-nullish candidate — for reading Mastra result shapes defensively. */
 function firstOf<T>(...candidates: (T | null | undefined)[]): T | undefined {
@@ -184,7 +184,7 @@ export const auditRoutes = [
               500,
             );
           }
-          pendingRuns.set(run.runId, run);
+          pendingRuns.set(run.runId, { run, tenantId });
           // Surface the resolved identity too, so the UI can widen the prompt to
           // "here's what we think your app is — confirm, correct, or pick" when
           // the identity escalates (spec ID). Most apps need no identity ask.
@@ -256,8 +256,9 @@ export const auditRoutes = [
       const fresh = typeof body?.fresh === 'boolean' ? body.fresh : false;
 
       const workflow = mastra.getWorkflow(WORKFLOW_ID);
-      const run =
-        pendingRuns.get(runId) ?? (await workflow.createRun({ runId }));
+      const stored = pendingRuns.get(runId);
+      if (stored && stored.tenantId !== tenantId) return c.json({ error: 'Not found.' }, 404);
+      const run = stored?.run ?? (await workflow.createRun({ runId }));
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return streamSSE(c as any, async (stream) => {
