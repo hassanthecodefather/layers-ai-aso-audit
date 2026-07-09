@@ -12,7 +12,7 @@ let _pgSql: postgres.Sql | null = null;
 /** Returns the shared postgres.Sql instance (created once when DATABASE_URL is set). */
 export function getPgSql(): postgres.Sql | null {
   if (!_pgSql && process.env.DATABASE_URL) {
-    _pgSql = postgres(process.env.DATABASE_URL);
+    _pgSql = postgres(process.env.DATABASE_URL, { onnotice: () => {} });
   }
   return _pgSql;
 }
