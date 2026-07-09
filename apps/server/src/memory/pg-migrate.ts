@@ -51,6 +51,27 @@ BEGIN
   END IF;
 EXCEPTION WHEN duplicate_object OR duplicate_table OR lock_not_available THEN NULL;
 END $$`,
+  // Phase 6b: durable audit job queue
+  `CREATE TABLE IF NOT EXISTS aso_audit_jobs (
+    id                   TEXT PRIMARY KEY,
+    run_id               TEXT NOT NULL UNIQUE,
+    tenant_id            TEXT NOT NULL,
+    url                  TEXT NOT NULL,
+    reopen_identity      INTEGER NOT NULL DEFAULT 0,
+    status               TEXT NOT NULL,
+    step                 TEXT,
+    suspend_payload_json TEXT,
+    resume_data_json     TEXT,
+    result_json          TEXT,
+    error_message        TEXT,
+    attempt              INTEGER NOT NULL DEFAULT 0,
+    max_attempts         INTEGER NOT NULL DEFAULT 3,
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    claimed_at           TIMESTAMPTZ,
+    completed_at         TIMESTAMPTZ
+  )`,
+  `CREATE INDEX IF NOT EXISTS aso_audit_jobs_status_created ON aso_audit_jobs (status, created_at)`,
+  `CREATE INDEX IF NOT EXISTS aso_audit_jobs_run_id ON aso_audit_jobs (run_id)`,
 ];
 
 /**

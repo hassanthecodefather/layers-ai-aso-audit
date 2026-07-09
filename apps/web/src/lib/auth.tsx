@@ -23,7 +23,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({})) as Record<string, string>;
     if (!res.ok) throw new Error(data.error ?? 'Signup failed.');
     setAuth({ userId: data.userId, accessToken: data.accessToken });
   }, []);
@@ -34,7 +34,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({})) as Record<string, string>;
     if (!res.ok) throw new Error(data.error ?? 'Login failed.');
     setAuth({ userId: data.userId, accessToken: data.accessToken });
   }, []);

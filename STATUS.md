@@ -5,7 +5,7 @@ contracts live elsewhere: [`specification.md`](specification.md) is the *what*,
 [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) is the *how-to-build*. This
 file is the *where-we-are* — read it first, trust the tests over the prose.
 
-_Last updated: 2026-07-08 · spec v1.3.2 · **Phase E complete (400 tests); Phase F base DoD met + F-K5 shipped (437 tests); F-K2 ✅ + F-K3 ✅ shipped (475 tests); F-K4 pending; Identity-confirmation guard (Fix 5) ✅ shipped + live-smoke corrections ✅ — 534 tests; Phase 6a (auth + Postgres swap + shared rate limiter) ✅ shipped — 584 tests, tsc clean both apps; Phase 6a security hardening ✅ (3 review passes, 23 fixes) + websearch probe correctness ✅**_
+_Last updated: 2026-07-09 · spec v1.3.2 · **Phase E complete (400 tests); Phase F base DoD met + F-K5 shipped (437 tests); F-K2 ✅ + F-K3 ✅ shipped (475 tests); F-K4 pending; Identity-confirmation guard (Fix 5) ✅ shipped + live-smoke corrections ✅ — 534 tests; Phase 6a (auth + Postgres swap + shared rate limiter) ✅ shipped — 584 tests, tsc clean both apps; Phase 6a security hardening ✅ (3 review passes, 23 fixes) + websearch probe correctness ✅; Phase 6b (durable queue + observability) ✅ shipped — 613 tests, tsc clean**_
 
 Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferred (by design)
 
@@ -21,6 +21,7 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
 | **E** | P5 cost & courtesy control | ✅ | Gateway chokepoint; governor (count 2000/hr, run-entry 2s, wall-clock 5min); pacer (iTunes ≥3.5s, Retry-After); LibSQL `aso_cache` (iTunes 24h, reviews 2h, appkittie 24h); `observedFromCache` provenance. 400 tests, tsc clean. |
 | **F** | Net-new uplifts (storefront sweep, export, …) | 🚧 | Base DoD met (415/418 tests): storefront sweep + proof regime + Markdown export + F-K1 keyword ranking. F-K2 (competitor review mining), F-K3 (competitor tiering), F-K4 (competitor visual benchmarking), F-K5 (web-search corroboration) still open. |
 | **6a** | Auth + Postgres swap + shared rate limiter | ✅ | JWT auth · `PostgresStorageClient` conformance suite green · `PostgresSharedPacer` two-instance serialization. 584 tests, tsc clean. |
+| **6b** | Durable queue + observability baseline | ✅ | `aso_audit_jobs` table · worker loop (`SKIP LOCKED`) · SSE → polling · Pino telemetry · gateway/LLM/step logs. 613 tests, tsc clean. |
 | **P6b+** | Scale-out, ASC, write-path, North Star | ⏸ | planned at their tier, not now |
 
 ## Identity-confirmation guard (Fix 5) — detail
@@ -95,6 +96,52 @@ JWT-based authentication: signup / login / logout / refresh (token rotation), HM
 
 **Known gaps / deferred:**
 - **6a entity-shared cache** — still deferred; cache is process-local for now.
+
+## Phase 6b — detail
+
+**Status: ✅ shipped** (branch `phase-6b-durable-queue`, 613 tests / tsc clean). Specs: [`docs/superpowers/specs/2026-07-09-6b-durable-queue-design.md`](docs/superpowers/specs/2026-07-09-6b-durable-queue-design.md) + [`docs/superpowers/specs/2026-07-09-6b-observability-design.md`](docs/superpowers/specs/2026-07-09-6b-observability-design.md). Plan: [`docs/superpowers/plans/2026-07-09-6b-durable-queue-observability.md`](docs/superpowers/plans/2026-07-09-6b-durable-queue-observability.md).
+
+### Durable queue
+
+Replaces the in-memory SSE/`pendingRuns` approach with a Postgres-backed job queue. The server returns `{ jobId, runId }` immediately on `POST /audit/start`; a worker loop claims and executes jobs; the client polls `GET /audit/status/:runId` every 2500 ms.
+
+| Component | What shipped | Lives in |
+|---|---|---|
+| **Job table** | `aso_audit_jobs` (id, run_id, tenant_id, url, reopen_identity, status, step, suspend_payload_json, resume_data_json, result_json, error_message, attempt, max_attempts, TIMESTAMPTZ timestamps) + 2 indices | `memory/pg-migrate.ts` (`PG_ONLY_MIGRATIONS`) |
+| **Job store** | `insertJob`, `claimNextJob` (`UPDATE … WHERE id = (SELECT … FOR UPDATE SKIP LOCKED) RETURNING *`), `markJob{Running,Suspended,Done,Failed,Requeued}`, `recoverStaleJobs` (reset `running` jobs with `claimed_at < NOW() - 15 min`) | `queue/job-store.ts` |
+| **Worker loop** | `executeJob` (fresh → `run.start()`, resume → `resumeStream`); `startWorker` (recover stale on startup, poll every 5 s); worker launched after migrations complete | `queue/worker.ts`, `mastra/index.ts` |
+| **Server routes** | `POST /audit/start` → `{ jobId, runId, status }`; `GET /audit/status/:runId`; `POST /audit/confirm`; old SSE routes `/audit/identify` + `/audit/run` → 410 Gone | `mastra/routes.ts` |
+| **Web client** | `startAudit` / `pollStatus` / `confirmAudit` in `api.ts`; `useAudit` rewritten as a polling state machine (`idle → starting → running → confirming → done`) | `web/src/lib/api.ts`, `web/src/hooks/useAudit.ts` |
+
+**Key correctness fixes applied after adversarial review (2 passes, 12 bugs):**
+- Worker poll loop wraps `executeJob` in try/catch — a DB error in the error-handling path no longer kills the worker
+- `startWorker` chains after `runPgMigrations` resolves — no migration race on fresh deployment
+- `markJobPending` has a `WHERE status = 'awaiting_confirmation'` guard; confirm route returns 409 on concurrent double-tap; client treats 409 as "already confirmed, keep polling"
+- Poll loop counts consecutive 500 errors; stops and surfaces an error state after 5
+- `recoverStaleJobs` resets `attempt = 0` alongside status
+- `markJobDone` / `markJobFailed` add `AND status = 'running'` guard — prevent overwriting a re-queued row
+- Fresh-run path now calls `markJobRunning(sql, job.id, 'identify-app')` before `run.start()`
+- `telemetry.ts` creates `PinoLogger` with `FileTransport` synchronously (IIFE, try/catch) so Mastra captures the correct logger instance at construction time
+
+### Observability baseline
+
+Structured Pino log lines at every external call boundary. All log output goes to stdout; file transport attached if `ASO_LOG_PATH` or the default path is writable.
+
+| Layer | Log event | Fields |
+|---|---|---|
+| Provider fetches (gateway) | `provider_call` | provider, operation, durationMs, status (ok/error/timeout), httpStatus, errorMessage, coalesced |
+| Postgres rate-slot (pacer) | `provider_call` | provider=`postgres-pacer`, operation=`rate-slot`, status |
+| Gemini classify (resolve-identity) | `provider_call` | provider=`gemini`, operation=`classify`, durationMs, status, inputTokens?, outputTokens? |
+| Workflow step completion | `step_summary` (info) | step, step-specific fields (escalate, divergence, footprintState, categoryBand, reviewCount, overallScore, accepted, overridden) |
+| Workflow step full data | `step_payload` (debug) | step, full payload (silent in production; set `LOG_LEVEL=debug` to activate) |
+
+**Shared logger:** `telemetry.ts` exports a single `PinoLogger` singleton (`logger`) consumed by gateway, pacer, resolve-identity, and audit-workflow. `LOG_LEVEL` env var controls verbosity (default `info`).
+
+**Known limitations / deferred:**
+- `estimatedCostUsd` not yet computed in `provider_call` lines for Gemini (no pricing table wired)
+- `tenantId` threaded into gateway calls via `GatewayCall.tenantId` but not yet passed from workflow call sites — most `provider_call` lines omit it
+- `recoverStaleJobs` runs once at startup (plan-mandated); periodic recovery under a multi-replica worker pool is deferred
+- Fresh-run step progress is a single `identify-app` snapshot; full per-step streaming for the fresh path deferred
 
 ## Phase D — detail
 

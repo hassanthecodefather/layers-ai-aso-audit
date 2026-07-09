@@ -60,4 +60,27 @@ describe('runPgMigrations', () => {
     `;
     expect(rows).toHaveLength(1);
   });
+
+  it('creates aso_audit_jobs', async () => {
+    const rows = await sql`
+      SELECT table_name FROM information_schema.tables
+      WHERE table_schema = ${schema} AND table_name = 'aso_audit_jobs'
+    `;
+    expect(rows).toHaveLength(1);
+  });
+
+  it('aso_audit_jobs has required columns', async () => {
+    const rows = await sql<{ column_name: string }[]>`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_schema = ${schema} AND table_name = 'aso_audit_jobs'
+    `;
+    const cols = rows.map((r) => r.column_name);
+    expect(cols).toContain('run_id');
+    expect(cols).toContain('tenant_id');
+    expect(cols).toContain('status');
+    expect(cols).toContain('suspend_payload_json');
+    expect(cols).toContain('resume_data_json');
+    expect(cols).toContain('attempt');
+    expect(cols).toContain('claimed_at');
+  });
 });

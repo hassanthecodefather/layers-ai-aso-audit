@@ -66,7 +66,7 @@ export function getPacer(): Pacer {
     // max:10 (postgres.js default) — the FOR UPDATE tx is fast (no sleep inside),
     // so connections return quickly and concurrent callers don't queue long enough
     // for the elapsed-wait time to skew their next_allowed_at read.
-    _pacer = dbUrl ? new PostgresSharedPacer(postgres(dbUrl, { max: 10 })) : new SerialPacer();
+    _pacer = dbUrl ? new PostgresSharedPacer(postgres(dbUrl, { max: 10, onnotice: () => {} })) : new SerialPacer();
   }
   return _pacer;
 }

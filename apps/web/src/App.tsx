@@ -220,7 +220,7 @@ function MessageRow({ message, onConfirm, onReject, onConfirmAnyway, onRevise, o
     case 'progress':
       return (
         <Agent>
-          <ProgressTrace events={message.events} complete={message.complete} />
+          <ProgressTrace step={message.step} complete={message.complete} />
         </Agent>
       );
 

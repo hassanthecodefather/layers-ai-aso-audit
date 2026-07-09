@@ -29,6 +29,7 @@ import { explainIdentityEvidence, describeOverrideConsequences } from '../../ide
 import { ConfidenceBandSchema } from '../../domain/identity';
 import { buildPriorContext, persistAudit } from '../../memory/audit-memory';
 import type { IdentityVersion } from '../../domain/identity';
+import { logger } from '../../telemetry';
 import { getVisionClient, runVision, selectVisionResult } from '../../vision';
 import { getGovernor, GovernorDenialError } from '../../cost/governor';
 import { runIdFull } from '../../identity/id-full';
@@ -159,8 +160,8 @@ export function buildOverrideNotes(
     const evidenceSlice = evidenceCompetitors.slice(0, 3);
     const confirmedNames = confirmedSlice.map((c) => c.name).join(', ') || '(none found)';
     const evidenceNames = evidenceSlice.map((c) => c.name).join(', ');
-    const confirmedIds = new Set(confirmedSlice.map((c) => c.appStoreId ?? c.name.toLowerCase()));
-    const overlap = evidenceSlice.filter((c) => confirmedIds.has(c.appStoreId ?? c.name.toLowerCase())).length;
+    const confirmedIds = new Set(confirmedSlice.map((c) => c.appId ?? c.name.toLowerCase()));
+    const overlap = evidenceSlice.filter((c) => confirmedIds.has(c.appId ?? c.name.toLowerCase())).length;
     const overlapNote =
       overlap === evidenceSlice.length
         ? 'Results are identical — evidence seeds may be too generic to distinguish. Re-open identity to re-resolve.'
@@ -198,6 +199,24 @@ const identifyStep = createStep({
       geminiClassifier,
       prior,
     );
+
+    const factSheet = buildFactSheet(extractIdentitySignals(coreToIdentityListing(core.value)));
+    const footprintEntry = identity.tally.find((t) => t.family === 'footprint');
+    const footprintState = footprintEntry
+      ? (footprintEntry.agrees ? 'corroborated' : 'searched_and_empty')
+      : 'none';
+    logger.info('step_summary identify-app', {
+      event: 'step_summary', step: 'identify-app',
+      escalate: identity.escalate,
+      divergence: identity.divergence,
+      footprintState,
+      categoryBand: identity.categoryBand,
+    });
+    logger.debug('step_payload identify-app', {
+      event: 'step_payload', step: 'identify-app',
+      factSheet,
+      classification: identity,
+    });
 
     return {
       summary: coreToSummary(core.value),
@@ -270,6 +289,12 @@ export const confirmStep = createStep({
       return suspend({ ...inputData, conflict });
     }
 
+    logger.info('step_summary confirm-app', {
+      event: 'step_summary', step: 'confirm-app',
+      accepted: resumeData.confirmed,
+      overridden: Boolean(decision && (decision.action === 'correct' || decision.action === 'pick')),
+    });
+
     return {
       appId: inputData.summary.appId,
       country: inputData.summary.country,
@@ -294,6 +319,12 @@ const scoreStep = createStep({
       throw new GovernorDenialError('reentrant', 'audit-run', { kind: 'app', upstream: 'itunes' });
     }
     try {
+    // Log gather-listing summary — inputData is the full listing from that step.
+    logger.info('step_summary gather-listing', {
+      event: 'step_summary', step: 'gather-listing',
+      reviewCount: inputData.reviews.length,
+    });
+
     const llm = getLlmProvider();
     if (!(await llm.reachable())) {
       throw new Error(
@@ -686,6 +717,11 @@ const scoreStep = createStep({
         );
       }
     }
+
+    logger.info('step_summary score-listing', {
+      event: 'step_summary', step: 'score-listing',
+      overallScore: report.overallScore ?? null,
+    });
 
     return { ...report, limitations: [...report.limitations, ...notes] };
     } finally {
