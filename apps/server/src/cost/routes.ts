@@ -77,7 +77,7 @@ export async function getCostSummary(sql: postgres.Sql, tenantId: string): Promi
 }
 
 export const costRoutes = [
-  registerApiRoute('/api/cost/summary', {
+  registerApiRoute('/cost/summary', {
     method: 'GET',
     handler: async (c) => {
       const tenantId = await getAuthenticatedTenantId(c);
