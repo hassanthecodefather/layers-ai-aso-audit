@@ -32,6 +32,34 @@ function ActivityCard({ event }: { event: ActivityEvent }) {
     );
   }
 
+  if (event.eventType === 'measurement_verdict') {
+    const p = event.payload as {
+      versionString: string;
+      metrics: {
+        impressions: { deltaPercent: number };
+        downloads: { deltaPercent: number };
+        conversionRate: { deltaPercent: number };
+      };
+      mixedAuthorship: boolean;
+      disclaimer: string;
+    };
+    const fmt = (n: number) => (n >= 0 ? '+' : '') + n.toFixed(1) + '%';
+    return (
+      <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+        <p className="font-medium text-blue-800">
+          📊 v{p.versionString} results · {event.appName} · {date}
+        </p>
+        <p className="mt-1 text-sm text-blue-700">
+          Impressions {fmt(p.metrics.impressions.deltaPercent)} · Downloads {fmt(p.metrics.downloads.deltaPercent)} · Conversion {fmt(p.metrics.conversionRate.deltaPercent)}
+        </p>
+        <p className="mt-1 text-xs text-blue-500">Directional only — 28-day window, correlational.</p>
+        {p.mixedAuthorship && (
+          <p className="mt-0.5 text-xs text-blue-500">Multiple changes applied — bundle-level attribution.</p>
+        )}
+      </div>
+    );
+  }
+
   if (event.eventType === 'reviews_shifted') {
     const p = event.payload as { ratingBefore: number | null; ratingAfter: number | null; countBefore: number | null; countAfter: number | null };
     const countDelta = p.countAfter != null && p.countBefore != null ? p.countAfter - p.countBefore : null;

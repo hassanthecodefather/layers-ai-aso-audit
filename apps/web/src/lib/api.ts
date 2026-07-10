@@ -191,7 +191,7 @@ export interface ActivityEvent {
   appId: string;
   appName: string;
   country: string;
-  eventType: 'go_live' | 'metadata_changed' | 'reviews_shifted';
+  eventType: 'go_live' | 'metadata_changed' | 'reviews_shifted' | 'measurement_verdict';
   payload: Record<string, unknown>;
   createdAt: string;
 }
