@@ -34,7 +34,6 @@ export const ascRoutes = [
         keyId?: string;
         issuerId?: string;
         privateKey?: string;
-        skipValidation?: boolean;
       };
 
       if (!body.keyId?.trim() || !body.issuerId?.trim() || !body.privateKey?.trim()) {
