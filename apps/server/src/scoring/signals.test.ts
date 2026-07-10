@@ -178,6 +178,17 @@ describe('computeSignals — ASC keyword enrichment', () => {
     expect(signals.keywordField.observable).toBe(false);
   });
 
+  it('keywordField is observable with empty value when ascData.keywords is empty string', () => {
+    const listing = makeListing();
+    const signals = computeSignals(listing, { keywords: '', promotionalText: null });
+    expect(signals.keywordField.observable).toBe(true);
+    if (!signals.keywordField.observable) return;
+    expect(signals.keywordField.value).toBe('');
+    expect(signals.keywordField.length).toBe(0);
+    expect(signals.keywordField.charsRemaining).toBe(100);
+    expect(signals.keywordField.wordsSharedWithTitle).toEqual([]);
+  });
+
   it('conversion.promotionalText is set from ascData', () => {
     const listing = makeListing();
     const signals = computeSignals(listing, { keywords: null, promotionalText: 'Open from anywhere.' });

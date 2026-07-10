@@ -162,7 +162,7 @@ export function computeSignals(listing: AppListing, ascData?: AscListingData): L
       utilizationPct: subtitle ? pct(subtitle.length, SUBTITLE_LIMIT) : 0,
       wordsSharedWithTitle: sharedWords,
     },
-    keywordField: ascData?.keywords
+    keywordField: ascData?.keywords != null
       ? {
           observable: true as const,
           value: ascData.keywords,

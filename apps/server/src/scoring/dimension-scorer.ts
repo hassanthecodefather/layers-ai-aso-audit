@@ -49,6 +49,8 @@ export function dimensionInputs(
       return {
         name: listing.name,
         subtitle: listing.subtitle,
+        ascObservable: signals.keywordField.observable,
+        ascValue: signals.keywordField.observable ? signals.keywordField.value : null,
       };
 
     case 'description':
@@ -86,6 +88,7 @@ export function dimensionInputs(
         releaseNotes: listing.releaseNotes,
         crawled: listing.provenance.crawler,
         version: listing.version,
+        ascPromo: signals.conversion.promotionalText ?? '',
       };
 
     case 'competitive':
