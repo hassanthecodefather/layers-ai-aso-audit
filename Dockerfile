@@ -15,7 +15,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/server/package.json ./apps/server/package.json
 COPY apps/web/package.json ./apps/web/package.json
-RUN npm ci --no-audit --no-fund
+RUN npm ci --no-audit --no-fund && npm install -g pnpm
 
 # ── Stage 2: build ────────────────────────────────────────────────────────────
 FROM deps AS build
