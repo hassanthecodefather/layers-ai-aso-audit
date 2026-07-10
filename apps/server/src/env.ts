@@ -3,6 +3,7 @@ const REQUIRED: Record<string, string> = {
   ASO_JWT_SECRET: 'Secret key for signing JWT access tokens (min 32 chars)',
   APP_KITTI_API_KEY: 'AppKittie API key — required for identity-grounded competitor discovery (D3)',
   FIRECRAWL_API_KEY: 'Firecrawl API key — required for App Store page crawling (subtitle, screenshots)',
+  ASC_ENCRYPTION_KEY: '32-byte base64 key for AES-256-GCM encryption of ASC private keys (generate: openssl rand -base64 32)',
 };
 
 const GEMINI_KEY_NAMES = ['LLM_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY'] as const;
