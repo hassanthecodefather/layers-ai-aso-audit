@@ -12,6 +12,7 @@ import { trackingRoutes } from '../tracking/routes';
 import { verifyLlmStartup } from '../llm';
 import { startWorker, type WorkerHandle } from '../queue/worker';
 import { getWebStaticRoutes } from './web-static';
+import { startTrackingScheduler } from '../tracking/scheduler';
 
 const isTest =
   process.env.NODE_ENV === 'test' || process.env.ASO_SKIP_STARTUP === '1';
@@ -39,7 +40,8 @@ if (!isTest) {
           runPgMigrations(sql)
             .then(() => {
               const worker = startWorker(mastra, sql);
-              registerShutdown(worker, sql);
+              const tracker = startTrackingScheduler(mastra, sql);
+              registerShutdown(worker, tracker, sql);
             })
             .catch((e) => {
               console.error('[memory] Postgres migration failed at startup:', e);
@@ -55,10 +57,15 @@ if (!isTest) {
 
 const DRAIN_TIMEOUT_MS = 30_000;
 
-function registerShutdown(worker: WorkerHandle, sql: import('postgres').Sql): void {
+function registerShutdown(
+  worker: WorkerHandle,
+  tracker: import('../tracking/scheduler').SchedulerHandle,
+  sql: import('postgres').Sql,
+): void {
   async function shutdown(signal: string): Promise<void> {
-    console.log(`[shutdown] ${signal} received — stopping worker...`);
+    console.log(`[shutdown] ${signal} received — stopping worker and tracker...`);
     worker.stop();
+    tracker.stop();
 
     const drained = await Promise.race([
       worker.drain(),
