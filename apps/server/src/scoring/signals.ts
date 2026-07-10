@@ -1,5 +1,6 @@
 import type { AppListing } from '../domain/listing';
 import { runLinter, type LinterResult } from '../keywords/linter';
+import type { AscListingData } from '../asc/listing-client';
 
 /**
  * Deterministic signals — every fact about a listing that is *arithmetic*,
@@ -29,10 +30,9 @@ export interface ListingSignals {
     /** Words appearing in both title and subtitle — wasted keyword coverage. */
     wordsSharedWithTitle: string[];
   };
-  keywordField: {
-    observable: false;
-    note: string;
-  };
+  keywordField:
+    | { observable: false; note: string }
+    | { observable: true; value: string; length: number; charsRemaining: number; wordsSharedWithTitle: string[] };
   keywordLinter: LinterResult;
   description: {
     charCount: number;
@@ -66,6 +66,7 @@ export interface ListingSignals {
   conversion: {
     promotionalTextObservable: boolean;
     hasPromotionalText: boolean;
+    promotionalText: string | null;
     hasReleaseNotes: boolean;
     releaseNotesLength: number;
     daysSinceLastUpdate: number | null;
@@ -120,7 +121,7 @@ function daysSince(iso: string | null): number | null {
 }
 
 /** Compute every deterministic signal for a listing. */
-export function computeSignals(listing: AppListing): ListingSignals {
+export function computeSignals(listing: AppListing, ascData?: AscListingData): ListingSignals {
   const titleWords = new Set(words(listing.name));
   const subtitle = listing.subtitle;
   const sharedWords = subtitle
@@ -161,7 +162,15 @@ export function computeSignals(listing: AppListing): ListingSignals {
       utilizationPct: subtitle ? pct(subtitle.length, SUBTITLE_LIMIT) : 0,
       wordsSharedWithTitle: sharedWords,
     },
-    keywordField: { observable: false, note: KEYWORD_FIELD_NOTE },
+    keywordField: ascData?.keywords
+      ? {
+          observable: true as const,
+          value: ascData.keywords,
+          length: ascData.keywords.length,
+          charsRemaining: 100 - ascData.keywords.length,
+          wordsSharedWithTitle: words(ascData.keywords).filter((w) => titleWords.has(w)),
+        }
+      : { observable: false as const, note: KEYWORD_FIELD_NOTE },
     keywordLinter: runLinter({
       title: listing.name,
       subtitle: listing.provenance.crawler ? (listing.subtitle ?? null) : null,
@@ -198,6 +207,7 @@ export function computeSignals(listing: AppListing): ListingSignals {
     conversion: {
       promotionalTextObservable: listing.provenance.crawler,
       hasPromotionalText: Boolean(listing.promotionalText),
+      promotionalText: ascData?.promotionalText ?? null,
       hasReleaseNotes: Boolean(listing.releaseNotes),
       releaseNotesLength: listing.releaseNotes?.length ?? 0,
       daysSinceLastUpdate: daysSince(listing.currentVersionReleaseDate),

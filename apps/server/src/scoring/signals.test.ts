@@ -151,3 +151,42 @@ describe('computeSignals — keyword field', () => {
     expect(s.keywordField.observable).toBe(false);
   });
 });
+
+describe('computeSignals — ASC keyword enrichment', () => {
+  it('keywordField is observable when ascData.keywords is provided', () => {
+    const listing = makeListing({ name: 'Smart Car Key' });
+    const signals = computeSignals(listing, { keywords: 'remote start,vehicle', promotionalText: null });
+    expect(signals.keywordField.observable).toBe(true);
+    if (!signals.keywordField.observable) return;
+    expect(signals.keywordField.value).toBe('remote start,vehicle');
+    expect(signals.keywordField.length).toBe(20);
+    expect(signals.keywordField.charsRemaining).toBe(80);
+  });
+
+  it('wordsSharedWithTitle flags title duplicates in keyword field', () => {
+    const listing = makeListing({ name: 'Smart Car Key' });
+    // 'car' and 'key' are in the title; 'remote' is not
+    const signals = computeSignals(listing, { keywords: 'remote,car,key', promotionalText: null });
+    if (!signals.keywordField.observable) return;
+    expect(signals.keywordField.wordsSharedWithTitle).toEqual(expect.arrayContaining(['car', 'key']));
+    expect(signals.keywordField.wordsSharedWithTitle).not.toContain('remote');
+  });
+
+  it('keywordField stays unobservable when ascData.keywords is null', () => {
+    const listing = makeListing();
+    const signals = computeSignals(listing, { keywords: null, promotionalText: null });
+    expect(signals.keywordField.observable).toBe(false);
+  });
+
+  it('conversion.promotionalText is set from ascData', () => {
+    const listing = makeListing();
+    const signals = computeSignals(listing, { keywords: null, promotionalText: 'Open from anywhere.' });
+    expect(signals.conversion.promotionalText).toBe('Open from anywhere.');
+  });
+
+  it('conversion.promotionalText is null when ascData is not provided', () => {
+    const listing = makeListing();
+    const signals = computeSignals(listing);
+    expect(signals.conversion.promotionalText).toBeNull();
+  });
+});

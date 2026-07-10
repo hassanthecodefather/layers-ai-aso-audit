@@ -302,6 +302,7 @@ function makeSignals(screenshotCount: number): ListingSignals {
     conversion: {
       promotionalTextObservable: false,
       hasPromotionalText: false,
+      promotionalText: null,
       hasReleaseNotes: false,
       releaseNotesLength: 0,
       daysSinceLastUpdate: 180,

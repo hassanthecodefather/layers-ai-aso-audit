@@ -122,6 +122,7 @@ function makeSignals(overrides: Partial<ListingSignals> = {}): ListingSignals {
     conversion: {
       promotionalTextObservable: false,
       hasPromotionalText: false,
+      promotionalText: null,
       hasReleaseNotes: true,
       releaseNotesLength: 10,
       daysSinceLastUpdate: 180,
@@ -177,6 +178,7 @@ describe('deriveConfidence — conversion', () => {
       conversion: {
         promotionalTextObservable: false,
         hasPromotionalText: false,
+        promotionalText: null,
         hasReleaseNotes: true,
         releaseNotesLength: 10,
         daysSinceLastUpdate: 180,
@@ -190,6 +192,7 @@ describe('deriveConfidence — conversion', () => {
       conversion: {
         promotionalTextObservable: true,
         hasPromotionalText: false,
+        promotionalText: null,
         hasReleaseNotes: true,
         releaseNotesLength: 10,
         daysSinceLastUpdate: 180,
