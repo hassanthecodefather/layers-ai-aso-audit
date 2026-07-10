@@ -139,18 +139,18 @@ describe('runScan', () => {
     const { loadCredentials } = await import('../asc/credential-store');
     vi.mocked(loadCredentials).mockResolvedValueOnce({ ok: true, value: null });
 
-    const snapshot = { name: 'App', subtitle: 'Old Sub', description: 'd', iconUrl: null, rating: 4.0, ratingCount: 10 };
+    const snapshot = { name: 'App', subtitle: 'Old Sub', description: 'Old Desc', iconUrl: null, rating: 4.0, ratingCount: 10 };
     await sql`
       INSERT INTO aso_listing_snapshots (id, app_id, country, tenant_id, fetched_at, listing_json, signals_json, report_json, rubric_version, prompt_hash, model_id)
       VALUES ('snap-nocreds', '12345', 'us', 'scan-t6', NOW() - INTERVAL '1 hour', ${JSON.stringify(snapshot)}, '{}', '{}', 'v1', 'h1', 'm1')
     `;
     mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({
-      results: [{ trackName: 'App', subtitle: 'New Sub', description: 'd', artworkUrl512: null, averageUserRating: 4.0, userRatingCount: 10 }],
+      results: [{ trackName: 'App', subtitle: 'Old Sub', description: 'New Desc', artworkUrl512: null, averageUserRating: 4.0, userRatingCount: 10 }],
     }), { status: 200 }));
 
     await runScan(baseApp, 'scan-t6', sql, {} as any);
 
     const changed = await getLastChangeEvent(sql, 'scan-t6', '12345', 'us', 'metadata_changed');
-    expect(changed?.payload).toMatchObject({ field: 'subtitle', before: 'Old Sub', after: 'New Sub' });
+    expect(changed?.payload).toMatchObject({ field: 'description', before: 'Old Desc', after: 'New Desc' });
   });
 });
