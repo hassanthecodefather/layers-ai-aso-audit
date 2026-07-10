@@ -45,8 +45,8 @@ export async function fetchAscListingData(
     const loc = enUs ?? locData.data[0]!;
 
     return {
-      keywords: loc.attributes.keywords || null,
-      promotionalText: loc.attributes.promotionalText || null,
+      keywords: loc.attributes.keywords ?? null,
+      promotionalText: loc.attributes.promotionalText ?? null,
     };
   } catch {
     return NULL_RESULT;
