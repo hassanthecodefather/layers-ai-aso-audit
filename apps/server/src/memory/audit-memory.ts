@@ -189,12 +189,36 @@ export function buildPriorContext(input: {
   identity: ResolvedIdentity;
   priorSnapshot: ListingSnapshot | null;
   identityFactSheet: string;
+  /** The listing's declared primary genre — used to surface category mismatch explicitly. */
+  primaryGenre?: string | null;
+  /** The listing's declared genres array — used to check secondary category. */
+  genres?: string[];
 }): string {
   const { identity } = input;
   const lines: string[] = [];
   lines.push('### Resolved identity (function-grounded)');
   lines.push(`Category: ${identity.category} (confidence: ${identity.categoryBand})`);
   if (identity.niche) lines.push(`Niche: ${identity.niche} (confidence: ${identity.nicheBand})`);
+  if (identity.suggestedCategory) {
+    lines.push(`Suggested App Store category: ${identity.suggestedCategory}`);
+    // Explicit mismatch note when the declared primary category differs from the suggestion.
+    const declared = input.primaryGenre?.trim();
+    if (declared && declared.toLowerCase() !== identity.suggestedCategory.toLowerCase()) {
+      lines.push(
+        `⚠ CATEGORY MISMATCH: App Store primary category is "${declared}" but the app's function maps to "${identity.suggestedCategory}". ` +
+        `This directly hurts keyword ranking and chart placement. Recommend changing primary category from "${declared}" → "${identity.suggestedCategory}" in App Store Connect.`,
+      );
+    }
+    // Secondary category gap — only meaningful when a primary is already set.
+    const genres = input.genres ?? [];
+    const hasPrimary = genres.length >= 1;
+    const hasSecondary = genres.length > 1;
+    if (hasPrimary && !hasSecondary) {
+      lines.push(
+        `⚠ SECONDARY CATEGORY MISSING: No secondary category is set. Adding "${identity.suggestedCategory}" (or the closest match) as a secondary category would expand search surface without requiring a primary category change.`,
+      );
+    }
+  }
   if (identity.escalate && identity.source !== 'human_confirmed') {
     const cause = identity.divergence === 'cross_domain'
       ? 'The store category and the app\'s true function diverge (cross-domain).'

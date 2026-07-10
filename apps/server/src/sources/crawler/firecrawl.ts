@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { fetchJson, SourceError } from '../http';
 import type { ListingCrawler, ListingExtras } from './crawler';
 
@@ -33,6 +34,14 @@ export class FirecrawlCrawler implements ListingCrawler {
           source: 'Firecrawl',
           timeoutMs: 45_000,
           retries: 1,
+          // Cache key must be derived from the App Store URL being scraped, not
+          // the Firecrawl endpoint (which is the same POST URL for every app and
+          // would cause all audits to share one cache entry).
+          call: {
+            kind: 'app',
+            upstream: 'crawler',
+            entityId: createHash('sha256').update(appStoreUrl).digest('hex').slice(0, 16),
+          },
           init: {
             method: 'POST',
             headers: {

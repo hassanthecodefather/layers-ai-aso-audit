@@ -72,6 +72,31 @@ END $$`,
   )`,
   `CREATE INDEX IF NOT EXISTS aso_audit_jobs_status_created ON aso_audit_jobs (status, created_at)`,
   `CREATE INDEX IF NOT EXISTS aso_audit_jobs_run_id ON aso_audit_jobs (run_id)`,
+  // Auth tables — moved from LibSQL so refresh tokens work across multiple instances
+  `CREATE TABLE IF NOT EXISTS aso_users (
+    id            TEXT PRIMARY KEY,
+    email         TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE TABLE IF NOT EXISTS aso_refresh_tokens (
+    id         TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL REFERENCES aso_users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    revoked_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS aso_refresh_tokens_user_id ON aso_refresh_tokens (user_id)`,
+  // HTTP response cache — Postgres counterpart of the LibSQL aso_cache table.
+  // Uses TIMESTAMPTZ for proper expiry comparisons across replicas with different timezones.
+  `CREATE TABLE IF NOT EXISTS aso_cache (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS aso_cache_expires ON aso_cache (expires_at)`,
 ];
 
 /**

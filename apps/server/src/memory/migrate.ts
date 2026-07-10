@@ -206,6 +206,7 @@ export const MIGRATIONS: readonly string[] = [
     ON aso_recommendations (tenant_id, app_id, country)`,
   `CREATE INDEX IF NOT EXISTS aso_identity_versions_tenant_app
     ON aso_identity_versions (tenant_id, app_id, country, version DESC)`,
+  `ALTER TABLE aso_identity_versions ADD COLUMN suggested_category TEXT`,
   `CREATE INDEX IF NOT EXISTS aso_competitor_tombstones_tenant_app
     ON aso_competitor_tombstones (tenant_id, app_id, country)`,
 

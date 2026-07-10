@@ -66,7 +66,7 @@ export class GeminiVisionClient implements VisionClient {
   readonly #modelId: string;
   readonly #endpoint = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
 
-  constructor(apiKey: string, modelId = 'gemini-2.5-flash') {
+  constructor(apiKey: string, modelId = 'gemini-3.5-flash') {
     this.#apiKey = apiKey;
     this.#modelId = modelId;
   }
@@ -167,8 +167,8 @@ strongestSlotForPromotion: Which slot (1-indexed) would benefit most from being 
         },
       ],
       temperature: 0,
-      max_tokens: 1500,
-      reasoning_effort: 'none', // disable thinking — see analyzeScreenshots
+      max_tokens: 8000,
+      reasoning_effort: 'none',
       response_format: { type: 'json_object' },
     };
 
@@ -221,7 +221,7 @@ Analyze the app icon for ASO quality. Return JSON:
         },
       ],
       temperature: 0,
-      max_tokens: 400,
+      max_tokens: 1500,
       reasoning_effort: 'none', // disable thinking — see analyzeScreenshots
       response_format: { type: 'json_object' },
     };
@@ -396,5 +396,5 @@ export function getVisionClient(): VisionClient {
   if (!apiKey) {
     return new NoOpVisionClient();
   }
-  return new GeminiVisionClient(apiKey, 'gemini-2.5-flash');
+  return new GeminiVisionClient(apiKey, process.env['LLM_MODEL']?.trim() || 'gemini-3.5-flash');
 }

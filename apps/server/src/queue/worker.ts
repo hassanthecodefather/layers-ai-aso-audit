@@ -8,6 +8,8 @@ import {
 } from './job-store';
 
 const POLL_INTERVAL_MS = 5_000;
+const STALE_RECOVERY_INTERVAL_MS = 5 * 60_000; // re-check for stuck jobs every 5 min
+const MAX_RESTART_BACKOFF_MS = 60_000;
 
 /** Pull the confirm-app suspend payload out of a Mastra workflow result. */
 function extractSuspendPayload(result: any): any {
@@ -92,9 +94,24 @@ export async function executeJob(job: AuditJob, mastra: Mastra, sql: postgres.Sq
   }
 }
 
-/** Start the background worker loop. Returns a stop() function. */
-export function startWorker(mastra: Mastra, sql: postgres.Sql): () => void {
+export interface WorkerHandle {
+  /** Signal the worker to stop polling after the current job finishes. */
+  stop: () => void;
+  /** Resolves once the worker is idle (no job running). Use before shutdown. */
+  drain: () => Promise<void>;
+}
+
+/** Start the background worker loop. Returns a handle to stop it and await drain. */
+export function startWorker(mastra: Mastra, sql: postgres.Sql): WorkerHandle {
   let stopped = false;
+  let jobRunning = false;
+  const drainWaiters: Array<() => void> = [];
+
+  function notifyDrain() {
+    if (!jobRunning) {
+      for (const resolve of drainWaiters.splice(0)) resolve();
+    }
+  }
 
   async function loop(): Promise<void> {
     // Note: 15-minute stale-job threshold is also an implicit per-job runtime ceiling.
@@ -115,17 +132,56 @@ export function startWorker(mastra: Mastra, sql: postgres.Sql): () => void {
         return null;
       });
       if (job) {
+        jobRunning = true;
         try {
           await executeJob(job, mastra, sql);
         } catch (err) {
           console.error('[worker] executeJob threw unexpectedly (DB error during error-handling path) — job may be stuck in running', err instanceof Error ? err.message : err);
+        } finally {
+          jobRunning = false;
+          notifyDrain();
         }
       } else {
         await new Promise<void>((r) => setTimeout(r, POLL_INTERVAL_MS));
       }
     }
+    notifyDrain();
   }
 
-  void loop();
-  return () => { stopped = true; };
+  // Periodic stale-job recovery — catches jobs that went stale while the server
+  // was running (not just the ones stale at startup).
+  const staleTimer = setInterval(async () => {
+    if (stopped) return;
+    const n = await recoverStaleJobs(sql).catch((e) => {
+      console.error('[worker] periodic recoverStaleJobs failed:', e instanceof Error ? e.message : e);
+      return 0;
+    });
+    if (n > 0) console.log(`[worker] periodic recovery: reset ${n} stale job(s)`);
+  }, STALE_RECOVERY_INTERVAL_MS);
+
+  // Supervisor: restart the loop on unexpected crash with exponential backoff.
+  // A clean stop (stopped = true) causes loop() to return normally — no restart.
+  async function supervise(): Promise<void> {
+    let backoffMs = 1_000;
+    while (!stopped) {
+      try {
+        await loop();
+      } catch (err) {
+        if (stopped) break;
+        console.error(`[worker] loop crashed — restarting in ${backoffMs}ms:`, err instanceof Error ? err.message : err);
+        await new Promise<void>((r) => setTimeout(r, backoffMs));
+        backoffMs = Math.min(backoffMs * 2, MAX_RESTART_BACKOFF_MS);
+      }
+    }
+  }
+
+  void supervise();
+
+  return {
+    stop: () => { stopped = true; clearInterval(staleTimer); },
+    drain: () => {
+      if (!jobRunning) return Promise.resolve();
+      return new Promise<void>((resolve) => drainWaiters.push(resolve));
+    },
+  };
 }

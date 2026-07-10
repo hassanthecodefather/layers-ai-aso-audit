@@ -40,13 +40,14 @@ function textFields(listing: AppListing): string {
       crawled
         ? JSON.stringify(listing.promotionalText)
         : 'NOT OBSERVABLE (no page crawler)'
-    }`,
+    } ⚠ NOT INDEXED by Apple — do not recommend adding keywords here`,
     `Preview video present: ${
       crawled
         ? String(listing.hasPreviewVideo)
         : 'NOT OBSERVABLE (no page crawler) — score "unavailable"'
     }`,
-    `Primary genre: ${listing.primaryGenre ?? 'unknown'}`,
+    `Primary genre: ${listing.primaryGenre ?? 'unknown'} (indexed by Apple — affects search ranking)`,
+    `Secondary genre: ${listing.genres.length > 1 ? listing.genres.slice(1).join(', ') : 'none set'} (optional but indexed — a missing or mismatched secondary genre is an ASO gap)`,
     `Price: ${listing.formattedPrice ?? 'unknown'}`,
     `Version: ${listing.version ?? 'unknown'}`,
     `What's New: ${
@@ -428,6 +429,22 @@ export function buildAuditPrompt(
     '  • These should target `dimension: "keywordField"` (or `"title"` / `"subtitle"` if ' +
       'the term is strong enough to belong in a visible field).',
     '  • Produce at least 3 and up to 6 such `add_keyword` recommendations if candidates are present.',
+    '',
+    'CATEGORY RECOMMENDATION RULE — when generating a `reposition_identity` recommendation:',
+    '  • If the Identity context section contains a "⚠ CATEGORY MISMATCH" line, it names the exact',
+    '    target Apple category (e.g. "Utilities"). You MUST use that category verbatim in the',
+    '    recommendation title, rationale, and evidence. Do NOT substitute a different Apple category',
+    '    — the identity classifier already determined the correct mapping.',
+    '  • The `referent.value` for a `reposition_identity` rec must be the target category name, not',
+    '    the current wrong category.',
+    '',
+    'KEYWORD FIELD FORMAT RULES (Apple official):',
+    '  • Total keyword field limit: 100 characters.',
+    '  • Keywords are comma-separated with NO spaces between terms: e.g. "charging,ev,navigation".',
+    '  • Spaces ARE allowed within a multi-word phrase: e.g. "road trip,electric car".',
+    '  • Do NOT include competitor brand names — Apple does not index them and may reject the app.',
+    '  • Do NOT use plurals of a keyword already present (duplicates waste budget).',
+    '  • Promotional text is NOT indexed — never suggest adding keywords there.',
   ].join('\n');
 }
 

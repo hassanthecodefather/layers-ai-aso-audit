@@ -1,58 +1,43 @@
+import { validateEnv } from '../env';
 import { Mastra } from '@mastra/core';
-import { LibSQLStore } from '@mastra/libsql';
+import { PostgresStore } from '@mastra/pg';
 import { logger } from '../telemetry';
 import { asoAuditor } from './agents/aso-auditor';
 import { asoAuditWorkflow } from './workflows/audit-workflow';
 import { auditRoutes } from './routes';
 import { authRoutes } from '../auth/routes';
+import { healthRoutes } from './health-routes';
 import { verifyLlmStartup } from '../llm';
-import { runMigrations } from '../memory/migrate';
-import { startWorker } from '../queue/worker';
+import { startWorker, type WorkerHandle } from '../queue/worker';
+import { getWebStaticRoutes } from './web-static';
 
-/**
- * The Mastra instance — the composition root.
- *
- * Storage is LibSQL on a local file: workflows that `suspend()` serialise
- * their state here, so the run survives between the `/audit/identify` request
- * (which suspends) and the `/audit/run` request (which resumes it).
- */
-const DB_URL = process.env.ASO_DB_URL?.trim() || 'file:./aso-audit.db';
-
-// Only set up file transport outside of tests (tests set ASO_SKIP_STARTUP=1
-// or NODE_ENV=test and should not write log files to disk).
 const isTest =
   process.env.NODE_ENV === 'test' || process.env.ASO_SKIP_STARTUP === '1';
+
+if (!isTest) validateEnv();
+
+const pgUrl = process.env.DATABASE_URL;
 
 export const mastra = new Mastra({
   agents: { asoAuditor },
   workflows: { asoAuditWorkflow },
-  storage: new LibSQLStore({ id: 'aso-audit', url: DB_URL }),
+  ...(pgUrl ? { storage: new PostgresStore({ id: 'aso-audit', connectionString: pgUrl }) } : {}),
   logger,
-  // NOTE: observability via MastraStorageExporter was removed — it writes AI
-  // spans to the same LibSQL file the workflow uses for suspend/resume state and
-  // blocks the run on resume ("does not support batch creating metrics"). Studio
-  // Traces needs a storage that supports it (e.g. Postgres at P6) or a non-LibSQL
-  // exporter; Studio Logs still work via the PinoLogger file transport above.
   server: {
-    apiRoutes: [...auditRoutes, ...authRoutes],
+    apiRoutes: [...auditRoutes, ...authRoutes, ...healthRoutes, ...getWebStaticRoutes()],
   },
 });
 
-// One-time startup work: create our `aso_*` tables (idempotent) and confirm
-// the pinned Gemini model responds. Both are fire-and-forget and log their
-// outcome — neither should crash boot, and we skip them under test so the
-// suite stays hermetic (no DB writes, no network).
 if (!isTest) {
-  const pgUrl = process.env.DATABASE_URL;
   if (pgUrl) {
     import('../memory/pg-migrate').then(({ runPgMigrations }) =>
       import('../memory').then(({ getPgSql }) => {
         const sql = getPgSql();
         if (sql) {
-          // Run migrations first, then start the worker only after the schema is ready.
           runPgMigrations(sql)
             .then(() => {
-              startWorker(mastra, sql);
+              const worker = startWorker(mastra, sql);
+              registerShutdown(worker, sql);
             })
             .catch((e) => {
               console.error('[memory] Postgres migration failed at startup:', e);
@@ -61,9 +46,30 @@ if (!isTest) {
       }),
     ).catch((e) => console.error('[memory] Postgres migration bootstrap failed:', e));
   } else {
-    runMigrations(DB_URL).catch((e) =>
-      console.error('[memory] migration failed at startup:', e),
-    );
+    console.warn('[memory] DATABASE_URL not set — Mastra storage and job queue unavailable');
   }
   void verifyLlmStartup();
+}
+
+const DRAIN_TIMEOUT_MS = 30_000;
+
+function registerShutdown(worker: WorkerHandle, sql: import('postgres').Sql): void {
+  async function shutdown(signal: string): Promise<void> {
+    console.log(`[shutdown] ${signal} received — stopping worker...`);
+    worker.stop();
+
+    const drained = await Promise.race([
+      worker.drain(),
+      new Promise<void>((r) => setTimeout(r, DRAIN_TIMEOUT_MS)),
+    ]);
+    void drained;
+
+    console.log('[shutdown] worker idle, closing DB...');
+    await sql.end({ timeout: 5 }).catch(() => {});
+    console.log('[shutdown] done');
+    process.exit(0);
+  }
+
+  process.once('SIGTERM', () => void shutdown('SIGTERM'));
+  process.once('SIGINT',  () => void shutdown('SIGINT'));
 }

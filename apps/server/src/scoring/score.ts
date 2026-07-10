@@ -1,5 +1,6 @@
 import type { Agent } from '@mastra/core/agent';
 import { AuditDraftSchema, type AuditDraft } from '../domain/audit';
+import { INTENT_TAGS } from '../domain/recommendation';
 import type { AppListing } from '../domain/listing';
 import { computeSignals, type ListingSignals } from './signals';
 import { buildAuditPrompt, buildRepairPrompt } from './prompt';
@@ -7,6 +8,8 @@ import { extractJsonObject } from './extract';
 import { normalizeRecommendations } from './candidates';
 import type { VisionResult } from '../vision/types';
 import { getGovernor } from '../cost/governor';
+import { logger } from '../telemetry';
+import { currentTenantId } from '../context/tenant';
 
 /**
  * The structured-output strategy: generate → validate → repair.
@@ -25,6 +28,22 @@ interface ParseAttempt {
   raw: string;
 }
 
+const VALID_INTENTS = new Set<string>(INTENT_TAGS);
+
+/**
+ * Strip recommendations with invalid/unknown intents before schema validation.
+ * The model occasionally returns intent: 'none' for non-actionable placeholders;
+ * removing them is safer than failing the entire audit.
+ */
+function sanitizeRecs(value: unknown): void {
+  if (!value || typeof value !== 'object') return;
+  const v = value as Record<string, unknown>;
+  if (!Array.isArray(v.recommendations)) return;
+  v.recommendations = v.recommendations.filter(
+    (r: unknown) => typeof r === 'object' && r !== null && VALID_INTENTS.has((r as Record<string, unknown>).intent as string),
+  );
+}
+
 /** Extract, JSON-parse and schema-validate one model response. */
 function parseDraft(text: string): ParseAttempt {
   const json = extractJsonObject(text);
@@ -39,6 +58,7 @@ function parseDraft(text: string): ParseAttempt {
     return { error: `invalid JSON (${(e as Error).message})`, raw: json };
   }
 
+  sanitizeRecs(value);
   const result = AuditDraftSchema.safeParse(value);
   if (!result.success) {
     const detail = result.error.issues
@@ -50,15 +70,40 @@ function parseDraft(text: string): ParseAttempt {
   return { draft: result.data, error: '', raw: json };
 }
 
-/** Run one plain-text generation, return its text, and record a cost estimate. */
-async function generate(agent: Agent, prompt: string): Promise<string> {
-  const result = await agent.generate(prompt, { modelSettings: { temperature: 0 } });
+/** Run one plain-text generation, return its text, and emit a provider_call log event. */
+async function generate(agent: Agent, prompt: string, operation: 'audit' | 'audit-repair' = 'audit'): Promise<string> {
+  const startMs = Date.now();
+  let result: Awaited<ReturnType<typeof agent.generate>>;
+  try {
+    result = await agent.generate(prompt, { modelSettings: { temperature: 0 } });
+  } catch (e) {
+    const tenantId = currentTenantId();
+    logger.info('provider_call gemini', {
+      event: 'provider_call', provider: 'gemini', operation,
+      durationMs: Date.now() - startMs, status: 'error',
+      errorMessage: e instanceof Error ? e.message : String(e),
+      ...(tenantId ? { tenantId } : {}),
+    });
+    throw e;
+  }
   const text = typeof result.text === 'string' ? result.text : '';
-  // Post-hoc dollar estimate (alert-only, spec E2). totalTokens from the AI SDK
-  // usage field when present; otherwise approximate from character count (÷4).
-  const totalTokens = (result as any).usage?.totalTokens ?? Math.round((prompt.length + text.length) / 4);
+  const usage = (result as any).usage as { promptTokens?: number; completionTokens?: number; totalTokens?: number } | undefined;
+  const inputTokens = usage?.promptTokens ?? 0;
+  const outputTokens = usage?.completionTokens ?? 0;
+  // totalTokens from usage when present; otherwise approximate from char count (÷4).
+  const totalTokens = usage?.totalTokens ?? Math.round((prompt.length + text.length) / 4);
   // Blended Gemini Flash rate: ~$0.15/1M tokens.
-  getGovernor().recordEstimate(totalTokens, (totalTokens / 1_000_000) * 0.15);
+  const estimatedCostUsd = (totalTokens / 1_000_000) * 0.15;
+  getGovernor().recordEstimate(totalTokens, estimatedCostUsd);
+  const tenantId = currentTenantId();
+  logger.info('provider_call gemini', {
+    event: 'provider_call', provider: 'gemini', operation,
+    durationMs: Date.now() - startMs, status: 'ok',
+    ...(usage?.promptTokens !== undefined ? { inputTokens } : {}),
+    ...(usage?.completionTokens !== undefined ? { outputTokens } : {}),
+    estimatedCostUsd,
+    ...(tenantId ? { tenantId } : {}),
+  });
   return text;
 }
 
@@ -88,7 +133,7 @@ export async function produceAuditDraft(
 
   // One repair pass — feed the model its own output and the exact errors.
   attempt = parseDraft(
-    await generate(agent, buildRepairPrompt(attempt.raw, attempt.error)),
+    await generate(agent, buildRepairPrompt(attempt.raw, attempt.error), 'audit-repair'),
   );
   if (attempt.draft) return normalizeRecommendations(attempt.draft, signals);
 

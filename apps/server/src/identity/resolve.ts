@@ -22,6 +22,17 @@ import type { WebSearchProbe } from '../sources/websearch/websearch';
  * identity fact sheet"); injected as a stub in tests so the band logic below
  * is exercised deterministically.
  */
+/** The 27 real Apple App Store primary categories (App Store Connect). */
+export const APP_STORE_CATEGORIES = [
+  'Books', 'Business', 'Developer Tools', 'Education', 'Entertainment',
+  'Finance', 'Food & Drink', 'Games', 'Graphics & Design', 'Health & Fitness',
+  'Lifestyle', 'Magazines & Newspapers', 'Medical', 'Music',
+  'Navigation', 'News', 'Photo & Video', 'Productivity', 'Reference',
+  'Shopping', 'Social Networking', 'Sports', 'Travel',
+  'Utilities', 'Weather',
+] as const;
+export type AppStoreCategory = typeof APP_STORE_CATEGORIES[number];
+
 export interface IdentityClassification {
   /** The function-derived category string (e.g. "Electric vehicle companion"). */
   functionCategory: string;
@@ -29,6 +40,8 @@ export interface IdentityClassification {
   functionNiche: string | null;
   /** Vocabulary that, if present in reviews, corroborates the function. */
   functionTerms: string[];
+  /** The best-fit real Apple App Store primary category for this app's function. */
+  suggestedCategory?: AppStoreCategory | null;
 }
 
 /**
@@ -49,6 +62,8 @@ export const ResolvedIdentitySchema = z.object({
   source: IdentitySourceSchema.default('resolved'),
   /** The classifier's function vocabulary — used for structured competitor seeds. */
   functionTerms: z.array(z.string()).default([]),
+  /** Best-fit real Apple App Store primary category for the app's function. */
+  suggestedCategory: z.string().nullable().optional(),
   /** Set only on a contested human override (see OverrodeEvidenceSchema). */
   overrodeEvidence: OverrodeEvidenceSchema.nullable().default(null),
 });
@@ -216,6 +231,7 @@ export function resolveIdentity(
     tally,
     source: 'resolved',
     functionTerms: classification.functionTerms,
+    suggestedCategory: classification.suggestedCategory ?? null,
     overrodeEvidence: null,
   };
 }

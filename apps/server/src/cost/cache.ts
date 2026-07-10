@@ -12,6 +12,8 @@
 
 import type { Client } from '@libsql/client';
 import { openDb, runMigrations } from '../memory/migrate';
+import { getPgSql } from '../memory';
+import { PostgresCache } from '../memory/postgres-cache';
 
 export type EntityKey = string; // `${upstream}:${entityId}`
 
@@ -96,13 +98,20 @@ let _cache: Cache | null = null;
 
 export function getCache(): Cache {
   if (!_cache) {
-    const url = process.env.ASO_DB_URL?.trim() || 'file:./aso-audit.db';
-    const db = openDb(url);
-    // Pass the migration promise into LibSqlCache so set() awaits table existence
-    // before writing — closes the first-boot race where Postgres mode skips the
-    // LibSQL startup migration and the cache table may not exist yet.
-    const ready = runMigrations(db).catch((e) => console.error('[cache] migration failed:', e));
-    _cache = new LibSqlCache(db, ready);
+    const sql = getPgSql();
+    if (sql) {
+      // Postgres is available — use the shared connection so the cache is
+      // entity-level (shared across all replicas hitting the same database).
+      _cache = new PostgresCache(sql);
+    } else {
+      const url = process.env.ASO_DB_URL?.trim() || 'file:./aso-audit.db';
+      const db = openDb(url);
+      // Pass the migration promise into LibSqlCache so set() awaits table existence
+      // before writing — closes the first-boot race where Postgres mode skips the
+      // LibSQL startup migration and the cache table may not exist yet.
+      const ready = runMigrations(db).catch((e) => console.error('[cache] migration failed:', e));
+      _cache = new LibSqlCache(db, ready);
+    }
   }
   return _cache;
 }

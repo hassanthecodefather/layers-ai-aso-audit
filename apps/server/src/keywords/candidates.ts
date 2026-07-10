@@ -99,6 +99,31 @@ function competitorTokens(listing: AppListing): Map<string, string> {
   return result;
 }
 
+/**
+ * Build a blocklist of competitor brand-name tokens.
+ *
+ * The brand name is the portion of the competitor's app name before the first
+ * `:` or ` - ` separator (e.g. "Hulu" from "Hulu: Watch TV & Movies").
+ * These are trademarked brand names — recommending them as keyword-field
+ * additions violates App Store Review Guidelines §2.3.7 and is never sound
+ * ASO advice regardless of whether it would index.
+ */
+function competitorBrandTokens(listing: AppListing): Set<string> {
+  const brands = new Set<string>();
+  for (const c of listing.competitors) {
+    // Brand name = first word before any `: ` / ` - ` separator.
+    // e.g. "Hulu: Watch TV" → "Hulu", "Tesla Model" → "Tesla".
+    // Only the first word is blocked — generic descriptor words like "Model"
+    // or "Movies" that follow are still valid gap terms.
+    const brandPart = c.name.split(/\s*[:\-–—]\s*/)[0] ?? c.name;
+    const firstWord = brandPart.trim().split(/\s+/)[0] ?? '';
+    for (const [key] of extractTokens(firstWord)) {
+      brands.add(key);
+    }
+  }
+  return brands;
+}
+
 // ── Core function ─────────────────────────────────────────────────────────────
 
 export async function generateCandidates(
@@ -115,6 +140,8 @@ export async function generateCandidates(
 
   // ── Competitor name keys ──────────────────────────────────────────────────
   const theirTokens = competitorTokens(listing);
+  // Brand-name tokens are blocked from gap recommendations (Apple §2.3.7).
+  const brandTokens = competitorBrandTokens(listing);
 
   // ── Description candidates ────────────────────────────────────────────────
   // Tokens in description not already in title+subtitle → potential keyword-field additions.
@@ -125,8 +152,9 @@ export async function generateCandidates(
 
   // ── Competitor-name candidates ────────────────────────────────────────────
   // Competitor tokens absent from your title+subtitle → gaps to consider.
+  // Brand-name tokens are excluded — they are trademarks, not generic keywords.
   const compCandidates = [...theirTokens.entries()]
-    .filter(([key]) => !yourTokens.has(key))
+    .filter(([key]) => !yourTokens.has(key) && !brandTokens.has(key))
     .map(([key, raw]) => ({ key, raw }));
 
   // ── Query volume for candidate terms (capped at 10 for credit control) ───────
@@ -199,9 +227,10 @@ export async function generateCandidates(
     }
   }
 
-  // theirs_only: in ≥1 competitor name, absent from your title/subtitle
+  // theirs_only: in ≥1 competitor name, absent from your title/subtitle.
+  // Brand-name tokens are excluded — they are trademarks (Apple §2.3.7).
   for (const [key, raw] of theirTokens) {
-    if (!yourTokens.has(key)) {
+    if (!yourTokens.has(key) && !brandTokens.has(key)) {
       const vol = volumeMap.get(key) ?? fallbackVol;
       gap.push({ term: raw, normalizedKey: key, gapCategory: 'theirs_only', confidence: 'inferred', volumeLabel: vol.label, volumeAvailable: vol.available, ...volFields(vol) });
     }

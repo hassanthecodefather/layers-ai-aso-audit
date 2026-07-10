@@ -25,7 +25,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     const data = await res.json().catch(() => ({})) as Record<string, string>;
     if (!res.ok) throw new Error(data.error ?? 'Signup failed.');
-    setAuth({ userId: data.userId, accessToken: data.accessToken });
+    setAuth({ userId: data.userId ?? null, accessToken: data.accessToken ?? null });
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
@@ -36,7 +36,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     const data = await res.json().catch(() => ({})) as Record<string, string>;
     if (!res.ok) throw new Error(data.error ?? 'Login failed.');
-    setAuth({ userId: data.userId, accessToken: data.accessToken });
+    setAuth({ userId: data.userId ?? null, accessToken: data.accessToken ?? null });
   }, []);
 
   const logout = useCallback(async () => {

@@ -5,6 +5,8 @@ import type { IdentityVersion } from '../../domain/identity';
 import { extractIdentitySignals, type RawIdentitySignals } from '../../identity/signals';
 import {
   resolveIdentity,
+  APP_STORE_CATEGORIES,
+  type AppStoreCategory,
   type IdentityClassification,
   type ResolvedIdentity,
 } from '../../identity/resolve';
@@ -34,7 +36,17 @@ const ClassificationSchema = z.object({
   functionCategory: z.string().min(1),
   functionNiche: z.string().nullable(),
   functionTerms: z.array(z.string()).default([]),
+  suggestedCategory: z.string().nullable().default(null),
 });
+
+const APP_STORE_CATEGORY_LIST = [
+  'Books', 'Business', 'Developer Tools', 'Education', 'Entertainment',
+  'Finance', 'Food & Drink', 'Games', 'Graphics & Design', 'Health & Fitness',
+  'Lifestyle', 'Magazines & Newspapers', 'Medical', 'Music',
+  'Navigation', 'News', 'Photo & Video', 'Productivity', 'Reference',
+  'Shopping', 'Social Networking', 'Sports', 'Travel',
+  'Utilities', 'Weather',
+].join(' | ');
 
 const CLASSIFIER_INSTRUCTIONS = `You are an app-identity classifier. Given signals about an iOS app, determine what the app actually DOES — its function — independent of its declared App Store category.
 
@@ -44,8 +56,11 @@ Reply with ONLY a JSON object, no prose:
 {
   "functionCategory": "<the app's true function as a short category phrase, e.g. 'Electric vehicle companion'>",
   "functionNiche": "<the specific niche, or null if you cannot tell without seeing the screenshots>",
-  "functionTerms": ["<3-6 lowercase vocabulary words a user of THIS function would use in a review>"]
+  "functionTerms": ["<3-6 lowercase vocabulary words a user of THIS function would use in a review>"],
+  "suggestedCategory": "<the single best-fit Apple App Store primary category from this exact list: ${APP_STORE_CATEGORY_LIST}>"
 }
+
+For suggestedCategory, pick the category that best matches the app's actual function (not its declared category). Use the exact spelling from the list above.
 
 Ground your answer in the signals, not world knowledge alone. World knowledge is a hint that must be corroborated by a cited signal.`;
 
@@ -100,6 +115,7 @@ const UNKNOWN_CLASSIFICATION: IdentityClassification = {
   functionCategory: 'Unknown',
   functionNiche: null,
   functionTerms: [],
+  suggestedCategory: null,
 };
 
 /**
@@ -126,7 +142,12 @@ export function parseClassificationText(text: string): IdentityClassification {
     console.warn('[identity-classifier] schema validation failed:', parsed.error.message);
     return UNKNOWN_CLASSIFICATION;
   }
-  return parsed.data;
+  const raw = parsed.data.suggestedCategory;
+  const suggestedCategory: AppStoreCategory | null =
+    raw && (APP_STORE_CATEGORIES as readonly string[]).includes(raw)
+      ? (raw as AppStoreCategory)
+      : null;
+  return { ...parsed.data, suggestedCategory };
 }
 
 /** The production classifier: one Gemini generation over the fact sheet. */
@@ -152,11 +173,16 @@ export const geminiClassifier: IdentityClassifier = async (factSheet) => {
     throw e;
   }
   const usage = (result as any).usage as { promptTokens?: number; completionTokens?: number } | undefined;
+  const inputTokens = usage?.promptTokens ?? 0;
+  const outputTokens = usage?.completionTokens ?? 0;
+  // Blended Gemini Flash rate: ~$0.15/1M tokens (matches scoring/score.ts estimate).
+  const estimatedCostUsd = ((inputTokens + outputTokens) / 1_000_000) * 0.15;
   logger.info('provider_call gemini classify', {
     event: 'provider_call', provider: 'gemini', operation: 'classify',
     durationMs: Date.now() - startMs, status: 'ok',
-    ...(usage?.promptTokens !== undefined ? { inputTokens: usage.promptTokens } : {}),
-    ...(usage?.completionTokens !== undefined ? { outputTokens: usage.completionTokens } : {}),
+    ...(usage?.promptTokens !== undefined ? { inputTokens } : {}),
+    ...(usage?.completionTokens !== undefined ? { outputTokens } : {}),
+    ...(inputTokens + outputTokens > 0 ? { estimatedCostUsd } : {}),
   });
   return parseClassificationText(typeof result.text === 'string' ? result.text : '');
 };

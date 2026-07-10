@@ -147,7 +147,7 @@ export class PostgresStorageClient implements StorageClient {
         INSERT INTO aso_identity_versions
           (id, app_id, country, tenant_id, version, stage, category, category_band,
            niche, niche_band, audience_json, tally_json, divergence, escalate,
-           source, created_at, overrode_evidence_json)
+           source, created_at, overrode_evidence_json, suggested_category)
         VALUES (
           ${v.id}, ${v.appId}, ${v.country}, ${tenantId}, ${v.version},
           ${v.stage}, ${v.category}, ${v.categoryBand},
@@ -155,7 +155,8 @@ export class PostgresStorageClient implements StorageClient {
           ${v.audience != null ? JSON.stringify(v.audience) : null},
           ${JSON.stringify(v.tally)}, ${v.divergence}, ${v.escalate ? 1 : 0},
           ${v.source}, ${v.createdAt},
-          ${v.overrodeEvidence != null ? JSON.stringify(v.overrodeEvidence) : null}
+          ${v.overrodeEvidence != null ? JSON.stringify(v.overrodeEvidence) : null},
+          ${v.suggestedCategory ?? null}
         )
       `;
       return ok(undefined);
@@ -330,6 +331,7 @@ export class PostgresStorageClient implements StorageClient {
         row.overrode_evidence_json != null
           ? JSON.parse(String(row.overrode_evidence_json))
           : null,
+      suggestedCategory: row.suggested_category != null ? String(row.suggested_category) : null,
     });
     return parsed.success ? ok(parsed.data) : err(parsed.error.message);
   }

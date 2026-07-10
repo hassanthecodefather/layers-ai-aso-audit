@@ -58,6 +58,18 @@ export function ConfirmationCard({
       ? `App Store category "${summary.primaryGenre}" may not reflect what this app actually does.`
       : "We identified this app's function with low confidence.";
 
+  const categoryMismatch =
+    pending &&
+    identity &&
+    identity.divergence === 'cross_domain' &&
+    summary.primaryGenre
+      ? {
+          storeCategory: summary.primaryGenre,
+          resolvedCategory: identity.category,
+          suggestedCategory: identity.suggestedCategory ?? null,
+        }
+      : null;
+
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
       {/* App header */}
@@ -86,6 +98,29 @@ export function ConfirmationCard({
           </div>
         </div>
       </div>
+
+      {/* Category mismatch banner — shown whenever the App Store genre contradicts the resolved identity */}
+      {categoryMismatch && (
+        <div className="mt-4 rounded-xl border border-orange-500/20 bg-orange-500/5 p-3">
+          <p className="text-xs font-medium text-orange-400">Category mismatch detected</p>
+          <p className="mt-0.5 text-xs text-zinc-400">
+            App Store category is{' '}
+            <span className="text-zinc-200">{categoryMismatch.storeCategory}</span>
+            {categoryMismatch.suggestedCategory ? (
+              <>
+                {' '}— a better fit may be{' '}
+                <span className="text-zinc-200">{categoryMismatch.suggestedCategory}</span>.
+              </>
+            ) : (
+              <>
+                {' '}but this app functions as a{' '}
+                <span className="text-zinc-200">{categoryMismatch.resolvedCategory}</span>.
+              </>
+            )}{' '}
+            The audit will include a category switch recommendation.
+          </p>
+        </div>
+      )}
 
       {/* Previously-confirmed banner — human decision still in force, no re-escalation */}
       {pending && !identityNeedsConfirm && identity?.source === 'human_confirmed' && identity && (

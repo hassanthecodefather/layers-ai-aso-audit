@@ -15,7 +15,7 @@ import type { VisionResult, ScreenshotSetVerdict, IconVerdict } from './types';
 import { computeDHash, dHashDistance, defaultImageFetcher } from './phash';
 import type { ImageFetcher } from './phash';
 
-const MODEL_ID = 'gemini-2.5-flash';
+const MODEL_ID = process.env['LLM_MODEL']?.trim() || 'gemini-3.5-flash';
 
 /**
  * Run vision analysis for a listing.

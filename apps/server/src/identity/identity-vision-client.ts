@@ -20,7 +20,7 @@ export class GeminiIdentityVisionClient implements IdentityVisionClient {
   readonly #endpoint =
     'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
 
-  constructor(apiKey: string, modelId = 'gemini-2.5-flash') {
+  constructor(apiKey: string, modelId = 'gemini-3.5-flash') {
     this.#apiKey = apiKey;
     this.#modelId = modelId;
   }
@@ -70,9 +70,9 @@ Guidelines:
         },
       ],
       temperature: 0,
-      // 800 tokens: the identity JSON is small (~150 tokens), but gemini-2.5-flash
+      // 800 tokens: the identity JSON is small (~150 tokens), but gemini-3.5-flash
       // thinking tokens eat into the budget before output begins. 400 was too tight.
-      max_tokens: 800,
+      max_tokens: 2000,
       response_format: { type: 'json_object' },
     };
 
@@ -221,5 +221,5 @@ export function getIdentityVisionClient(): IdentityVisionClient {
   if (!apiKey) {
     return new NoOpIdentityVisionClient();
   }
-  return new GeminiIdentityVisionClient(apiKey, 'gemini-2.5-flash');
+  return new GeminiIdentityVisionClient(apiKey, process.env['LLM_MODEL']?.trim() || 'gemini-3.5-flash');
 }
