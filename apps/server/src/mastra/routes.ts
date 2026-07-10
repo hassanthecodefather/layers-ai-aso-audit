@@ -130,8 +130,9 @@ export const auditRoutes = [
         const url = typeof body?.url === 'string' ? body.url.trim() : '';
         if (!url) return c.json({ error: 'Paste an App Store URL first.' }, 400);
         const reopenIdentity = body?.reopenIdentity === true;
+        const advancedAudit = body?.advancedAudit === true;
         const runId = newId('run');
-        const job = await insertJob(sql, { runId, tenantId, url, reopenIdentity });
+        const job = await insertJob(sql, { runId, tenantId, url, reopenIdentity, advancedAudit });
         return c.json({ jobId: job.id, runId: job.runId, status: job.status });
       } catch (e) {
         console.error('[audit/start] failed:', e);

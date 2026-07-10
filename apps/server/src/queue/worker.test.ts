@@ -22,7 +22,7 @@ import { executeJob } from './worker';
 const BASE_JOB: AuditJob = {
   id: 'job_1', runId: 'run_1', tenantId: 'tenant_1',
   url: 'https://apps.apple.com/us/app/x/id1',
-  reopenIdentity: false, status: 'running', step: null,
+  reopenIdentity: false, advancedAudit: false, status: 'running', step: null,
   suspendPayloadJson: null, resumeDataJson: null,
   resultJson: null, errorMessage: null, costJson: null,
   attempt: 1, maxAttempts: 3,

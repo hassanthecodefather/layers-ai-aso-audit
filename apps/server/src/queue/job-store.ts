@@ -9,6 +9,7 @@ export interface AuditJob {
   tenantId: string;
   url: string;
   reopenIdentity: boolean;
+  advancedAudit: boolean;
   status: JobStatus;
   step: string | null;
   suspendPayloadJson: string | null;
@@ -25,7 +26,7 @@ export interface AuditJob {
 
 interface JobRow {
   id: string; run_id: string; tenant_id: string; url: string;
-  reopen_identity: number; status: string; step: string | null;
+  reopen_identity: number; advanced_audit: boolean; status: string; step: string | null;
   suspend_payload_json: string | null; resume_data_json: string | null;
   result_json: string | null; error_message: string | null;
   cost_json: string | null;
@@ -37,6 +38,7 @@ function rowToJob(r: JobRow): AuditJob {
   return {
     id: r.id, runId: r.run_id, tenantId: r.tenant_id, url: r.url,
     reopenIdentity: r.reopen_identity !== 0,
+    advancedAudit: r.advanced_audit,
     status: r.status as JobStatus,
     step: r.step,
     suspendPayloadJson: r.suspend_payload_json,
@@ -54,13 +56,13 @@ function rowToJob(r: JobRow): AuditJob {
 
 export async function insertJob(
   sql: postgres.Sql,
-  params: { id?: string; runId: string; tenantId: string; url: string; reopenIdentity?: boolean },
+  params: { id?: string; runId: string; tenantId: string; url: string; reopenIdentity?: boolean; advancedAudit?: boolean },
 ): Promise<AuditJob> {
   const id = params.id ?? newId('job');
   const [row] = await sql<JobRow[]>`
-    INSERT INTO aso_audit_jobs (id, run_id, tenant_id, url, reopen_identity, status)
+    INSERT INTO aso_audit_jobs (id, run_id, tenant_id, url, reopen_identity, advanced_audit, status)
     VALUES (${id}, ${params.runId}, ${params.tenantId}, ${params.url},
-            ${params.reopenIdentity ? 1 : 0}, 'pending')
+            ${params.reopenIdentity ? 1 : 0}, ${params.advancedAudit ?? false}, 'pending')
     RETURNING *
   `;
   return rowToJob(row!);

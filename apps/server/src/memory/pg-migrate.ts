@@ -158,6 +158,7 @@ END $$`,
     ON aso_measurement_windows (tenant_id, app_id, country, version_string)`,
   `ALTER TABLE aso_listing_snapshots ADD COLUMN screenshot_hash TEXT`,
   `ALTER TABLE aso_audit_jobs ADD COLUMN cost_json TEXT`,
+  `ALTER TABLE aso_audit_jobs ADD COLUMN advanced_audit BOOLEAN NOT NULL DEFAULT FALSE`,
 ];
 
 /**

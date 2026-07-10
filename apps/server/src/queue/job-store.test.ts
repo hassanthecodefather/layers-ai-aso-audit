@@ -19,7 +19,7 @@ function makeSql(rows: unknown[] = []) {
 
 const JOB_ROW = {
   id: 'job_1', run_id: 'run_1', tenant_id: 'tenant_1', url: 'https://apps.apple.com/us/app/x/id1',
-  reopen_identity: 0, status: 'pending', step: null,
+  reopen_identity: 0, advanced_audit: false, status: 'pending', step: null,
   suspend_payload_json: null, resume_data_json: null,
   result_json: null, error_message: null,
   attempt: 0, max_attempts: 3,
@@ -35,6 +35,7 @@ describe('insertJob', () => {
     expect(job.tenantId).toBe('tenant_1');
     expect(job.status).toBe('pending');
     expect(job.reopenIdentity).toBe(false);
+    expect(job.advancedAudit).toBe(false);
   });
 });
 
