@@ -13,6 +13,7 @@ import { verifyLlmStartup } from '../llm';
 import { startWorker, type WorkerHandle } from '../queue/worker';
 import { getWebStaticRoutes } from './web-static';
 import { startTrackingScheduler } from '../tracking/scheduler';
+import { startMeasurementScheduler } from '../measurement/scheduler';
 
 const isTest =
   process.env.NODE_ENV === 'test' || process.env.ASO_SKIP_STARTUP === '1';
@@ -41,7 +42,8 @@ if (!isTest) {
             .then(() => {
               const worker = startWorker(mastra, sql);
               const tracker = startTrackingScheduler(mastra, sql);
-              registerShutdown(worker, tracker, sql);
+              const measurer = startMeasurementScheduler(mastra, sql);
+              registerShutdown(worker, tracker, measurer, sql);
             })
             .catch((e) => {
               console.error('[memory] Postgres migration failed at startup:', e);
@@ -60,12 +62,14 @@ const DRAIN_TIMEOUT_MS = 30_000;
 function registerShutdown(
   worker: WorkerHandle,
   tracker: import('../tracking/scheduler').SchedulerHandle,
+  measurer: import('../measurement/scheduler').SchedulerHandle,
   sql: import('postgres').Sql,
 ): void {
   async function shutdown(signal: string): Promise<void> {
-    console.log(`[shutdown] ${signal} received — stopping worker and tracker...`);
+    console.log(`[shutdown] ${signal} received — stopping worker, tracker, and measurer...`);
     worker.stop();
     tracker.stop();
+    measurer.stop();
 
     const drained = await Promise.race([
       worker.drain(),

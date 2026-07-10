@@ -1,4 +1,4 @@
-export type ChangeEventType = 'go_live' | 'metadata_changed' | 'reviews_shifted' | 'version_status';
+export type ChangeEventType = 'go_live' | 'metadata_changed' | 'reviews_shifted' | 'version_status' | 'measurement_verdict';
 
 export type TrackedApp = {
   appId: string;
@@ -26,7 +26,7 @@ export type ActivityEvent = {
   appId: string;
   appName: string;
   country: string;
-  eventType: 'go_live' | 'metadata_changed' | 'reviews_shifted';
+  eventType: 'go_live' | 'metadata_changed' | 'reviews_shifted' | 'measurement_verdict';
   payload: Record<string, unknown>;
   createdAt: string;
 };
