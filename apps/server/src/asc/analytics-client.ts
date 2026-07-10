@@ -35,6 +35,8 @@ export class AppleAscAnalyticsClient implements AscAnalyticsClient {
             type: 'analyticsReportRequests',
             attributes: {
               accessType: 'ONE_TIME_SNAPSHOT',
+              ...(filters.startDate ? { startTime: `${filters.startDate}T00:00:00Z` } : {}),
+              ...(filters.endDate ? { endTime: `${filters.endDate}T00:00:00Z` } : {}),
             },
             relationships: {
               app: {
