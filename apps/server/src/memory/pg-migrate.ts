@@ -154,6 +154,8 @@ END $$`,
   )`,
   `CREATE INDEX IF NOT EXISTS aso_measurement_windows_tenant_state
     ON aso_measurement_windows (tenant_id, state, updated_at DESC)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS aso_measurement_windows_uniq_version
+    ON aso_measurement_windows (tenant_id, app_id, country, version_string)`,
 ];
 
 /**

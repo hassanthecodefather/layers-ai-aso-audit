@@ -122,7 +122,10 @@ async function stepPollBaseline(sql: postgres.Sql): Promise<void> {
   for (const w of windows) {
     try {
       const creds = await loadCredsOrNull(sql, w.tenantId);
-      if (!creds) continue;
+      if (!creds) {
+        if (isStale(w)) await failWindow(sql, w.id, 'no_credentials_timeout');
+        continue;
+      }
       const result = await pollReport(creds, w.baselineRequestId ?? '');
       if (result.status === 'ready') {
         await updateWindowState(sql, w.id, 'awaiting_after', { baselineJson: result.rows });
@@ -162,7 +165,10 @@ async function stepPollAfterAndClose(sql: postgres.Sql): Promise<void> {
   for (const w of windows) {
     try {
       const creds = await loadCredsOrNull(sql, w.tenantId);
-      if (!creds) continue;
+      if (!creds) {
+        if (isStale(w)) await failWindow(sql, w.id, 'no_credentials_timeout');
+        continue;
+      }
       const result = await pollReport(creds, w.afterRequestId ?? '');
       if (result.status === 'pending') {
         if (isStale(w)) {
