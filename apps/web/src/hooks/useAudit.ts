@@ -21,7 +21,7 @@ export interface UseAudit {
   messages: ChatMessage[];
   status: AuditStatus;
   busy: boolean;
-  submitUrl: (url: string) => void;
+  submitUrl: (url: string, opts?: { advancedAudit?: boolean }) => void;
   confirm: (identityDecision?: IdentityDecision | null) => void;
   confirmAnyway: () => void;
   reject: () => void;
@@ -147,7 +147,7 @@ export function useAudit(): UseAudit {
   // Clean up on unmount.
   useEffect(() => () => stopPolling(), [stopPolling]);
 
-  const submitUrl = useCallback((raw: string) => {
+  const submitUrl = useCallback((raw: string, opts?: { advancedAudit?: boolean }) => {
     const url = raw.trim();
     if (!url || status === 'starting' || status === 'running') return;
 
@@ -159,7 +159,7 @@ export function useAudit(): UseAudit {
     const thinkingId = nextId();
     add({ id: thinkingId, kind: 'agent', text: 'Queuing audit…' });
 
-    startAudit(url)
+    startAudit(url, opts)
       .then(({ runId: rid }) => {
         setRunId(rid);
         const progressId = nextId();
@@ -243,7 +243,7 @@ export function useAudit(): UseAudit {
     const thinkingId = nextId();
     add({ id: thinkingId, kind: 'agent', text: 'Re-opening identity — resolving fresh…' });
 
-    startAudit(pendingUrl, true)
+    startAudit(pendingUrl, { reopenIdentity: true })
       .then(({ runId: rid }) => {
         setRunId(rid);
         const progressId = nextId();

@@ -40,11 +40,14 @@ export interface StartAuditResult {
 }
 
 /** Enqueue a new audit job and return immediately. */
-export async function startAudit(url: string, reopenIdentity = false): Promise<StartAuditResult> {
+export async function startAudit(
+  url: string,
+  opts?: { reopenIdentity?: boolean; advancedAudit?: boolean },
+): Promise<StartAuditResult> {
   const res = await authedFetch('/audit/start', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url, reopenIdentity }),
+    body: JSON.stringify({ url, reopenIdentity: opts?.reopenIdentity, advancedAudit: opts?.advancedAudit }),
   });
   const data = (await res.json().catch(() => ({}))) as Partial<StartAuditResult> & { error?: string };
   if (!res.ok || !data.runId) throw new Error(data.error ?? 'Could not start audit.');
