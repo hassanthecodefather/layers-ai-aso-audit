@@ -131,6 +131,29 @@ END $$`,
   )`,
   `CREATE INDEX IF NOT EXISTS aso_change_events_tenant_created
     ON aso_change_events (tenant_id, created_at DESC)`,
+  // Phase P7-C: per-version measurement window state machine
+  `CREATE TABLE IF NOT EXISTS aso_measurement_windows (
+    id                  TEXT PRIMARY KEY,
+    tenant_id           TEXT NOT NULL,
+    app_id              TEXT NOT NULL,
+    country             TEXT NOT NULL DEFAULT 'us',
+    version_string      TEXT NOT NULL,
+    rec_keys_json       TEXT NOT NULL DEFAULT '[]',
+    mixed_authorship    BOOLEAN NOT NULL DEFAULT FALSE,
+    opened_at           TIMESTAMPTZ NOT NULL,
+    regime              TEXT NOT NULL DEFAULT 'correlational',
+    state               TEXT NOT NULL,
+    baseline_request_id TEXT,
+    after_request_id    TEXT,
+    baseline_json       TEXT,
+    after_json          TEXT,
+    verdict_json        TEXT,
+    error_message       TEXT,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS aso_measurement_windows_tenant_state
+    ON aso_measurement_windows (tenant_id, state, updated_at DESC)`,
 ];
 
 /**
