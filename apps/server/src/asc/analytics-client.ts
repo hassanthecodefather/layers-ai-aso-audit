@@ -74,10 +74,6 @@ export class AppleAscAnalyticsClient implements AscAnalyticsClient {
   async pollReportInstance(requestId: string): Promise<Result<ReportPollResult, AscError>> {
     const token = signAscToken(this.creds.keyId, this.creds.issuerId, this.creds.privateKeyPem);
 
-    // NOTE: This Analytics Reports API shape (request body, URL structure, TSV download)
-    // is based on Apple's documentation but has NOT been verified against real API responses.
-    // After live testing, adjust field names, URL paths, and data format as needed.
-
     // Step 1: list reports for this request
     const reportsUrl = `${ASC_BASE}/v1/analyticsReportRequests/${encodeURIComponent(requestId)}/reports`;
     let reportsRes: Response;
