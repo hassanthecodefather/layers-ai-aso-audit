@@ -17,7 +17,7 @@ import { currentTenantId } from '../context/tenant';
 export { GovernorDenialError } from './governor';
 
 export type EntityKind = 'app' | 'competitor' | 'asset';
-export type UpstreamKind = 'itunes' | 'competitors' | 'crawler' | 'reviews' | 'vision' | 'appkittie' | 'embedding' | 'websearch';
+export type UpstreamKind = 'itunes' | 'competitors' | 'crawler' | 'reviews' | 'vision' | 'appkittie' | 'embedding' | 'websearch' | 'asc';
 
 const CACHE_TTL_SECONDS: Partial<Record<UpstreamKind, number>> = {
   itunes: 24 * 60 * 60,         // 24h  — core metadata changes slowly
