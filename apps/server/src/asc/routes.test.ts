@@ -38,10 +38,15 @@ vi.mock('../memory', () => ({
   getPgSql: () => testSql,
 }));
 
-// We mock the versions-client to avoid making real ASC calls in tests
-vi.mock('./versions-client', () => ({
-  getAppStoreVersionsClient: () => ({
-    getAppVersions: async () => ({ ok: true, value: [] }),
+// Mock JWT signing so tests don't need a real EC key
+vi.mock('./auth', () => ({
+  signAscToken: () => 'fake.jwt.token',
+}));
+
+// Mock the cost gateway so the credential validation probe never hits Apple
+vi.mock('../cost/gateway', () => ({
+  getGateway: () => ({
+    fetch: async () => new Response('{"data":[]}', { status: 200 }),
   }),
 }));
 

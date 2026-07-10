@@ -2,6 +2,8 @@ import { registerApiRoute } from '@mastra/core/server';
 import { getAuthenticatedTenantId } from '../auth/middleware';
 import { getPgSql } from '../memory';
 import { saveCredentials, loadCredentials, deleteCredentials } from './credential-store';
+import { signAscToken } from './auth';
+import { getGateway } from '../cost/gateway';
 
 export const ascRoutes = [
   registerApiRoute('/settings/asc', {
@@ -40,18 +42,22 @@ export const ascRoutes = [
         return c.json({ error: 'keyId, issuerId, and privateKey are required' }, 400);
       }
 
-      // Validate credentials by making a real ASC call
-      const { getAppStoreVersionsClient } = await import('./versions-client');
-      const client = getAppStoreVersionsClient({
-        keyId: body.keyId.trim(),
-        issuerId: body.issuerId.trim(),
-        privateKeyPem: body.privateKey.trim(),
-      });
-      const probe = await client.getAppVersions('497799835'); // Apple's own Pages app — always exists
-      if (!probe.ok) {
-        return c.json({
-          error: `Credential validation failed: ${probe.error.kind}`,
-        }, 422);
+      // Validate credentials: GET /v1/apps?limit=1 works for any valid key regardless of which apps the tenant owns
+      try {
+        const token = signAscToken(body.keyId.trim(), body.issuerId.trim(), body.privateKey.trim());
+        const probeRes = await getGateway().fetch(
+          'https://api.appstoreconnect.apple.com/v1/apps?limit=1',
+          { kind: 'app', upstream: 'asc' },
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        if (probeRes.status === 401 || probeRes.status === 403) {
+          return c.json({ error: 'Credential validation failed: invalid key or permissions' }, 422);
+        }
+        if (!probeRes.ok) {
+          return c.json({ error: `Credential validation failed: ASC returned ${probeRes.status}` }, 422);
+        }
+      } catch {
+        return c.json({ error: 'Credential validation failed: could not reach App Store Connect' }, 422);
       }
 
       const saved = await saveCredentials(sql, tenantId, {
