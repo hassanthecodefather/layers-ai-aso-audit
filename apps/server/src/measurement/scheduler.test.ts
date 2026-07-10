@@ -15,7 +15,6 @@ vi.mock('./reporter', () => ({
 }));
 
 import { startMeasurementScheduler } from './scheduler';
-import { getWindowsInState } from './store';
 
 const TEST_URL = process.env.DATABASE_TEST_URL ?? 'postgresql://aso:aso@localhost:5432/aso_audit_test';
 const fakeMastra = {} as any;
@@ -107,15 +106,18 @@ describe('startMeasurementScheduler', () => {
   });
 
   it('a failure in step 1 does not prevent step 2 from running', async () => {
-    // Pre-seed an awaiting_baseline window directly (step 2 input) for a DIFFERENT tenant.
+    // Pre-seed an awaiting_baseline window directly (step 2 input) for tenant T4.
     await sql`
       INSERT INTO aso_measurement_windows
         (id, tenant_id, app_id, country, version_string, rec_keys_json, mixed_authorship, opened_at, regime, state)
       VALUES ('win_step2', 'T4', 'APP4', 'us', '4.0.0', '[]', FALSE, ${new Date('2026-06-01T00:00:00Z').toISOString()}, 'correlational', 'awaiting_baseline')
     `;
-    // Make step 1 throw by having loadCredentials reject; insert a go_live so step 1 reaches loadCredentials.
-    await insertGoLive(sql, 'T4', 'APP-FAIL', '9.9.9');
-    mockLoadCredentials.mockRejectedValue(new Error('boom'));
+    // Make step 1 throw by having loadCredentials reject for T_FAIL only; insert a go_live so step 1 reaches loadCredentials.
+    await insertGoLive(sql, 'T_FAIL', 'APP-FAIL', '9.9.9');
+    mockLoadCredentials.mockImplementation((_sql: any, tenantId: string) => {
+      if (tenantId === 'T_FAIL') return Promise.reject(new Error('boom'));
+      return Promise.resolve(CREDS);
+    });
     mockRequestReport.mockResolvedValue('req-step2');
     mockPollReport.mockResolvedValue({ status: 'pending' });
 

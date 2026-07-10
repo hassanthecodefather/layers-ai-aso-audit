@@ -103,10 +103,11 @@ async function stepSubmitBaseline(sql: postgres.Sql): Promise<void> {
   for (const w of windows) {
     try {
       const creds = await loadCredsOrNull(sql, w.tenantId);
+      if (!creds) continue;
       const openedAt = new Date(w.openedAt);
       const start = toDateStr(new Date(openedAt.getTime() - BASELINE_WINDOW_MS));
       const end = toDateStr(openedAt);
-      const requestId = await requestReport(creds as AscCredentials, w.appId, w.country, start, end);
+      const requestId = await requestReport(creds, w.appId, w.country, start, end);
       await updateWindowState(sql, w.id, 'polling_baseline', { baselineRequestId: requestId });
     } catch (err) {
       console.error(`[measurement] step2 submitBaseline failed for ${w.id}:`, err);
@@ -121,7 +122,8 @@ async function stepPollBaseline(sql: postgres.Sql): Promise<void> {
   for (const w of windows) {
     try {
       const creds = await loadCredsOrNull(sql, w.tenantId);
-      const result = await pollReport(creds as AscCredentials, w.baselineRequestId ?? '');
+      if (!creds) continue;
+      const result = await pollReport(creds, w.baselineRequestId ?? '');
       if (result.status === 'ready') {
         await updateWindowState(sql, w.id, 'awaiting_after', { baselineJson: result.rows });
       } else if (isStale(w)) {
@@ -142,9 +144,10 @@ async function stepSubmitAfter(sql: postgres.Sql): Promise<void> {
       const openedAt = new Date(w.openedAt);
       if (Date.now() < openedAt.getTime() + AFTER_DELAY_MS) continue;
       const creds = await loadCredsOrNull(sql, w.tenantId);
+      if (!creds) continue;
       const start = toDateStr(openedAt);
       const end = toDateStr(new Date(openedAt.getTime() + AFTER_WINDOW_MS));
-      const requestId = await requestReport(creds as AscCredentials, w.appId, w.country, start, end);
+      const requestId = await requestReport(creds, w.appId, w.country, start, end);
       await updateWindowState(sql, w.id, 'polling_after', { afterRequestId: requestId });
     } catch (err) {
       console.error(`[measurement] step4 submitAfter failed for ${w.id}:`, err);
@@ -159,7 +162,8 @@ async function stepPollAfterAndClose(sql: postgres.Sql): Promise<void> {
   for (const w of windows) {
     try {
       const creds = await loadCredsOrNull(sql, w.tenantId);
-      const result = await pollReport(creds as AscCredentials, w.afterRequestId ?? '');
+      if (!creds) continue;
+      const result = await pollReport(creds, w.afterRequestId ?? '');
       if (result.status === 'pending') {
         if (isStale(w)) {
           await updateWindowState(sql, w.id, 'error', { errorMessage: 'after_report_timeout' });
