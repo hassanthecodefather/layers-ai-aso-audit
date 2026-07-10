@@ -8,45 +8,120 @@
 
 ## Goal
 
-Build the App Store Connect read client that every downstream P7 sub-spec depends on:
-JWT signing from env-var credentials, a synchronous version-status reader, and an
-async two-phase analytics reports client. No scheduling, no storage writes, no UI —
-just the authenticated API surface.
+Build the complete App Store Connect read client — end to end: per-tenant credential
+storage (encrypted), a settings screen to connect/disconnect, JWT signing, a
+synchronous version-status reader, and an async two-phase analytics reports client.
 
-## Credentials
-
-Env vars (all optional — absent → no-op client activates, all tests pass without real creds):
-
-| Var | Description |
-|---|---|
-| `ASC_KEY_ID` | Key ID from App Store Connect → Users & Access → Keys |
-| `ASC_ISSUER_ID` | Issuer ID from the same page |
-| `ASC_PRIVATE_KEY` | Contents of the `.p8` file — raw PEM (`-----BEGIN EC PRIVATE KEY-----…`) or base64-encoded, both accepted |
-
-Credential UX is env-var / operator-managed for now. Per-tenant credential UI is a
-later sub-spec.
+No scheduling, no measurement windows, no write scopes — just connect, store, and read.
 
 ---
 
-## Architecture
+## Architecture overview
 
 ```
 apps/server/src/asc/
   auth.ts              — pure JWT signing utility (no network, no class)
-  versions-client.ts   — AppStoreVersionsClient: getAppVersions(appId)
-  analytics-client.ts  — AscAnalyticsClient: createReportRequest() + pollReportInstance()
-  types.ts             — shared domain types
+  versions-client.ts   — AppStoreVersionsClient interface + impl + stub + noop + factory
+  analytics-client.ts  — AscAnalyticsClient interface + impl + stub + noop + factory
+  credential-store.ts  — per-tenant encrypted credential read/write
+  routes.ts            — /api/settings/asc PUT | GET | DELETE
+
+apps/web/src/
+  components/AscSettings.tsx   — settings modal (connect / disconnect)
+  lib/api.ts                   — add getAscStatus(), saveAscCredentials(), deleteAscCredentials()
 ```
 
-All HTTP calls route through the existing `getGateway()` cost tracker so ASC calls
-appear in telemetry alongside iTunes and Gemini. All return `Result<T, AscError>` —
-no throws — consistent with the rest of the codebase.
+All HTTP calls route through the existing `getGateway()` cost tracker. All server
+functions return `Result<T, AscError>` — no throws.
 
 ---
 
-## Section 1: JWT auth (`auth.ts`)
+## Section 1: Credential storage
 
-Pure function, no state, no network:
+### DB table (migration added to `pg-migrate.ts`)
+
+```sql
+CREATE TABLE IF NOT EXISTS aso_asc_credentials (
+  tenant_id        TEXT PRIMARY KEY,
+  key_id           TEXT NOT NULL,          -- not secret, stored plain
+  issuer_id        TEXT NOT NULL,          -- not secret, stored plain
+  private_key_enc  TEXT NOT NULL,          -- AES-256-GCM encrypted (see below)
+  created_at       TEXT NOT NULL,
+  updated_at       TEXT NOT NULL
+);
+```
+
+### Encryption
+
+AES-256-GCM. Key comes from a new required env var `ASC_ENCRYPTION_KEY` (32-byte
+base64). A fresh 12-byte IV is generated per encryption. The stored string is:
+
+```
+base64(iv):base64(authTag):base64(ciphertext)
+```
+
+`ASC_ENCRYPTION_KEY` is added to `env.ts` validation as always-required (simpler than
+conditional validation — if the key is not set, startup fails with a clear message). Uses
+Node built-in `crypto.createCipheriv('aes-256-gcm', …)` — no extra deps.
+
+### `credential-store.ts`
+
+```ts
+interface AscCredentials {
+  keyId: string;
+  issuerId: string;
+  privateKeyPem: string;   // decrypted at read time
+}
+
+async function saveCredentials(sql, tenantId, creds: AscCredentials): Promise<Result<void, AscError>>
+async function loadCredentials(sql, tenantId): Promise<Result<AscCredentials | null, AscError>>
+async function deleteCredentials(sql, tenantId): Promise<Result<void, AscError>>
+```
+
+The `.p8` private key is accepted as raw PEM (`-----BEGIN EC PRIVATE KEY-----…`) or
+base64-encoded — both normalised to PEM on save.
+
+---
+
+## Section 2: Settings API (`routes.ts`)
+
+Three routes registered via `registerApiRoute`, behind the existing auth middleware:
+
+| Method | Path | Body / Response |
+|---|---|---|
+| `PUT` | `/api/settings/asc` | `{ keyId, issuerId, privateKey }` → `204` |
+| `GET` | `/api/settings/asc` | `{ connected: boolean, keyId: string \| null }` — private key never returned |
+| `DELETE` | `/api/settings/asc` | `204` |
+
+`PUT` validates that the supplied credentials can successfully sign a JWT and call
+`GET /v1/apps` (a cheap list call) before persisting — so a typo fails fast at save
+time rather than silently at first tracking run.
+
+---
+
+## Section 3: Settings UI (`AscSettings.tsx`)
+
+A modal accessible via a gear icon in the existing `Header` component. No new router.
+
+**Disconnected state:** a single "Connect App Store Connect" button plus a short
+explanation ("Required to measure real impressions and downloads").
+
+**Connect form (three fields):**
+- Key ID (text input)
+- Issuer ID (text input)
+- Private Key (textarea — paste the `.p8` file contents, or upload file)
+
+On submit: calls `PUT /api/settings/asc`, shows inline loading state, shows success
+confirmation ("Connected — Key ID: XXXXXXXX") or inline error on failure.
+
+**Connected state:** shows `{ connected: true, keyId }` with a "Disconnect" button
+that calls `DELETE /api/settings/asc`.
+
+---
+
+## Section 4: JWT auth (`auth.ts`)
+
+Pure function — no network, no state:
 
 ```ts
 function signAscToken(keyId: string, issuerId: string, privateKeyPem: string): string
@@ -56,18 +131,14 @@ function signAscToken(keyId: string, issuerId: string, privateKeyPem: string): s
 - **Header:** `{ alg: 'ES256', kid: keyId, typ: 'JWT' }`
 - **Payload:** `{ iss: issuerId, iat: now, exp: now + 20min, aud: 'appstoreconnect-v1' }`
 - **Signing:** Node built-in `crypto` — no extra deps
-- **Token lifetime:** 20 minutes (Apple's documented maximum)
 - **No token cache:** signing is cheap; a stale cached token causes a hard auth failure
-  that's harder to debug than signing fresh on each request
 
-`ASC_PRIVATE_KEY` format handling: if the value starts with `-----BEGIN`, treat as
-raw PEM; otherwise base64-decode first.
+Both clients load credentials from `credential-store.ts` once per request and call
+`signAscToken` fresh — no cached tokens.
 
 ---
 
-## Section 2: Versions client (`versions-client.ts`)
-
-### Interface
+## Section 5: Versions client (`versions-client.ts`)
 
 ```ts
 interface AppStoreVersionsClient {
@@ -76,29 +147,23 @@ interface AppStoreVersionsClient {
 
 type AppVersion = {
   versionString: string;
-  state: string;                  // e.g. 'READY_FOR_SALE' | 'PENDING_DEVELOPER_RELEASE'
+  state: string;                  // 'READY_FOR_SALE' | 'PENDING_DEVELOPER_RELEASE' | ...
   createdDate: string;            // ISO-8601
   earliestReleaseDate: string | null;
 };
 ```
 
-### API call
-
 `GET https://api.appstoreconnect.apple.com/v1/apps/{appId}/appStoreVersions?filter[platform]=IOS`
 
-Returns the list sorted newest-first. B's go-live detection reads
-`state === 'READY_FOR_SALE'` and `createdDate` off the top version.
+Returns newest-first. B's go-live detection reads `state` and `createdDate` off the
+top version.
 
-### Implementations
-
-- **`AppleAppStoreVersionsClient`** — real HTTP implementation
-- **`NoOpAppStoreVersionsClient`** — returns `[]` when env vars absent
-- **`StubAppStoreVersionsClient`** — takes canned result in constructor, for tests
-- **`getAppStoreVersionsClient()`** — factory from env
+**Implementations:** `AppleAppStoreVersionsClient` (real) · `NoOpAppStoreVersionsClient`
+(returns `[]`) · `StubAppStoreVersionsClient` (canned result) · `getAppStoreVersionsClient(tenantId, sql)`
 
 ---
 
-## Section 3: Analytics client (`analytics-client.ts`)
+## Section 6: Analytics client (`analytics-client.ts`)
 
 ### Interface
 
@@ -108,16 +173,14 @@ interface AscAnalyticsClient {
     type: ReportType,
     filters: ReportFilters,
   ): Promise<Result<string, AscError>>;
-  // Returns Apple's reportRequestId — caller persists it, calls pollReportInstance later
+  // Returns Apple's reportRequestId — caller persists it
 
   pollReportInstance(
     requestId: string,
   ): Promise<Result<ReportPollResult, AscError>>;
-  // Returns { status: 'pending' } or { status: 'ready'; rows: ReportRow[] }
 }
 
-type ReportType = 'APP_STORE_ENGAGEMENT';
-// Enum grows as later sub-specs need additional report types
+type ReportType = 'APP_STORE_ENGAGEMENT';   // grows as later sub-specs need more
 
 type ReportFilters = {
   appId: string;
@@ -139,78 +202,83 @@ type ReportPollResult =
   | { status: 'ready'; rows: ReportRow[] };
 ```
 
-### Two-phase design rationale
+`pollReportInstance` walks Apple's nested chain (`reportRequest → reports → instances
+→ segments → download`) and hides it — only typed `ReportRow[]` surfaces to callers.
+Returns `{ status: 'pending' }` when Apple hasn't finished; no internal sleep loop.
 
-Apple designed the Analytics Reports API as an async generate-then-download flow.
-Reports can take minutes. `pollReportInstance` returns `{ status: 'pending' }` when
-Apple hasn't finished — the caller (B's scheduler) decides when to check back.
-No blocking, no internal sleep loop inside the client.
-
-### Internals
-
-`pollReportInstance` walks Apple's nested resource chain and hides it from callers:
-`reportRequest → reports → instances → segments → download`. Only typed `ReportRow[]`
-surfaces to the caller.
-
-### Implementations
-
-- **`AppleAscAnalyticsClient`** — real HTTP implementation
-- **`NoOpAscAnalyticsClient`** — `createReportRequest` returns a fake id; `pollReportInstance` returns `{ status: 'pending' }`
-- **`StubAscAnalyticsClient`** — takes canned result, for tests
-- **`getAscAnalyticsClient()`** — factory from env
+**Implementations:** `AppleAscAnalyticsClient` (real) · `NoOpAscAnalyticsClient`
+(`createReportRequest` → fake id; `pollReportInstance` → `{ status: 'pending' }`) ·
+`StubAscAnalyticsClient` (canned) · `getAscAnalyticsClient(tenantId, sql)`
 
 ---
 
-## Section 4: Error types (`types.ts`)
+## Section 7: Error types
 
 ```ts
 type AscError =
-  | { kind: 'auth_failed';  status: number }
-  | { kind: 'not_found';    appId: string }
-  | { kind: 'rate_limited'; retryAfterMs: number }
-  | { kind: 'api_error';    status: number; detail: string }
-  | { kind: 'parse_error';  raw: string };
+  | { kind: 'auth_failed';    status: number }
+  | { kind: 'not_found';      appId: string }
+  | { kind: 'rate_limited';   retryAfterMs: number }
+  | { kind: 'api_error';      status: number; detail: string }
+  | { kind: 'parse_error';    raw: string }
+  | { kind: 'no_credentials'; tenantId: string };
 ```
 
-`rate_limited` honours the `Retry-After` header verbatim, consistent with how the
-iTunes pacer handles 429s.
+`rate_limited` honours `Retry-After` verbatim, consistent with the iTunes pacer.
+`no_credentials` surfaces when a tenant hasn't connected yet — B uses this to skip
+tracking for unconnected tenants rather than throwing.
 
 ---
 
-## Section 5: Testing
+## Section 8: Testing
 
-| Test | What it checks |
+| Test | What |
 |---|---|
-| `auth.test.ts` | `signAscToken` produces a JWT with correct `kid`, `iss`, `aud`, and expiry; base64 key input round-trips correctly |
-| `versions-client.test.ts` | `StubAppStoreVersionsClient` returns canned data; `NoOp` returns `[]`; live smoke test guarded behind `if (!process.env.ASC_KEY_ID) test.skip` |
-| `analytics-client.test.ts` | `StubAscAnalyticsClient` returns `{ status: 'ready', rows }` on poll; `NoOp` returns `{ status: 'pending' }`; live smoke test guarded |
+| `auth.test.ts` | `signAscToken` produces correct `kid`, `iss`, `aud`, expiry; base64 key input round-trips |
+| `credential-store.test.ts` | encrypt → save → load → decrypt round-trip; PEM and base64 key inputs both normalise correctly |
+| `routes.test.ts` | `PUT` validation fires on bad key; `GET` returns masked status; `DELETE` removes row |
+| `versions-client.test.ts` | Stub returns canned data; NoOp returns `[]`; live smoke guarded by `test.skip` when no `ASC_KEY_ID` |
+| `analytics-client.test.ts` | Stub returns `ready`; NoOp returns `pending`; live smoke guarded |
+| `AscSettings.test.tsx` | Connect form submits correctly; connected state shows key ID; disconnect calls DELETE |
 
-**Live smoke tests (guarded):** validate the real API shape on first contact.
-No golden-file assertions on raw Apple responses since we're designing blind —
-the live tests will harden the parser after first contact with the real API.
+---
 
-**Assumption to verify at build-start (from spec §H):** the exact
-`reportRequest → instance → poll` lifecycle. The implementation of
-`pollReportInstance` must be validated against real Apple API responses before
-being considered complete.
+## New env var
+
+| Var | Required | Description |
+|---|---|---|
+| `ASC_ENCRYPTION_KEY` | Always required | 32-byte base64 key for AES-256-GCM encryption of stored private keys |
+
+Added to `env.ts` validation.
 
 ---
 
 ## Acceptance criteria
 
-- `signAscToken` unit test passes with a known test key
-- `getAppVersions(appId)` returns `AppVersion[]` with correct state field for a real app (live smoke)
-- `createReportRequest()` returns a non-empty `requestId` string from Apple (live smoke)
-- `pollReportInstance(requestId)` returns `{ status: 'pending' }` or `{ status: 'ready'; rows }` without throwing (live smoke)
-- `NoOp` client activates when env vars are absent; all tests pass without creds
-- All calls appear in gateway telemetry
+- Encrypt → save → load → decrypt round-trips the `.p8` key without loss
+- `PUT /api/settings/asc` with bad credentials returns a validation error before persisting
+- `GET /api/settings/asc` never returns the private key
+- `getAppVersions(appId)` returns correct `state` for a real app (live smoke)
+- `createReportRequest()` returns a non-empty `requestId` from Apple (live smoke)
+- `pollReportInstance(requestId)` returns `pending` or `ready` without throwing (live smoke)
+- `no_credentials` error returned gracefully when tenant has no credentials stored
+- All ASC HTTP calls appear in gateway telemetry
 
 ---
 
 ## What this sub-spec deliberately excludes
 
-- Per-tenant credential storage or UI (later sub-spec)
 - Scheduling or polling loops (sub-spec B)
-- `aso_asc_report_requests` table (B owns persistence of pending requestIds)
+- `aso_asc_report_requests` table — B owns persistence of pending requestIds
 - `aso_measurement_windows` table (sub-spec C)
 - Write scopes (Phase 8)
+- Per-tenant credential rotation UI
+
+---
+
+## Assumption to verify at build-start
+
+The exact `reportRequest → instance → poll` lifecycle of the Analytics Reports API
+(flagged in specification.md §H). The implementation of `pollReportInstance` must be
+validated against real Apple API responses before being considered complete. Creds
+are available locally for live smoke testing.
