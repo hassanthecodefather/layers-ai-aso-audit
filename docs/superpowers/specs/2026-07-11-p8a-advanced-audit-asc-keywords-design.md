@@ -180,10 +180,18 @@ Composer (advancedAudit=true)
 
 | Failure | Behaviour |
 |---|---|
-| ASC fetch throws | Caught, `ascListingData` stays undefined, audit runs in inferred mode |
-| No READY_FOR_SALE version | `fetchAscListingData` returns `{ keywords: null, promotionalText: null }` — treated as inferred |
-| Credentials revoked between connect and audit | `loadCredentials` returns ok+null → no fetch → inferred mode |
+| ASC fetch throws | Caught, `ascListingData` stays undefined, audit runs in inferred mode, **limitation note added** |
+| No READY_FOR_SALE version | `fetchAscListingData` returns `{ keywords: null, promotionalText: null }` — treated as inferred, **limitation note added** |
+| Credentials revoked between connect and audit | `loadCredentials` returns ok+null → no fetch → inferred mode, **limitation note added** |
 | Modal dismissed without connecting | `advancedEnabled` stays false, audit submits without flag |
+
+### Limitation note
+
+When `job.advancedAudit === true` but `ascListingData` is unavailable (null keywords + null promotional text), the scoring prompt receives an additional instruction to include a limitation in the audit output:
+
+> *"Note: This audit was requested in Advanced mode but App Store Connect data could not be retrieved. The keyword field and promotional text are scored by inference only. Reconnect your ASC credentials in Settings and re-run for full keyword analysis."*
+
+This note is injected into the LLM prompt's limitations/caveats section so it appears verbatim (or paraphrased) in the final report — making it visible to the user rather than silently degrading to inferred mode without explanation.
 
 ## Out of Scope
 
