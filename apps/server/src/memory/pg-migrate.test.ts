@@ -83,4 +83,12 @@ describe('runPgMigrations', () => {
     expect(cols).toContain('attempt');
     expect(cols).toContain('claimed_at');
   });
+
+  it('creates aso_asc_credentials', async () => {
+    const rows = await sql`
+      SELECT table_name FROM information_schema.tables
+      WHERE table_schema = ${schema} AND table_name = 'aso_asc_credentials'
+    `;
+    expect(rows).toHaveLength(1);
+  });
 });

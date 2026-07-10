@@ -97,6 +97,15 @@ END $$`,
     expires_at TIMESTAMPTZ NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS aso_cache_expires ON aso_cache (expires_at)`,
+  // Phase P7-A: per-tenant App Store Connect credentials (encrypted)
+  `CREATE TABLE IF NOT EXISTS aso_asc_credentials (
+    tenant_id        TEXT PRIMARY KEY,
+    key_id           TEXT NOT NULL,
+    issuer_id        TEXT NOT NULL,
+    private_key_enc  TEXT NOT NULL,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
 ];
 
 /**
