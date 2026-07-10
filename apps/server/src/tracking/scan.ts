@@ -115,39 +115,47 @@ async function runItunesChecks(
   };
 
   // Check 2: metadata diff
-  const fields = [
-    { key: 'name',        before: baseline.name        ?? null, after: (result.trackName  as string | undefined) ?? null },
-    { key: 'subtitle',    before: baseline.subtitle    ?? null, after: (result.subtitle   as string | null | undefined) ?? null },
-    { key: 'description', before: baseline.description ?? null, after: (result.description as string | undefined) ?? null },
-    { key: 'iconUrl',     before: baseline.iconUrl     ?? null, after: (result.artworkUrl512 as string | null | undefined) ?? null },
-  ] as const;
+  try {
+    const fields = [
+      { key: 'name',        before: baseline.name        ?? null, after: (result.trackName  as string | undefined) ?? null },
+      { key: 'subtitle',    before: baseline.subtitle    ?? null, after: (result.subtitle   as string | null | undefined) ?? null },
+      { key: 'description', before: baseline.description ?? null, after: (result.description as string | undefined) ?? null },
+      { key: 'iconUrl',     before: baseline.iconUrl     ?? null, after: (result.artworkUrl512 as string | null | undefined) ?? null },
+    ] as const;
 
-  for (const { key, before, after } of fields) {
-    if (before !== after) {
-      await insertChangeEvent(sql, tenantId, {
-        appId: app.appId, country: app.country,
-        eventType: 'metadata_changed',
-        payload: { field: key, before, after },
-      });
+    for (const { key, before, after } of fields) {
+      if (before !== after) {
+        await insertChangeEvent(sql, tenantId, {
+          appId: app.appId, country: app.country,
+          eventType: 'metadata_changed',
+          payload: { field: key, before, after },
+        });
+      }
     }
+  } catch (e) {
+    console.error(`[tracking] metadata diff failed for ${tenantId}/${app.appId}:`, e);
   }
 
   // Check 3: review delta
-  const lastReviews = await getLastChangeEvent(sql, tenantId, app.appId, app.country, 'reviews_shifted');
-  const baseRating  = lastReviews ? (lastReviews.payload as any).ratingAfter  : (baseline.rating     ?? null);
-  const baseCount   = lastReviews ? (lastReviews.payload as any).countAfter   : (baseline.ratingCount ?? null);
+  try {
+    const lastReviews = await getLastChangeEvent(sql, tenantId, app.appId, app.country, 'reviews_shifted');
+    const baseRating  = lastReviews ? (lastReviews.payload as any).ratingAfter  : (baseline.rating     ?? null);
+    const baseCount   = lastReviews ? (lastReviews.payload as any).countAfter   : (baseline.ratingCount ?? null);
 
-  const currentRating = (result.averageUserRating as number | undefined) ?? null;
-  const currentCount  = (result.userRatingCount  as number | undefined) ?? null;
+    const currentRating = (result.averageUserRating as number | undefined) ?? null;
+    const currentCount  = (result.userRatingCount  as number | undefined) ?? null;
 
-  const ratingDelta = baseRating !== null && currentRating !== null ? Math.abs(currentRating - baseRating) : null;
-  const countDelta  = baseCount  !== null && currentCount  !== null ? Math.abs(currentCount  - baseCount)  : null;
+    const ratingDelta = baseRating !== null && currentRating !== null ? Math.abs(currentRating - baseRating) : null;
+    const countDelta  = baseCount  !== null && currentCount  !== null ? Math.abs(currentCount  - baseCount)  : null;
 
-  if ((ratingDelta !== null && ratingDelta >= 0.1) || (countDelta !== null && countDelta >= 5)) {
-    await insertChangeEvent(sql, tenantId, {
-      appId: app.appId, country: app.country,
-      eventType: 'reviews_shifted',
-      payload: { ratingBefore: baseRating, ratingAfter: currentRating, countBefore: baseCount, countAfter: currentCount },
-    });
+    if ((ratingDelta !== null && ratingDelta >= 0.1) || (countDelta !== null && countDelta >= 5)) {
+      await insertChangeEvent(sql, tenantId, {
+        appId: app.appId, country: app.country,
+        eventType: 'reviews_shifted',
+        payload: { ratingBefore: baseRating, ratingAfter: currentRating, countBefore: baseCount, countAfter: currentCount },
+      });
+    }
+  } catch (e) {
+    console.error(`[tracking] review delta failed for ${tenantId}/${app.appId}:`, e);
   }
 }
