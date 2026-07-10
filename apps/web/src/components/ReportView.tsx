@@ -5,6 +5,7 @@ import { ReviewInsights } from './ReviewInsights';
 import { Recommendations } from './Recommendations';
 import { CompetitorTable } from './CompetitorTable';
 import { StorefrontComparison } from './StorefrontComparison';
+import { TrackingCard } from './TrackingCard';
 
 async function downloadMarkdown(report: AuditReport) {
   const res = await fetch('/api/audit/export/markdown', {
@@ -60,6 +61,13 @@ export function ReportView({ report }: { report: AuditReport }) {
         quickWins={report.quickWins}
         highImpact={report.highImpact}
         strategic={report.strategic}
+      />
+
+      <TrackingCard
+        appId={report.app.appId}
+        appName={report.app.name}
+        url={report.app.url}
+        country={report.app.country}
       />
 
       <CompetitorTable

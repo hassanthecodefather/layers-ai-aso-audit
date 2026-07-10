@@ -6,6 +6,7 @@ import { ProgressTrace } from './components/ProgressTrace';
 import { ReportView } from './components/ReportView';
 import { fetchHealth, type Health, setAuthCallbacks } from './lib/api';
 import { AscSettings } from './components/AscSettings';
+import { ActivityFeed } from './components/ActivityFeed';
 import type { IdentityDecision } from './lib/types';
 import { AuthProvider, useAuth } from './lib/auth';
 import { AuthForms } from './components/AuthForms';
@@ -27,14 +28,12 @@ function AppInner() {
 function AppContent() {
   const { messages, busy, submitUrl, confirm, confirmAnyway, reject, reopenIdentity } = useAudit();
   const endRef = useRef<HTMLDivElement>(null);
+  const [view, setView] = useState<'audit' | 'activity'>('audit');
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages]);
 
-  // "Change my answer" — hides the challenge card so the prior confirmation
-  // card is active again. Status is already 'confirming' (set by onConflict),
-  // so the confirmation card re-renders as pending without any hook change.
   const [dismissedChallenges, setDismissedChallenges] = useState<Set<string>>(
     () => new Set(),
   );
@@ -44,9 +43,17 @@ function AppContent() {
 
   return (
     <div className="flex h-full flex-col">
-      <Header />
-      <main className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-4 py-6">
+      <Header onNavigate={setView} currentView={view} />
+      {view === 'activity' ? (
+        <main className="flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-3xl px-4 py-6">
+            <h1 className="mb-4 text-lg font-semibold text-gray-900">Activity</h1>
+            <ActivityFeed />
+          </div>
+        </main>
+      ) : (
+        <main className="flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-3xl px-4 py-6">
           {messages.length === 0 ? (
             <EmptyState />
           ) : (
@@ -70,7 +77,8 @@ function AppContent() {
           )}
           <div ref={endRef} />
         </div>
-      </main>
+        </main>
+      )}
       <Composer disabled={busy} onSubmit={submitUrl} />
     </div>
   );
@@ -78,7 +86,10 @@ function AppContent() {
 
 // ── Header ─────────────────────────────────────────────────────────────────
 
-function Header() {
+function Header({ onNavigate, currentView }: {
+  onNavigate: (view: 'audit' | 'activity') => void;
+  currentView: 'audit' | 'activity';
+}) {
   const [health, setHealth] = useState<Health | null>(null);
   const [showAscSettings, setShowAscSettings] = useState(false);
 
@@ -125,6 +136,26 @@ function Header() {
                 />
               </div>
             )}
+            <button
+              className={`rounded px-3 py-1.5 text-sm font-medium ${
+                currentView === 'activity'
+                  ? 'bg-gray-100 text-gray-900'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+              onClick={() => onNavigate('activity')}
+            >
+              Activity
+            </button>
+            <button
+              className={`rounded px-3 py-1.5 text-sm font-medium ${
+                currentView === 'audit'
+                  ? 'bg-gray-100 text-gray-900'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+              onClick={() => onNavigate('audit')}
+            >
+              Audit
+            </button>
             <button
               onClick={() => setShowAscSettings(true)}
               title="App Store Connect settings"

@@ -148,3 +148,56 @@ export async function deleteAscCredentials(): Promise<void> {
   const res = await authedFetch('/settings/asc', { method: 'DELETE' });
   if (!res.ok) throw new Error('Failed to disconnect');
 }
+
+export interface TrackedApp {
+  appId: string;
+  country: string;
+  bundleId: string;
+  appName: string;
+  url: string;
+  enabled: boolean;
+  enabledAt: string;
+  lastScannedAt: string | null;
+}
+
+export async function getTrackedApps(): Promise<TrackedApp[]> {
+  const res = await authedFetch('/tracking');
+  if (!res.ok) throw new Error('Failed to fetch tracked apps');
+  return res.json() as Promise<TrackedApp[]>;
+}
+
+export async function startTracking(params: {
+  appId: string;
+  country: string;
+  bundleId?: string;
+  appName: string;
+  url: string;
+}): Promise<void> {
+  const res = await authedFetch('/tracking', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) throw new Error('Failed to start tracking');
+}
+
+export async function stopTracking(appId: string): Promise<void> {
+  const res = await authedFetch(`/tracking/${encodeURIComponent(appId)}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to stop tracking');
+}
+
+export interface ActivityEvent {
+  id: string;
+  appId: string;
+  appName: string;
+  country: string;
+  eventType: 'go_live' | 'metadata_changed' | 'reviews_shifted';
+  payload: Record<string, unknown>;
+  createdAt: string;
+}
+
+export async function fetchActivity(limit = 20): Promise<ActivityEvent[]> {
+  const res = await authedFetch(`/activity?limit=${limit}`);
+  if (!res.ok) throw new Error('Failed to fetch activity');
+  return res.json() as Promise<ActivityEvent[]>;
+}
