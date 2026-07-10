@@ -5,6 +5,7 @@ import { logger } from '../telemetry';
 import { asoAuditor } from './agents/aso-auditor';
 import { asoAuditWorkflow } from './workflows/audit-workflow';
 import { auditRoutes } from './routes';
+import { costRoutes } from '../cost/routes';
 import { authRoutes } from '../auth/routes';
 import { healthRoutes } from './health-routes';
 import { ascRoutes } from '../asc/routes';
@@ -28,7 +29,7 @@ export const mastra = new Mastra({
   ...(pgUrl ? { storage: new PostgresStore({ id: 'aso-audit', connectionString: pgUrl }) } : {}),
   logger,
   server: {
-    apiRoutes: [...auditRoutes, ...authRoutes, ...healthRoutes, ...ascRoutes, ...trackingRoutes, ...getWebStaticRoutes()],
+    apiRoutes: [...auditRoutes, ...authRoutes, ...healthRoutes, ...ascRoutes, ...trackingRoutes, ...costRoutes, ...getWebStaticRoutes()],
   },
 });
 
