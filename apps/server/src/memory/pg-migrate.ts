@@ -106,6 +106,31 @@ END $$`,
     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
+  // Phase P7-B: continuous tracking registry
+  `CREATE TABLE IF NOT EXISTS aso_tracked_apps (
+    tenant_id       TEXT NOT NULL,
+    app_id          TEXT NOT NULL,
+    country         TEXT NOT NULL DEFAULT 'us',
+    bundle_id       TEXT NOT NULL DEFAULT '',
+    app_name        TEXT NOT NULL,
+    url             TEXT NOT NULL,
+    enabled         BOOLEAN NOT NULL DEFAULT TRUE,
+    enabled_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_scanned_at TIMESTAMPTZ,
+    PRIMARY KEY (tenant_id, app_id, country)
+  )`,
+  // Phase P7-B: append-only change event log
+  `CREATE TABLE IF NOT EXISTS aso_change_events (
+    id           TEXT PRIMARY KEY,
+    tenant_id    TEXT NOT NULL,
+    app_id       TEXT NOT NULL,
+    country      TEXT NOT NULL DEFAULT 'us',
+    event_type   TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS aso_change_events_tenant_created
+    ON aso_change_events (tenant_id, created_at DESC)`,
 ];
 
 /**
