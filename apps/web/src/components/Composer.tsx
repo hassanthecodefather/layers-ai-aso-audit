@@ -15,6 +15,7 @@ export function Composer({ disabled, onSubmit }: ComposerProps) {
   const [advancedEnabled, setAdvancedEnabled] = useState(false);
   const [ascStatus, setAscStatus] = useState<'unknown' | 'connected' | 'disconnected'>('unknown');
   const [showModal, setShowModal] = useState(false);
+  const [checking, setChecking] = useState(false);
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -32,9 +33,14 @@ export function Composer({ disabled, onSubmit }: ComposerProps) {
     }
     let status = ascStatus;
     if (status === 'unknown') {
-      const s = await getAscStatus().catch(() => ({ connected: false, keyId: null }));
-      status = s.connected ? 'connected' : 'disconnected';
-      setAscStatus(status);
+      setChecking(true);
+      try {
+        const s = await getAscStatus().catch(() => ({ connected: false, keyId: null }));
+        status = s.connected ? 'connected' : 'disconnected';
+        setAscStatus(status);
+      } finally {
+        setChecking(false);
+      }
     }
     if (status === 'connected') {
       setAdvancedEnabled(true);
@@ -76,9 +82,9 @@ export function Composer({ disabled, onSubmit }: ComposerProps) {
         <label className="flex items-center gap-2 cursor-pointer select-none">
           <input
             type="checkbox"
-            checked={advancedEnabled}
+            checked={advancedEnabled || checking}
             onChange={handleAdvancedToggle}
-            disabled={disabled}
+            disabled={disabled || checking}
             className="rounded"
           />
           <span className="text-xs text-zinc-500">Advanced Audit</span>
