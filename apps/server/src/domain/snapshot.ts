@@ -53,5 +53,11 @@ export const ListingSnapshotSchema = z.object({
    * D3 competitor set skip the LLM+review-fetch pass.
    */
   competitorMiningResult: z.unknown().optional(),
+  /**
+   * SHA-256 hash of sorted screenshot URLs at snapshot time. Used by the
+   * vision gate to skip B1/B2/B3 when screenshots are unchanged.
+   * Absent in pre-P7-D snapshots — treated as "vision needed."
+   */
+  screenshotHash: z.string().nullable().optional(),
 });
 export type ListingSnapshot = z.infer<typeof ListingSnapshotSchema>;

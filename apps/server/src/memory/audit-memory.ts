@@ -243,6 +243,8 @@ export interface PersistInput {
   promptHash: string;
   modelId: string;
   now: string;
+  /** P7-D: SHA-256 hash of sorted screenshot URLs at audit time. Used for vision gate. */
+  screenshotHash?: string | null;
   /** B1: vision result to persist with the snapshot. Optional for backward compat. */
   visionResult?: unknown;
   /** C4: keyword candidate result to persist with the snapshot. Optional for backward compat. */
@@ -318,6 +320,7 @@ export async function persistAudit(
     rubricVersion: input.rubricVersion,
     promptHash: input.promptHash,
     modelId: input.modelId,
+    screenshotHash: input.screenshotHash,
     visionResult: input.visionResult,
     candidateResult: input.candidateResult,
     functionCompetitorSeeds: input.functionCompetitorSeeds,

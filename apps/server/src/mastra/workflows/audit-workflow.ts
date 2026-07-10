@@ -31,6 +31,8 @@ import { buildPriorContext, persistAudit } from '../../memory/audit-memory';
 import type { IdentityVersion } from '../../domain/identity';
 import { logger } from '../../telemetry';
 import { getVisionClient, runVision, selectVisionResult } from '../../vision';
+import type { VisionResult } from '../../vision';
+import { computeScreenshotHash } from '../../vision/screenshot-hash';
 import { getGovernor, GovernorDenialError } from '../../cost/governor';
 import { runIdFull } from '../../identity/id-full';
 import { getIdentityVisionClient } from '../../identity/identity-vision-client';
@@ -455,13 +457,24 @@ const scoreStep = createStep({
     //    selectVisionResult returns the cached result when screenshot/icon URLs
     //    are unchanged (zero additional LLM calls).
     const visionClient = getVisionClient();
-    const priorVisionResult = selectVisionResult(listing, signals, priorSnap);
-    const visionResult = priorVisionResult ?? (await runVision(listing, visionClient));
-    // Track whether vision ran fresh (i.e., no cached result was available).
-    // B2 and B3 are gated on this: they only add value when vision ran fresh —
-    // if images are unchanged, the prior vision-grounded identity and uplift
-    // findings remain valid, and re-running would make unnecessary LLM calls.
-    const visionWasFresh = priorVisionResult === null;
+    const currentScreenshotHash = computeScreenshotHash(listing.screenshotUrls);
+    const visionNeeded =
+      !priorSnap?.screenshotHash ||
+      priorSnap.screenshotHash !== currentScreenshotHash;
+
+    let visionResult: VisionResult | undefined;
+    let visionWasFresh: boolean;
+    if (visionNeeded) {
+      const priorVisionResult = selectVisionResult(listing, signals, priorSnap);
+      visionResult = priorVisionResult ?? (await runVision(listing, visionClient));
+      // B2 and B3 are gated on this: they only add value when vision ran fresh —
+      // if images are unchanged, the prior vision-grounded identity and uplift
+      // findings remain valid, and re-running would make unnecessary LLM calls.
+      visionWasFresh = priorVisionResult === null;
+    } else {
+      visionResult = (priorSnap?.visionResult as VisionResult | undefined) ?? undefined;
+      visionWasFresh = false;
+    }
 
     // ── A6: reuse-not-recompute ──────────────────────────────────────────────
     // Hash the exact prompt string BEFORE calling the LLM. Vision is now part
@@ -635,6 +648,7 @@ const scoreStep = createStep({
       promptHash,
       modelId: usedModelId,
       now,
+      screenshotHash: currentScreenshotHash,
       visionResult, // B1: persist vision result for future reuse
       candidateResult: rawCandidateResult, // C4: persist raw (suppressCompetitorGapTerms is a per-audit view, not stored state)
       functionCompetitorSeeds: d3ProvidedCompetitors ? d3Seeds : undefined, // D3: seeds for reuse on unchanged identity

@@ -20,7 +20,7 @@ export class PostgresStorageClient implements StorageClient {
           (id, app_id, country, tenant_id, fetched_at, listing_json, signals_json,
            report_json, rubric_version, prompt_hash, model_id, vision_result_json,
            candidate_result_json, theme_result_json,
-           function_competitor_seeds_json, competitor_mining_result_json)
+           function_competitor_seeds_json, competitor_mining_result_json, screenshot_hash)
         VALUES (
           ${s.id}, ${s.appId}, ${s.country}, ${tenantId}, ${s.fetchedAt},
           ${JSON.stringify(s.listing)}, ${JSON.stringify(s.signals ?? null)},
@@ -29,7 +29,8 @@ export class PostgresStorageClient implements StorageClient {
           ${s.candidateResult != null ? JSON.stringify(s.candidateResult) : null},
           ${s.themeResult != null ? JSON.stringify(s.themeResult) : null},
           ${s.functionCompetitorSeeds != null ? JSON.stringify(s.functionCompetitorSeeds) : null},
-          ${s.competitorMiningResult != null ? JSON.stringify(s.competitorMiningResult) : null}
+          ${s.competitorMiningResult != null ? JSON.stringify(s.competitorMiningResult) : null},
+          ${s.screenshotHash ?? null}
         )
       `;
       return ok(undefined);
@@ -280,6 +281,7 @@ export class PostgresStorageClient implements StorageClient {
       themeResult: themeResultRaw,
       functionCompetitorSeeds: functionCompetitorSeedsRaw,
       competitorMiningResult: competitorMiningResultRaw,
+      screenshotHash: row.screenshot_hash != null ? String(row.screenshot_hash) : undefined,
     });
     return parsed.success ? ok(parsed.data) : err(parsed.error.message);
   }
