@@ -38,6 +38,13 @@ vi.mock('../memory', () => ({
   getPgSql: () => testSql,
 }));
 
+// We mock the versions-client to avoid making real ASC calls in tests
+vi.mock('./versions-client', () => ({
+  getAppStoreVersionsClient: () => ({
+    getAppVersions: async () => ({ ok: true, value: [] }),
+  }),
+}));
+
 describe('ASC settings routes', () => {
   const schema = `asc_routes_test_${Date.now()}`;
 
@@ -68,7 +75,6 @@ describe('ASC settings routes', () => {
         keyId: 'K1',
         issuerId: 'I1',
         privateKey: '-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----',
-        skipValidation: true,   // test-only flag to skip the live ASC call
       },
     });
     const res = await (putRoute as any).handler(ctx);
@@ -86,7 +92,7 @@ describe('ASC settings routes', () => {
     const putRoute = ascRoutes.find((r: any) => r.path === '/settings/asc' && r.method === 'PUT');
     await (putRoute as any).handler(makeCtx({
       tenantId: 'del-test',
-      body: { keyId: 'K', issuerId: 'I', privateKey: '-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----', skipValidation: true },
+      body: { keyId: 'K', issuerId: 'I', privateKey: '-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----' },
     }));
 
     const delRoute = ascRoutes.find((r: any) => r.path === '/settings/asc' && r.method === 'DELETE');

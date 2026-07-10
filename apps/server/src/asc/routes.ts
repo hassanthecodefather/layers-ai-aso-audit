@@ -41,20 +41,18 @@ export const ascRoutes = [
         return c.json({ error: 'keyId, issuerId, and privateKey are required' }, 400);
       }
 
-      if (!body.skipValidation) {
-        // Validate credentials by making a real ASC call (see Task 4 for the client)
-        const { getAppStoreVersionsClient } = await import('./versions-client');
-        const client = getAppStoreVersionsClient({
-          keyId: body.keyId.trim(),
-          issuerId: body.issuerId.trim(),
-          privateKeyPem: body.privateKey.trim(),
-        });
-        const probe = await client.getAppVersions('497799835'); // Apple's own Pages app — always exists
-        if (!probe.ok) {
-          return c.json({
-            error: `Credential validation failed: ${probe.error.kind}`,
-          }, 422);
-        }
+      // Validate credentials by making a real ASC call
+      const { getAppStoreVersionsClient } = await import('./versions-client');
+      const client = getAppStoreVersionsClient({
+        keyId: body.keyId.trim(),
+        issuerId: body.issuerId.trim(),
+        privateKeyPem: body.privateKey.trim(),
+      });
+      const probe = await client.getAppVersions('497799835'); // Apple's own Pages app — always exists
+      if (!probe.ok) {
+        return c.json({
+          error: `Credential validation failed: ${probe.error.kind}`,
+        }, 422);
       }
 
       const saved = await saveCredentials(sql, tenantId, {
