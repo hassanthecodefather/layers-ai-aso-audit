@@ -15,14 +15,16 @@ const DEFAULT_GOOGLE_MODEL = 'gemini-3.5-flash';
  * to `google`; the `switch` is the registry, so adding a future backend means
  * adding one case and one class, with no change anywhere else.
  */
-export function getLlmProvider(): LlmProvider {
+export function getLlmProvider(tier: 'fast' | 'capable' = 'capable'): LlmProvider {
   const id = (process.env.LLM_PROVIDER ?? 'google').trim().toLowerCase();
 
   switch (id) {
-    case 'google':
+    case 'google': {
+      const capableModel = process.env.LLM_MODEL?.trim() || DEFAULT_GOOGLE_MODEL;
+      const fastModel = process.env.LLM_MODEL_FAST?.trim() || capableModel;
       return new GoogleProvider({
         baseUrl: process.env.LLM_BASE_URL?.trim() || DEFAULT_GOOGLE_BASE_URL,
-        model: process.env.LLM_MODEL?.trim() || DEFAULT_GOOGLE_MODEL,
+        model: tier === 'fast' ? fastModel : capableModel,
         // Accept the project's LLM_API_KEY, or the standard Gemini env vars
         // (matching the Doppler secret names / AI SDK convention).
         apiKey:
@@ -31,6 +33,7 @@ export function getLlmProvider(): LlmProvider {
           process.env.GEMINI_API_KEY?.trim() ||
           '',
       });
+    }
     default:
       throw new Error(
         `Unknown LLM_PROVIDER "${id}". The only supported provider is google.`,

@@ -357,10 +357,11 @@ const scoreStep = createStep({
       reviewCount: inputData.reviews.length,
     });
 
-    const llm = getLlmProvider();
-    if (!(await llm.reachable())) {
+    const capableLlm = getLlmProvider();
+    const fastLlm = getLlmProvider('fast');
+    if (!(await capableLlm.reachable())) {
       throw new Error(
-        `Couldn't reach Gemini at ${llm.endpoint}. Check that LLM_API_KEY ` +
+        `Couldn't reach Gemini at ${capableLlm.endpoint}. Check that LLM_API_KEY ` +
           '(a Google AI Studio key, starting with "AIza") is set in .env and ' +
           'that the network is up.',
       );
@@ -489,7 +490,7 @@ const scoreStep = createStep({
     // D2: theme analysis — reuse if reviews unchanged; otherwise one LLM pass
     const priorThemeResult = selectThemeResult(listing.reviews, priorSnap);
     const themeResult = priorThemeResult ?? (
-      listing.reviews.length > 0 ? await analyzeThemes(listing.reviews, llm) : null
+      listing.reviews.length > 0 ? await analyzeThemes(listing.reviews, fastLlm) : null
     );
 
     // F-K2: competitor review mining — gated on D3 having provided function-grounded
@@ -499,7 +500,7 @@ const scoreStep = createStep({
       ? selectCompetitorMining(listing.competitors, priorSnap)
       : null;
     const competitorMining = d3ProvidedCompetitors
-      ? (priorMiningResult ?? await mineCompetitorReviews(listing.competitors, ref.country, llm))
+      ? (priorMiningResult ?? await mineCompetitorReviews(listing.competitors, ref.country, fastLlm))
       : null;
 
     // F-K3: competitor tiering + per-keyword gap mapping (pure, no new API calls).
@@ -542,7 +543,7 @@ const scoreStep = createStep({
         draft = await produceAuditDraft(agent, listing, signals, priorContext, builtPrompt);
       } catch (e) {
         throw new Error(
-          `The auditor model (${llm.modelId}) failed: ` +
+          `The auditor model (${capableLlm.modelId}) failed: ` +
             `${e instanceof Error ? e.message : String(e)}. ` +
             'A more capable model may be needed.',
         );
@@ -620,7 +621,7 @@ const scoreStep = createStep({
       draft = { ...draft, recommendations: visibleRecs };
 
       report = assembleReport(toSummary(listing), draft, signals, visionResult, themeResult, listing.reviews);
-      usedModelId = llm.modelId;
+      usedModelId = capableLlm.modelId;
     }
 
     // ── P1: persist snapshot + identity + ledger; apply memory uplifts ────

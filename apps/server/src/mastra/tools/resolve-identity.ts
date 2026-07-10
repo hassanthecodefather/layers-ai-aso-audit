@@ -152,7 +152,7 @@ export function parseClassificationText(text: string): IdentityClassification {
 
 /** The production classifier: one Gemini generation over the fact sheet. */
 export const geminiClassifier: IdentityClassifier = async (factSheet) => {
-  const llm = getLlmProvider();
+  const llm = getLlmProvider('fast');
   if (!(await llm.reachable())) {
     throw new Error(
       `Couldn't reach Gemini at ${llm.endpoint} during identity resolution. ` +
