@@ -5,7 +5,7 @@ export type { LlmProvider } from './provider';
 
 const DEFAULT_GOOGLE_BASE_URL =
   'https://generativelanguage.googleapis.com/v1beta/openai';
-const DEFAULT_GOOGLE_MODEL = 'gemini-2.5-flash';
+const DEFAULT_GOOGLE_MODEL = 'gemini-3.5-flash';
 
 /**
  * Resolve the active LLM provider from the environment.

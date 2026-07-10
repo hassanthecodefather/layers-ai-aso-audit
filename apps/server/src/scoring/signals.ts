@@ -73,6 +73,12 @@ export interface ListingSignals {
   competitive: {
     competitorCount: number;
   };
+  categories?: {
+    primary: string | null;
+    secondary: string | null;
+    /** True when only one category is set — secondary slot is an unused ASO opportunity. */
+    missingSecondary: boolean;
+  };
 }
 
 const TITLE_LIMIT = 30;
@@ -198,6 +204,11 @@ export function computeSignals(listing: AppListing): ListingSignals {
     },
     competitive: {
       competitorCount: listing.competitors.length,
+    },
+    categories: {
+      primary: listing.primaryGenre ?? null,
+      secondary: listing.genres.length > 1 ? listing.genres[1]! : null,
+      missingSecondary: listing.genres.length <= 1,
     },
   };
 }

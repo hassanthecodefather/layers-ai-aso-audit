@@ -5,7 +5,7 @@ contracts live elsewhere: [`specification.md`](specification.md) is the *what*,
 [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) is the *how-to-build*. This
 file is the *where-we-are* — read it first, trust the tests over the prose.
 
-_Last updated: 2026-07-09 · spec v1.3.2 · **Phase E complete (400 tests); Phase F base DoD met + F-K5 shipped (437 tests); F-K2 ✅ + F-K3 ✅ shipped (475 tests); F-K4 pending; Identity-confirmation guard (Fix 5) ✅ shipped + live-smoke corrections ✅ — 534 tests; Phase 6a (auth + Postgres swap + shared rate limiter) ✅ shipped — 584 tests, tsc clean both apps; Phase 6a security hardening ✅ (3 review passes, 23 fixes) + websearch probe correctness ✅; Phase 6b (durable queue + observability) ✅ shipped — 613 tests, tsc clean**_
+_Last updated: 2026-07-10 · spec v1.3.2 · **Phase E complete (400 tests); Phase F base DoD met + F-K5 shipped (437 tests); F-K2 ✅ + F-K3 ✅ shipped (475 tests); F-K4 pending; Identity-confirmation guard (Fix 5) ✅ shipped + live-smoke corrections ✅ — 534 tests; Phase 6a (auth + Postgres swap + shared rate limiter) ✅ shipped — 584 tests, tsc clean both apps; Phase 6a security hardening ✅ (3 review passes, 23 fixes) + websearch probe correctness ✅; Phase 6b (durable queue + observability) ✅ shipped — 613 tests, tsc clean; Post-6b live-run fixes ✅ — suggestedCategory persistence + UI + scoring rule, governor leak, secondary advisory false fire, pacer hot-path overhead, vision token budgets**_
 
 Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferred (by design)
 
@@ -142,6 +142,51 @@ Structured Pino log lines at every external call boundary. All log output goes t
 - `tenantId` threaded into gateway calls via `GatewayCall.tenantId` but not yet passed from workflow call sites — most `provider_call` lines omit it
 - `recoverStaleJobs` runs once at startup (plan-mandated); periodic recovery under a multi-replica worker pool is deferred
 - Fresh-run step progress is a single `identify-app` snapshot; full per-step streaming for the fresh path deferred
+
+## Post-6b live-run fixes (2026-07-10)
+
+**Status: ✅ shipped.** Six correctness fixes and one feature landed during live-run testing after 6b.
+
+### `suggestedCategory` persistence + UI + scoring
+
+End-to-end plumbing so the identity classifier's best-fit Apple category travels from classification → DB → UI → scoring LLM without non-determinism:
+
+| Part | What shipped | Lives in |
+|---|---|---|
+| **Schema** | `suggested_category TEXT` column added to `aso_identity_versions`; migration added | `domain/identity.ts` (`IdentityVersionSchema`), `memory/migrate.ts` |
+| **Storage** | `appendIdentity` writes `suggested_category`; `#parseIdentity` reads it back | `memory/postgres-storage-client.ts`, `memory/libsql-storage-client.ts` |
+| **Reuse path** | `identityVersionToResolved` now propagates `suggestedCategory` instead of hardcoded `null` | `identity/human-confirm.ts` |
+| **Web types** | `suggestedCategory?: string \| null` added to web `ResolvedIdentity` interface | `web/src/lib/types.ts` |
+| **UI banner** | Orange "App Store category is X — a better fit may be Y" banner shown whenever `identity.divergence === 'cross_domain'` AND pending AND `primaryGenre` present; uses `suggestedCategory` (Apple category name) when available, falls back to function description | `web/src/components/ConfirmationCard.tsx` |
+| **Scoring rule** | CATEGORY RECOMMENDATION RULE added to prompt: when `buildPriorContext` emits a `⚠ CATEGORY MISMATCH` line naming the target Apple category, the scoring LLM MUST use that category verbatim in any `reposition_identity` rec — no independent re-pick | `scoring/prompt.ts` |
+
+**Root cause:** `suggestedCategory` was emitted by the Gemini identity classifier (`resolve.ts` / `resolve-identity.ts`) but never persisted — every re-run re-classified, producing different answers (e.g. "Utilities" vs "Lifestyle"). The scoring LLM then independently re-picked a third answer, making the UI banner, the audit narrative, and the Quick Wins recommendation all disagree.
+
+### Bug fixes (code review batch)
+
+| # | Bug | Fix | Lives in |
+|---|---|---|---|
+| 1 | **Governor leak** — `startRun()` called before `try/finally`; the tenantId guard between them could throw, leaving the governor slot permanently locked with no `endRun()` | Moved the tenantId guard inside the `try` block; `endRun()` in `finally` now always runs | `mastra/workflows/audit-workflow.ts` |
+| 2 | **Secondary advisory false fire** — `⚠ SECONDARY CATEGORY MISSING` note fired even when the primary category was absent (no genres at all → spurious note) | Added `hasPrimary` guard: only fires when primary genre exists but secondary is absent | `memory/audit-memory.ts` |
+| 3 | **Pacer hot-path INSERT overhead** — self-healing upsert in `PostgresSharedPacer.wait()` executed a full INSERT ON CONFLICT on every iTunes API call as pure overhead | Removed self-healing upsert; the migration's `INSERT` seeds the row at DB creation; `wait()` is now SELECT FOR UPDATE + UPDATE only | `cost/postgres-pacer.ts` |
+
+### Vision `max_tokens` increases
+
+Gemini 2.5 Flash thinking tokens consume the call's token budget before JSON output begins, truncating responses to ~300 chars → unparseable.
+
+| Call site | Before | After |
+|---|---|---|
+| `analyzeScreenshotSet` | 1 500 | 8 000 |
+| `analyzeIcon` | 400 | 1 500 |
+| Identity vision (`analyzeCreativeMatch`) | 800 | 2 000 |
+
+`analyzeScreenshots` was already raised to 8 000 in B5. `reasoning_effort: 'none'` also added to all three vision calls to disable thinking entirely for structured-extraction calls.
+
+### Infrastructure / ops
+
+- **Disk full recovery** — Docker host ran out of space (~37 GB reclaimable images + ~11 GB build cache). Fixed with `docker system prune -af --volumes`. **Side effect: `pgdata` volume wiped → DB reset to empty.** ⚠️ **Rebuild required** to re-deploy all current code.
+- **`aso_rate_slots` seed** — The `'itunes'` row must exist before `PostgresSharedPacer.wait()` is called. After the volume wipe it was absent; inserted manually via: `docker exec layers-ai-aso-audit-db-1 psql -U aso -d aso_audit -c "INSERT INTO aso_rate_slots (key, next_allowed_at) VALUES ('itunes', NOW()) ON CONFLICT (key) DO NOTHING;"`. A clean rebuild re-seeds via the migration automatically.
+- **Two compose files** — `compose.yml` (db only) and `docker-compose.yml` (app + db). Docker Compose picks `compose.yml` by default when both are present; use `docker compose -f docker-compose.yml up -d` for the full stack. Low-priority cleanup: merge db service into `docker-compose.yml` and delete `compose.yml`.
 
 ## Phase D — detail
 

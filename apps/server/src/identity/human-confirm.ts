@@ -90,6 +90,7 @@ export function identityVersionToResolved(v: IdentityVersion): ResolvedIdentity 
     tally: v.tally,
     source: v.source,
     functionTerms: [],                       // not stored on the row; not needed for a confirmed identity
+    suggestedCategory: v.suggestedCategory ?? null,
     overrodeEvidence: v.overrodeEvidence ?? null,
   };
 }

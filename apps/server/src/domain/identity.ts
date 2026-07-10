@@ -130,6 +130,7 @@ export const IdentityVersionSchema = z.object({
    * Optional so pre-existing rows validate.
    */
   overrodeEvidence: OverrodeEvidenceSchema.nullish(),
+  suggestedCategory: z.string().nullable().optional(),
   createdAt: z.string(),
 });
 export type IdentityVersion = z.infer<typeof IdentityVersionSchema>;

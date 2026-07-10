@@ -11,7 +11,7 @@ import { buildAuditPrompt } from '../../scoring/prompt';
 import { computeSignals } from '../../scoring/signals';
 import { allDimensionHashes } from '../../scoring/dimension-scorer';
 import { RUBRIC_VERSION } from '../../scoring/version';
-import { gatherListingTool } from '../tools/gather-listing';
+import { gatherListing } from '../tools/gather-listing';
 import { fetchITunesCore, type ITunesCore } from '../../sources/itunes';
 import { getLlmProvider } from '../../llm';
 import { getStorage } from '../../memory';
@@ -45,6 +45,7 @@ import { rankOpportunities } from '../../keywords/opportunity';
 import { mineCompetitorReviews, selectCompetitorMining } from '../../keywords/competitor-mining';
 import { buildCompetitorTieringResult } from '../../sources/competitor-tiering';
 import { enrichThemeReferents } from '../../memory/enrich-referents';
+import { runWithTenant } from '../../context/tenant';
 
 /**
  * The ASO audit workflow.
@@ -182,6 +183,7 @@ const identifyStep = createStep({
   inputSchema: z.object({ url: z.string(), reopenIdentity: z.boolean().optional(), tenantId: z.string().default('default') }),
   outputSchema: SummaryAndIdentitySchema,
   execute: async ({ inputData }) => {
+    return runWithTenant(inputData.tenantId, async () => {
     const ref = parseAppStoreUrl(inputData.url);
     if (!ref.ok) throw new Error(ref.error);
     const core = await fetchITunesCore(ref.value);
@@ -224,6 +226,7 @@ const identifyStep = createStep({
       identityNeedsConfirm: identity.escalate,
       tenantId: inputData.tenantId,
     };
+    });
   },
 });
 
@@ -304,8 +307,26 @@ export const confirmStep = createStep({
   },
 });
 
-// ── Step 3: gather the full listing (the gather-listing tool) ──────────────
-const gatherStep = createStep(gatherListingTool);
+// ── Step 3: gather the full listing ────────────────────────────────────────
+// Accepts confirmStep output (which includes identityDecision) but only
+// passes appId/country/fresh to the underlying tool.
+const gatherStep = createStep({
+  id: 'gather-listing',
+  inputSchema: z.object({
+    appId: z.string(),
+    country: z.string(),
+    identityDecision: IdentityDecisionSchema.nullable(),
+    fresh: z.boolean().optional(),
+  }),
+  outputSchema: AppListingSchema,
+  execute: async ({ inputData, getStepResult }) => {
+    const identified = getStepResult(identifyStep) as z.infer<typeof SummaryAndIdentitySchema> | undefined;
+    const tenantId = identified?.tenantId ?? 'default';
+    return runWithTenant(tenantId, () =>
+      gatherListing(inputData.appId, inputData.country, inputData.fresh ?? false),
+    );
+  },
+});
 
 // ── Step 4: score the listing with the auditor agent, assemble the report ──
 const scoreStep = createStep({
@@ -318,7 +339,18 @@ const scoreStep = createStep({
       // Reentrant run — refuse immediately rather than burning budget
       throw new GovernorDenialError('reentrant', 'audit-run', { kind: 'app', upstream: 'itunes' });
     }
+    const identified = getStepResult(identifyStep) as
+      | z.infer<typeof SummaryAndIdentitySchema>
+      | undefined;
+    const confirmed = getStepResult(confirmStep) as
+      | { identityDecision: z.infer<typeof IdentityDecisionSchema> | null }
+      | undefined;
+    const tenantId = identified?.tenantId;
+
+    // tenantId guard is inside the try so endRun() is guaranteed even if it throws.
+    return runWithTenant(tenantId ?? 'default', async () => {
     try {
+    if (!tenantId) throw new Error('[audit] identify-app step result missing — cannot determine tenantId');
     // Log gather-listing summary — inputData is the full listing from that step.
     logger.info('step_summary gather-listing', {
       event: 'step_summary', step: 'gather-listing',
@@ -340,18 +372,6 @@ const scoreStep = createStep({
     let listing = inputData;
     const storage = await getStorage();
     const now = new Date().toISOString();
-
-    // ── Identity comes from `identify-app` (resolved once); apply the human
-    //    decision captured at `confirm-app`, if any (spec ID human override).
-    const identified = getStepResult(identifyStep) as
-      | z.infer<typeof SummaryAndIdentitySchema>
-      | undefined;
-    const confirmed = getStepResult(confirmStep) as
-      | { identityDecision: z.infer<typeof IdentityDecisionSchema> | null }
-      | undefined;
-
-    const tenantId = identified?.tenantId;
-    if (!tenantId) throw new Error('[audit] identify-app step result missing — cannot determine tenantId');
 
     let resolved =
       identified?.identity ??
@@ -377,6 +397,8 @@ const scoreStep = createStep({
       identity: resolved,
       priorSnapshot: priorSnap,
       identityFactSheet,
+      primaryGenre: listing.primaryGenre,
+      genres: listing.genres,
     });
 
     // ── D3: function-grounded competitor discovery — identity-seeded, not genre-based.
@@ -727,6 +749,7 @@ const scoreStep = createStep({
     } finally {
       getGovernor().endRun();
     }
+    });
   },
 });
 

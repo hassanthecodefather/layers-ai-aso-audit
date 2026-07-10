@@ -21,10 +21,13 @@ function isValidEmail(email: string): boolean {
   return afterAt.includes('.');
 }
 
+const SECURE_COOKIE = process.env.NODE_ENV === 'production';
+
 function setRefreshCookie(c: any, token: string): void {
+  const secureFlag = SECURE_COOKIE ? '; Secure' : '';
   c.header(
     'Set-Cookie',
-    `${REFRESH_COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/auth; Max-Age=604800; Secure`,
+    `${REFRESH_COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/auth; Max-Age=604800${secureFlag}`,
   );
 }
 

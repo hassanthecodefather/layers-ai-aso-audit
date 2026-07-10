@@ -12,6 +12,7 @@ import { getGovernor, GovernorDenialError } from './governor';
 import { getPacer } from './pacer';
 import { getCache } from './cache';
 import { logger } from '../telemetry';
+import { currentTenantId } from '../context/tenant';
 
 export { GovernorDenialError } from './governor';
 
@@ -84,6 +85,7 @@ export class PassthroughGateway implements SourceGateway {
       if (pending) {
         const coalescedStartMs = Date.now();
         const text = await pending; // rejects if the primary fetch failed; fetchWithRetry will retry
+        const coalescedTenantId = call.tenantId ?? currentTenantId();
         logger.info('provider_call coalesced', {
           event: 'provider_call',
           provider: call.upstream,
@@ -91,7 +93,7 @@ export class PassthroughGateway implements SourceGateway {
           durationMs: Date.now() - coalescedStartMs,
           status: 'ok',
           coalesced: true,
-          ...(call.tenantId ? { tenantId: call.tenantId } : {}),
+          ...(coalescedTenantId ? { tenantId: coalescedTenantId } : {}),
         });
         return new Response(text, {
           status: 200,
@@ -146,13 +148,14 @@ export class PassthroughGateway implements SourceGateway {
   }
 
   #logProviderCall(call: GatewayCall, startMs: number, status: 'ok' | 'error' | 'timeout', extra: { httpStatus?: number; errorMessage?: string } = {}): void {
+    const effectiveTenantId = call.tenantId ?? currentTenantId();
     logger.info('provider_call', {
       event: 'provider_call',
       provider: call.upstream,
       operation: call.kind,
       durationMs: Date.now() - startMs,
       status,
-      ...(call.tenantId ? { tenantId: call.tenantId } : {}),
+      ...(effectiveTenantId ? { tenantId: effectiveTenantId } : {}),
       ...(extra.httpStatus !== undefined ? { httpStatus: extra.httpStatus } : {}),
       ...(extra.errorMessage ? { errorMessage: extra.errorMessage } : {}),
     });

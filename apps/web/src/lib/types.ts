@@ -16,6 +16,7 @@ export interface ResolvedIdentity {
   divergence: string;
   escalate: boolean;
   source: string;
+  suggestedCategory?: string | null;
 }
 
 export interface IdentityDecision {

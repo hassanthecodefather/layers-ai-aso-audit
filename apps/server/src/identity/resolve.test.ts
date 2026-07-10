@@ -139,7 +139,7 @@ describe('footprint probe tally (F-K5)', () => {
       ...opts,
       footprintProbe: {
         state: 'corroborated',
-        sources: [{ title: 'Spotify Coverage', url: 'https://example.com' }],
+        sources: [{ title: 'Spotify Coverage', url: 'https://example.com', snippet: '' }],
       },
     });
     const fp = r.tally.find((t) => t.family === 'footprint');
@@ -197,7 +197,7 @@ describe('footprint probe tally (F-K5)', () => {
       ...opts,
       footprintProbe: {
         state: 'corroborated',
-        sources: [{ title: 'Third-party mention', url: 'https://example.com' }],
+        sources: [{ title: 'Third-party mention', url: 'https://example.com', snippet: '' }],
       },
     });
     // The footprint is an off-store, independent signal — breaks the on-store cap.
@@ -214,9 +214,9 @@ describe('footprint probe tally (F-K5)', () => {
       footprintProbe: {
         state: 'corroborated',
         sources: [
-          { title: 'A', url: 'https://a.com' },
-          { title: 'B', url: 'https://b.com' },
-          { title: 'C', url: 'https://c.com' },
+          { title: 'A', url: 'https://a.com', snippet: '' },
+          { title: 'B', url: 'https://b.com', snippet: '' },
+          { title: 'C', url: 'https://c.com', snippet: '' },
         ],
       },
     });

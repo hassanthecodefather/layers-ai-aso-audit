@@ -482,6 +482,7 @@ export function storageClientConformance(
       await client.putSnapshot('tenant-A', snap);
       const result = await client.latestSnapshot('tenant-B', 'app-cross-tenant', 'us');
       expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error(result.error);
       expect(result.value).toBeNull();
     });
   });

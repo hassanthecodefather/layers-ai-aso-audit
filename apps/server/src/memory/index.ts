@@ -52,20 +52,15 @@ export function __resetStorageForTests(): void {
   _pgSql = null;
 }
 
-import { UserStore } from '../auth/user-store';
+import { PostgresUserStore } from '../auth/postgres-user-store';
 
-let pendingUserStore: Promise<UserStore> | null = null;
+let pendingUserStore: Promise<PostgresUserStore> | null = null;
 
-// UserStore always uses LibSQL — UserStore uses @libsql/client API directly.
-export function getUserStore(
-  url = process.env.ASO_DB_URL?.trim() || 'file:./aso-audit.db',
-): Promise<UserStore> {
+export function getUserStore(): Promise<PostgresUserStore> {
   if (!pendingUserStore) {
-    pendingUserStore = (async () => {
-      const db = openDb(url);
-      await runMigrations(db);
-      return new UserStore(db);
-    })();
+    const sql = getPgSql();
+    if (!sql) throw new Error('DATABASE_URL is required');
+    pendingUserStore = Promise.resolve(new PostgresUserStore(sql));
   }
   return pendingUserStore;
 }

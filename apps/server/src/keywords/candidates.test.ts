@@ -174,14 +174,19 @@ describe('gap analysis — yours_only / theirs_only / shared', () => {
     expect(rivian?.gapCategory).toBe('yours_only');
   });
 
-  it('classifies a competitor name term absent from your title/subtitle as theirs_only', async () => {
+  it('classifies a non-brand competitor name term absent from your title/subtitle as theirs_only', async () => {
+    // Competitor name is "Tesla Model" — "tesla" is the brand (first word, blocked),
+    // but "model" is a generic descriptor and must still surface as theirs_only.
     const listing = makeListing({
       name: 'Rivian',
       competitors: [competitor],
     });
     const result = await generateCandidates(listing, new StubAsaClient());
-    const tesla = result.gap.find((g) => g.normalizedKey === 'tesla');
-    expect(tesla?.gapCategory).toBe('theirs_only');
+    // Brand token is excluded (Apple §2.3.7 — cannot use competitor brand names as keywords).
+    expect(result.gap.find((g) => g.normalizedKey === 'tesla')).toBeUndefined();
+    // Generic descriptor token from the same competitor name is still a valid gap.
+    const model = result.gap.find((g) => g.normalizedKey === 'model');
+    expect(model?.gapCategory).toBe('theirs_only');
   });
 
   it('classifies a term present in both as shared', async () => {
@@ -470,7 +475,9 @@ describe('D3 — competitorTokens includes tokens from competitor description', 
     expect(hasDescGapToken).toBe(true);
   });
 
-  it('competitor without description works exactly as before (backward compat)', async () => {
+  it('competitor without description works (brand token is excluded, no crash)', async () => {
+    // Competitor name is "Tesla" — a single-word brand name with no descriptor.
+    // The brand token "tesla" must be excluded (Apple §2.3.7).
     const listing = makeListing({
       name: 'Rivian',
       competitors: [
@@ -489,9 +496,9 @@ describe('D3 — competitorTokens includes tokens from competitor description', 
       ],
     });
     const result = await generateCandidates(listing, new StubAsaClient());
-    const tesla = result.gap.find((g) => g.normalizedKey === 'tesla');
-    expect(tesla?.gapCategory).toBe('theirs_only');
-    // Should not throw, should return valid result
+    // Brand token must not surface as a keyword recommendation.
+    expect(result.gap.find((g) => g.normalizedKey === 'tesla')).toBeUndefined();
+    // Function must not throw and must return valid shape.
     expect(result.candidates).toBeDefined();
     expect(result.gap).toBeDefined();
   });

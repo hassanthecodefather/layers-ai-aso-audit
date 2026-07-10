@@ -307,6 +307,55 @@ The interactive half of the spec's identity-escalation logic (the A2 line above 
 - ⬜ **Traces — deferred to a compatible backend.** Options when Studio Traces is actually wanted: (a) **P6 Postgres** storage (supports batch metrics/spans) — attach the exporter there; (b) a **separate storage instance** for observability (distinct DB file/connection) so span writes don't contend with workflow state; (c) a **non-storage exporter** (OTLP/Mastra Cloud `MastraPlatformExporter`). Not worth blocking audits for a dev-only trace view at beta scale.
 - **Docker note:** dep/import changes need **rebuild, not restart** (`docker compose build --no-cache && up -d`; `.dockerignore` excludes `node_modules`). `.docker-data/logs/` on the mounted volume.
 
+---
+
+## Post-6b live-run fixes — ✅ shipped (2026-07-10)
+
+Correctness and infrastructure fixes surfaced during live testing after Phase 6b landed.
+
+### `suggestedCategory` — persistence, UI, scoring (feature)
+
+The identity classifier (`resolve.ts`) emits `suggestedCategory` — the best-fit Apple App Store category from a fixed 25-category list. Without persistence this was re-computed each run, causing non-determinism ("Utilities" one run, "Lifestyle" the next). The scoring LLM also independently re-picked a third answer, so the UI banner, narrative, and Quick Wins disagreed. Five links in the chain were fixed:
+
+1. **Schema** (`domain/identity.ts`, `memory/migrate.ts`) — `IdentityVersionSchema` gains `suggestedCategory: z.string().nullable().optional()`; migration adds `suggested_category TEXT` column.
+2. **Storage** (`memory/postgres-storage-client.ts`, `memory/libsql-storage-client.ts`) — `appendIdentity` writes the column; `#parseIdentity` reads it back.
+3. **Reuse path** (`identity/human-confirm.ts`) — `identityVersionToResolved` propagates `suggestedCategory` instead of the previous hardcoded `null`.
+4. **Web types + UI** (`web/src/lib/types.ts`, `web/src/components/ConfirmationCard.tsx`) — `ResolvedIdentity` interface gains `suggestedCategory?: string | null`; `ConfirmationCard` shows an orange banner with the Apple category name (not the internal identity label) when `divergence === 'cross_domain'` AND pending AND `primaryGenre` exists.
+5. **Scoring prompt** (`scoring/prompt.ts`) — CATEGORY RECOMMENDATION RULE: when `buildPriorContext` emits a `⚠ CATEGORY MISMATCH` line, the scoring LLM MUST use the named category verbatim in any `reposition_identity` recommendation; it may not substitute a different Apple category.
+
+### Bug fixes (code review batch)
+
+Three real bugs out of nine findings reviewed:
+
+**Bug 1 — Governor leak (`mastra/workflows/audit-workflow.ts`).**
+`startRun()` was called before the `try/finally` block that contains `endRun()`. The tenantId guard between them could throw, leaving the governor slot permanently locked (no `endRun()` ever called, quota consumed forever). Fix: tenantId guard moved inside the `try` block, after `startRun()`, so `finally` always runs.
+
+**Bug 2 — Secondary advisory false fire (`memory/audit-memory.ts`).**
+`⚠ SECONDARY CATEGORY MISSING` fired whenever `genres.length <= 1`, including when `genres.length === 0` (no genres at all). Fix: added `hasPrimary = genres.length >= 1` guard; the note only fires when a primary genre exists but secondary is absent.
+
+**Bug 3 — Pacer hot-path INSERT overhead (`cost/postgres-pacer.ts`).**
+`PostgresSharedPacer.wait()` contained a self-healing `INSERT INTO aso_rate_slots … ON CONFLICT DO NOTHING` that ran inside every iTunes call's transaction as pure overhead. This was added during an earlier disk-full incident but has no place in the hot path once the migration seeds the row. Removed; `wait()` is now SELECT FOR UPDATE + UPDATE only. The migration's `INSERT` is the correct seeding point.
+
+### Vision `max_tokens` increases
+
+All Gemini vision calls were hitting the token budget before finishing JSON output (Gemini 2.5 Flash thinking tokens consume budget ahead of output). Raised:
+
+| Call | File | Before | After |
+|---|---|---|---|
+| `analyzeScreenshotSet` | `vision/client.ts` | 1 500 | 8 000 |
+| `analyzeIcon` | `vision/client.ts` | 400 | 1 500 |
+| `analyzeCreativeMatch` (identity vision) | `identity/identity-vision-client.ts` | 800 | 2 000 |
+
+`analyzeScreenshots` was already at 8 000 from B5. `reasoning_effort: 'none'` added to all three vision calls — these are structured-extraction calls that don't benefit from reasoning.
+
+### Infrastructure / ops notes
+
+- **Disk full + volume wipe** — `docker system prune -af --volumes` freed space but wiped `pgdata`; all schema and data must be re-created on next deploy. Always use `docker system prune -af` (without `--volumes`) to preserve persistent data.
+- **Two compose files** — `compose.yml` (db only) and `docker-compose.yml` (app + db). Docker Compose auto-selects `compose.yml` when present; run `docker compose -f docker-compose.yml up -d` explicitly. Merge the db service into `docker-compose.yml` and delete `compose.yml` when convenient.
+- **`aso_rate_slots` manual seed** — After a volume wipe the `'itunes'` row is absent until migrations run. Seed manually: `docker exec <db-container> psql -U aso -d aso_audit -c "INSERT INTO aso_rate_slots (key, next_allowed_at) VALUES ('itunes', NOW()) ON CONFLICT (key) DO NOTHING;"`. A clean rebuild re-seeds automatically via the PG-only migration.
+
+---
+
 ## Deferred (planned at their tier, not now)
 
 - **P6 (→1K):**

@@ -72,7 +72,7 @@ export class UserStore {
     });
 
     if (res.rows.length > 0) {
-      const row = res.rows[0];
+      const row = res.rows[0]!;
       return {
         id: row['id'] as string,
         userId: row['user_id'] as string,
@@ -99,7 +99,7 @@ export class UserStore {
       args: [tokenHash, graceCutoff],
     });
     if (check.rows.length > 0) {
-      await this.revokeAllUserTokens(check.rows[0]['user_id'] as string);
+      await this.revokeAllUserTokens(check.rows[0]!['user_id'] as string);
     }
 
     return null;

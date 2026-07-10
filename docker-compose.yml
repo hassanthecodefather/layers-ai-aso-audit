@@ -2,13 +2,13 @@
 #
 #   docker compose up
 #
-# Then open http://localhost:5173
+# Then open http://localhost:4111
 #
-# Both processes (Mastra server + web UI) run in a single container, so the
-# UI's API proxy stays on localhost — no inter-container networking to set up.
-#
-# The LLM is configured via .env (see .env.example).
-# Set GOOGLE_GENERATIVE_AI_API_KEY= your Gemini key.
+# The Mastra server serves both the API and the React web UI on port 4111.
+# Required env vars (in .env):
+#   DATABASE_URL            — Postgres connection string
+#   ASO_JWT_SECRET          — JWT signing secret (min 32 chars)
+#   LLM_API_KEY             — Google AI Studio API key (or GOOGLE_GENERATIVE_AI_API_KEY)
 
 name: aso-audit-agent
 
@@ -16,19 +16,17 @@ services:
   app:
     build: .
     image: aso-audit-agent:local
-    # Loads LLM_* and FIRECRAWL_API_KEY when a .env is present.
-    # `required: false` keeps `docker compose up` working without one.
-    env_file: .env
+    # Loads DATABASE_URL, LLM_API_KEY, ASO_JWT_SECRET, etc. from .env
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # .env uses localhost for local dev; inside Docker, localhost is the
+      # container itself, so we override to reach Postgres on the host.
+      DATABASE_URL: postgresql://aso:aso@host.docker.internal:5432/aso_audit
     extra_hosts:
       # Lets LLM_BASE_URL=http://host.docker.internal:... reach a host-local
       # Ollama (automatic on Docker Desktop; explicit here for Linux too).
       - 'host.docker.internal:host-gateway'
     ports:
-      - '5173:5173' # web UI — open this
-      - '4111:4111' # Mastra server + Studio
-    environment:
-      # Persist the DB outside the source tree so the volume mount doesn't
-      # clobber the server package.
-      ASO_DB_URL: 'file:/app/data/aso-audit.db'
-    volumes:
-      - ./.docker-data:/app/data
+      - '4111:4111' # web UI + API

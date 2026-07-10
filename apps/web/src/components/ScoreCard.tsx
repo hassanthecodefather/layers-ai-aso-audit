@@ -15,6 +15,12 @@ export function ScoreCard({
   headline,
   dimensions,
 }: ScoreCardProps) {
+  // Rubric weights sum to 110, not 100. Compute the total across assessable
+  // dimensions so each row can show the *normalized* percentage (weight/total).
+  const totalWeight = dimensions
+    .filter((d) => d.confidence !== 'unavailable')
+    .reduce((sum, d) => sum + d.weight, 0);
+
   return (
     <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
       <header className="flex items-center gap-5">
@@ -32,7 +38,7 @@ export function ScoreCard({
 
       <div className="mt-5 space-y-3.5 border-t border-white/10 pt-5">
         {dimensions.map((dim) => (
-          <DimensionRow key={dim.id} dim={dim} />
+          <DimensionRow key={dim.id} dim={dim} totalWeight={totalWeight} />
         ))}
       </div>
     </section>
@@ -79,16 +85,19 @@ function ScoreRing({ score }: { score: number }) {
   );
 }
 
-function DimensionRow({ dim }: { dim: ScoredDimension }) {
+function DimensionRow({ dim, totalWeight }: { dim: ScoredDimension; totalWeight: number }) {
   const unavailable = dim.confidence === 'unavailable';
   const tone = scoreTone(dim.score);
+  const weightPct = !unavailable && totalWeight > 0
+    ? Math.round((dim.weight / totalWeight) * 100)
+    : 0;
 
   return (
     <div>
       <div className="flex items-baseline justify-between gap-3">
         <div className="flex items-baseline gap-2">
           <span className="text-sm font-medium text-zinc-200">{dim.label}</span>
-          <span className="text-[11px] text-zinc-600">{dim.weight}% weight</span>
+          <span className="text-[11px] text-zinc-600">{weightPct}% weight</span>
           {dim.confidence !== 'observed' && (
             <span
               className={`rounded px-1.5 py-0.5 text-[10px] ring-1 ${
