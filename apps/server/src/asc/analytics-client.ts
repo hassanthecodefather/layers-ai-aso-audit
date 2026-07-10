@@ -34,12 +34,11 @@ export class AppleAscAnalyticsClient implements AscAnalyticsClient {
           data: {
             type: 'analyticsReportRequests',
             attributes: {
-              accessType: 'ONE_TIME',
-              stoppedDueToPrivacy: false,
+              accessType: 'ONE_TIME_SNAPSHOT',
             },
             relationships: {
-              apps: {
-                data: [{ type: 'apps', id: filters.appId }],
+              app: {
+                data: { type: 'apps', id: filters.appId },
               },
             },
           },
@@ -113,6 +112,11 @@ export class AppleAscAnalyticsClient implements AscAnalyticsClient {
       return err({ kind: 'api_error', status: 0, detail: String(e) });
     }
 
+    if (!instancesRes.ok) {
+      const detail = await instancesRes.text().catch(() => '');
+      return err({ kind: 'api_error', status: instancesRes.status, detail: detail.slice(0, 200) });
+    }
+
     const instancesData = await instancesRes.json().catch(() => null);
     const instances = (instancesData as { data?: unknown[] })?.data;
     if (!instances || instances.length === 0) return ok({ status: 'pending' });
@@ -131,6 +135,11 @@ export class AppleAscAnalyticsClient implements AscAnalyticsClient {
       return err({ kind: 'api_error', status: 0, detail: String(e) });
     }
 
+    if (!segmentsRes.ok) {
+      const detail = await segmentsRes.text().catch(() => '');
+      return err({ kind: 'api_error', status: segmentsRes.status, detail: detail.slice(0, 200) });
+    }
+
     const segmentsData = await segmentsRes.json().catch(() => null);
     const segments = (segmentsData as { data?: unknown[] })?.data;
     if (!segments || segments.length === 0) return ok({ status: 'pending' });
@@ -146,6 +155,11 @@ export class AppleAscAnalyticsClient implements AscAnalyticsClient {
       });
     } catch (e) {
       return err({ kind: 'api_error', status: 0, detail: String(e) });
+    }
+
+    if (!downloadRes.ok) {
+      const detail = await downloadRes.text().catch(() => '');
+      return err({ kind: 'api_error', status: downloadRes.status, detail: detail.slice(0, 200) });
     }
 
     const text = await downloadRes.text().catch(() => '');

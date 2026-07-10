@@ -16,7 +16,7 @@ export class AppleAppStoreVersionsClient implements AppStoreVersionsClient {
 
   async getAppVersions(appId: string): Promise<Result<AppVersion[], AscError>> {
     const token = signAscToken(this.creds.keyId, this.creds.issuerId, this.creds.privateKeyPem);
-    const url = `${ASC_BASE}/v1/apps/${encodeURIComponent(appId)}/appStoreVersions?filter[platform]=IOS&sort=-createdDate&limit=10`;
+    const url = `${ASC_BASE}/v1/apps/${encodeURIComponent(appId)}/appStoreVersions?filter[platform]=IOS&limit=10`;
 
     let response: Response;
     try {
