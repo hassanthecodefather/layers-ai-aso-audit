@@ -8,6 +8,7 @@ import { extractJsonObject } from './extract';
 import { normalizeRecommendations } from './candidates';
 import type { VisionResult } from '../vision/types';
 import { getGovernor } from '../cost/governor';
+import type { CostLedger } from '../cost/ledger';
 import { logger } from '../telemetry';
 import { currentTenantId } from '../context/tenant';
 
@@ -71,7 +72,7 @@ function parseDraft(text: string): ParseAttempt {
 }
 
 /** Run one plain-text generation, return its text, and emit a provider_call log event. */
-async function generate(agent: Agent, prompt: string, operation: 'audit' | 'audit-repair' = 'audit'): Promise<string> {
+async function generate(agent: Agent, prompt: string, operation: 'audit' | 'audit-repair' = 'audit', _ledger?: CostLedger): Promise<string> {
   const startMs = Date.now();
   let result: Awaited<ReturnType<typeof agent.generate>>;
   try {
@@ -90,6 +91,10 @@ async function generate(agent: Agent, prompt: string, operation: 'audit' | 'audi
   const usage = (result as any).usage as { promptTokens?: number; completionTokens?: number; totalTokens?: number } | undefined;
   const inputTokens = usage?.promptTokens ?? 0;
   const outputTokens = usage?.completionTokens ?? 0;
+  if (_ledger && usage?.promptTokens !== undefined) {
+    _ledger.record('scoring', 'capable', { promptTokens: inputTokens, completionTokens: outputTokens });
+    _ledger.checkBudget();
+  }
   // totalTokens from usage when present; otherwise approximate from char count (÷4).
   const totalTokens = usage?.totalTokens ?? Math.round((prompt.length + text.length) / 4);
   // Blended Gemini Flash rate: ~$0.15/1M tokens.
@@ -125,15 +130,16 @@ export async function produceAuditDraft(
   priorContext?: string,
   prebuiltPrompt?: string,     // B4: pass the prompt built for hashing
   visionResult?: VisionResult, // fallback only — prebuiltPrompt already includes vision
+  _ledger?: CostLedger,
 ): Promise<AuditDraft> {
   const prompt = prebuiltPrompt ?? buildAuditPrompt(listing, signals, priorContext, visionResult);
 
-  let attempt = parseDraft(await generate(agent, prompt));
+  let attempt = parseDraft(await generate(agent, prompt, 'audit', _ledger));
   if (attempt.draft) return normalizeRecommendations(attempt.draft, signals);
 
   // One repair pass — feed the model its own output and the exact errors.
   attempt = parseDraft(
-    await generate(agent, buildRepairPrompt(attempt.raw, attempt.error), 'audit-repair'),
+    await generate(agent, buildRepairPrompt(attempt.raw, attempt.error), 'audit-repair', _ledger),
   );
   if (attempt.draft) return normalizeRecommendations(attempt.draft, signals);
 

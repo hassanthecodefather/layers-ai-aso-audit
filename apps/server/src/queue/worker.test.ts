@@ -24,7 +24,7 @@ const BASE_JOB: AuditJob = {
   url: 'https://apps.apple.com/us/app/x/id1',
   reopenIdentity: false, status: 'running', step: null,
   suspendPayloadJson: null, resumeDataJson: null,
-  resultJson: null, errorMessage: null,
+  resultJson: null, errorMessage: null, costJson: null,
   attempt: 1, maxAttempts: 3,
   createdAt: new Date(), claimedAt: new Date(), completedAt: null,
 };

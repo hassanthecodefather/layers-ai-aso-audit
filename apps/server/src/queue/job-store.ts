@@ -15,6 +15,7 @@ export interface AuditJob {
   resumeDataJson: string | null;
   resultJson: string | null;
   errorMessage: string | null;
+  costJson: string | null;
   attempt: number;
   maxAttempts: number;
   createdAt: Date;
@@ -27,6 +28,7 @@ interface JobRow {
   reopen_identity: number; status: string; step: string | null;
   suspend_payload_json: string | null; resume_data_json: string | null;
   result_json: string | null; error_message: string | null;
+  cost_json: string | null;
   attempt: number; max_attempts: number;
   created_at: Date; claimed_at: Date | null; completed_at: Date | null;
 }
@@ -41,6 +43,7 @@ function rowToJob(r: JobRow): AuditJob {
     resumeDataJson: r.resume_data_json,
     resultJson: r.result_json,
     errorMessage: r.error_message,
+    costJson: r.cost_json,
     attempt: r.attempt,
     maxAttempts: r.max_attempts,
     createdAt: r.created_at,
@@ -133,6 +136,14 @@ export async function markJobFailed(
     SET status = 'failed', error_message = ${errorMessage}, completed_at = NOW()
     WHERE id = ${id} AND status = 'running'
   `;
+}
+
+export async function updateJobCostJson(
+  sql: postgres.Sql,
+  id: string,
+  costJson: string,
+): Promise<void> {
+  await sql`UPDATE aso_audit_jobs SET cost_json = ${costJson} WHERE id = ${id}`;
 }
 
 export async function markJobRequeued(sql: postgres.Sql, id: string): Promise<void> {

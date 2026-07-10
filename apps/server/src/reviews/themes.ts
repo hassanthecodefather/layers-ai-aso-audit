@@ -14,6 +14,7 @@ import type { LlmProvider } from '../llm/provider';
 import { ComplaintThemeSchema, type ComplaintTheme } from '../domain/recommendation';
 import { extractJsonObject } from '../scoring/extract';
 import type { ListingSnapshot } from '../domain/snapshot';
+import type { CostLedger } from '../cost/ledger';
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -291,6 +292,7 @@ export async function analyzeThemes(
   reviews: Review[],
   llm: LlmProvider,
   _generateOverride?: (prompt: string) => Promise<string>,
+  _ledger?: CostLedger,
 ): Promise<ThemeAnalysisResult> {
   if (reviews.length === 0) {
     return emptyResult(null);
@@ -324,6 +326,14 @@ export async function analyzeThemes(
         modelSettings: { temperature: 0 },
       });
       rawText = typeof result.text === 'string' ? result.text : '';
+      const usage = (result as any).usage as { promptTokens?: number; completionTokens?: number } | undefined;
+      if (_ledger && usage?.promptTokens !== undefined) {
+        _ledger.record('themes', 'fast', {
+          promptTokens: usage.promptTokens ?? 0,
+          completionTokens: usage.completionTokens ?? 0,
+        });
+        _ledger.checkBudget();
+      }
     } catch {
       return emptyResult(versionDelta, reviews.length);
     }

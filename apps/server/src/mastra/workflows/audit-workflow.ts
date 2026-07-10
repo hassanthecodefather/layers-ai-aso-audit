@@ -34,6 +34,8 @@ import { getVisionClient, runVision, selectVisionResult } from '../../vision';
 import type { VisionResult } from '../../vision';
 import { computeScreenshotHash } from '../../vision/screenshot-hash';
 import { getGovernor, GovernorDenialError } from '../../cost/governor';
+import { CostLedger } from '../../cost/ledger';
+import { getPgSql } from '../../memory';
 import { runIdFull } from '../../identity/id-full';
 import { getIdentityVisionClient } from '../../identity/identity-vision-client';
 import { runSecondaryUplifts } from '../../vision/secondary-uplifts';
@@ -335,7 +337,7 @@ const scoreStep = createStep({
   id: 'score-listing',
   inputSchema: AppListingSchema,
   outputSchema: AuditReportSchema,
-  execute: async ({ inputData, mastra, getStepResult }) => {
+  execute: async ({ inputData, mastra, getStepResult, runId }) => {
     const runResult = getGovernor().startRun();
     if (!runResult.ok) {
       // Reentrant run — refuse immediately rather than burning budget
@@ -349,6 +351,7 @@ const scoreStep = createStep({
       | undefined;
     const tenantId = identified?.tenantId;
 
+    const ledger = new CostLedger(parseInt(process.env.AUDIT_BUDGET_CENTS ?? '500', 10));
     // tenantId guard is inside the try so endRun() is guaranteed even if it throws.
     return runWithTenant(tenantId ?? 'default', async () => {
     try {
@@ -503,7 +506,7 @@ const scoreStep = createStep({
     // D2: theme analysis — reuse if reviews unchanged; otherwise one LLM pass
     const priorThemeResult = selectThemeResult(listing.reviews, priorSnap);
     const themeResult = priorThemeResult ?? (
-      listing.reviews.length > 0 ? await analyzeThemes(listing.reviews, fastLlm) : null
+      listing.reviews.length > 0 ? await analyzeThemes(listing.reviews, fastLlm, undefined, ledger) : null
     );
 
     // F-K2: competitor review mining — gated on D3 having provided function-grounded
@@ -513,7 +516,7 @@ const scoreStep = createStep({
       ? selectCompetitorMining(listing.competitors, priorSnap)
       : null;
     const competitorMining = d3ProvidedCompetitors
-      ? (priorMiningResult ?? await mineCompetitorReviews(listing.competitors, ref.country, fastLlm))
+      ? (priorMiningResult ?? await mineCompetitorReviews(listing.competitors, ref.country, fastLlm, undefined, undefined, ledger))
       : null;
 
     // F-K3: competitor tiering + per-keyword gap mapping (pure, no new API calls).
@@ -553,7 +556,7 @@ const scoreStep = createStep({
       // 0-100 total are pure, deterministic code in `assembleReport`.
       let draft;
       try {
-        draft = await produceAuditDraft(agent, listing, signals, priorContext, builtPrompt);
+        draft = await produceAuditDraft(agent, listing, signals, priorContext, builtPrompt, undefined, ledger);
       } catch (e) {
         throw new Error(
           `The auditor model (${capableLlm.modelId}) failed: ` +
@@ -763,6 +766,12 @@ const scoreStep = createStep({
     return { ...report, limitations: [...report.limitations, ...notes] };
     } finally {
       getGovernor().endRun();
+      const sql = getPgSql();
+      if (sql && runId) {
+        try {
+          await sql`UPDATE aso_audit_jobs SET cost_json = ${JSON.stringify(ledger.toJSON())} WHERE run_id = ${runId}`;
+        } catch { /* cost tracking is non-critical — don't fail the audit */ }
+      }
     }
     });
   },

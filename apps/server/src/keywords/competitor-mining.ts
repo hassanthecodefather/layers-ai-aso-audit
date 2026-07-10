@@ -16,6 +16,7 @@ import type { ListingSnapshot } from '../domain/snapshot';
 import { fetchReviews } from '../sources/itunes';
 import { analyzeThemes } from '../reviews/themes';
 import { z } from 'zod';
+import type { CostLedger } from '../cost/ledger';
 
 /** Max competitors to mine (keeps LLM + review-fetch costs bounded). */
 const MAX_COMPETITORS = 3;
@@ -58,6 +59,7 @@ export async function mineCompetitorReviews(
   llm: LlmProvider,
   _analyzeOverride?: typeof analyzeThemes,
   _fetchReviewsOverride?: typeof fetchReviews,
+  _ledger?: CostLedger,
 ): Promise<CompetitorMiningResult | null> {
   if (competitors.length === 0) return null;
 
@@ -94,6 +96,8 @@ export async function mineCompetitorReviews(
     themeResult = await analyze(
       allLowRatingReviews.map((r) => r.review),
       llm,
+      undefined,
+      _ledger,
     );
   } catch {
     return null;
