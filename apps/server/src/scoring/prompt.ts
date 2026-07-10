@@ -280,10 +280,23 @@ function visionFacts(v: VisionResult): string {
 
 /**
  * Format keyword linter findings for the LLM.
- * Confidence is always `inferred` — the keyword field is never observable.
+ * When keywordField is observable (from ASC), uses actual data; otherwise inferred.
  */
-function keywordLinterFacts(linter: LinterResult): string {
+function keywordLinterFacts(linter: LinterResult, keywordField: ListingSignals['keywordField']): string {
+  // When observable: true, actual data from ASC is available
+  const kfLine = keywordField.observable
+    ? `Keyword field (actual, confidence "verified"): '${keywordField.value}' — ` +
+      `${keywordField.length}/100 chars used, ${keywordField.charsRemaining} remaining.` +
+      (keywordField.wordsSharedWithTitle.length > 0
+        ? ` Words already in title: [${keywordField.wordsSharedWithTitle.join(', ')}] — Apple ignores duplicates, these chars are wasted.`
+        : ` No words duplicated from title.`) +
+      ` Score based on actual content, confidence "verified".`
+    : `Keyword field: unobservable (100-char budget inferred).`;
+
   if (!linter.scriptSupported) {
+    if (keywordField.observable) {
+      return ['## Keyword linter', kfLine].join('\n');
+    }
     return '## Keyword linter\nScript not yet supported — keyword mechanics suppressed. Score the keyword field by inference only (confidence "inferred").';
   }
 
@@ -291,7 +304,7 @@ function keywordLinterFacts(linter: LinterResult): string {
   lines.push(
     `Title: ${linter.titleUsed}/${30} chars used. ` +
     `Subtitle: ${linter.subtitleUsed}/${30} chars used. ` +
-    `Keyword field: unobservable (100-char budget inferred).`,
+    kfLine,
   );
 
   if (linter.reclaimableChars > 0) {
@@ -335,8 +348,22 @@ function keywordLinterFacts(linter: LinterResult): string {
     lines.push('No cross-field duplicates, plural redundancies, or wasted words detected.');
   }
 
-  lines.push('IMPORTANT: keyword field findings are confidence "inferred" (field not publicly observable).');
+  if (!keywordField.observable) {
+    lines.push('IMPORTANT: keyword field findings are confidence "inferred" (field not publicly observable).');
+  }
   return lines.join('\n');
+}
+
+function ascPromoTextFacts(signals: ListingSignals): string {
+  const text = signals.conversion.promotionalText;
+  if (text === null) return '';
+  return [
+    '## ASC promotional text (actual, from App Store Connect)',
+    text.length > 0
+      ? `"${text}" (${text.length}/170 chars used)`
+      : '(empty — slot is unused)',
+    '⚠ Promotional text is NOT indexed by Apple — do not suggest keywords here. Assess relevance, freshness, and whether it supports conversion.',
+  ].join('\n');
 }
 
 /**
@@ -376,6 +403,7 @@ export function buildAuditPrompt(
   rankedKeywords?: RankedKeyword[],
   competitorMining?: CompetitorMiningResult | null,
   competitorTiering?: CompetitorTieringResult | null,
+  advancedAuditFailed?: boolean,
 ): string {
   const competitorMiningSection = formatCompetitorMiningForPrompt(competitorMining);
   const competitorTieringSection = formatCompetitorTieringForPrompt(competitorTiering);
@@ -396,8 +424,9 @@ export function buildAuditPrompt(
     scoringConstraints(signals, visionResult),
     '',
     ...(visionResult ? [visionFacts(visionResult), ''] : []),
-    keywordLinterFacts(signals.keywordLinter),
+    keywordLinterFacts(signals.keywordLinter, signals.keywordField),
     '',
+    ...(ascPromoTextFacts(signals) ? [ascPromoTextFacts(signals), ''] : []),
     ...(candidateResult ? [formatCandidatesForPrompt(candidateResult), ''] : []),
     ...(rankedKeywords && rankedKeywords.length > 0 ? [formatOpportunitiesForPrompt(rankedKeywords), ''] : []),
     '## Category competitors',
@@ -409,6 +438,13 @@ export function buildAuditPrompt(
     '',
     ...(themeSection(themeResult) ? [themeSection(themeResult), ''] : []),
     ...(competitorMiningSection ? [competitorMiningSection, ''] : []),
+    ...(advancedAuditFailed ? [
+      '## Advanced Audit — ASC data unavailable',
+      'This audit was requested in Advanced mode but App Store Connect data could not be retrieved.',
+      'Score the keyword field by inference only (confidence "inferred").',
+      'Add this sentence verbatim to your "limitations" array: "Advanced Audit requested but ASC data unavailable — keyword field is inferred. Reconnect ASC credentials in Settings and re-run for full keyword analysis."',
+      '',
+    ] : []),
     '## Rubric — score each dimension 0-10 against these checks',
     rubricChecks(),
     '',
