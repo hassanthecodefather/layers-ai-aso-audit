@@ -50,6 +50,8 @@ import { mineCompetitorReviews, selectCompetitorMining } from '../../keywords/co
 import { buildCompetitorTieringResult } from '../../sources/competitor-tiering';
 import { enrichThemeReferents } from '../../memory/enrich-referents';
 import { runWithTenant } from '../../context/tenant';
+import { fetchAscListingData, type AscListingData } from '../../asc/listing-client';
+import { loadCredentials } from '../../asc/credential-store';
 
 /**
  * The ASO audit workflow.
@@ -352,10 +354,16 @@ const scoreStep = createStep({
     const tenantId = identified?.tenantId;
 
     const ledger = new CostLedger(parseInt(process.env.AUDIT_BUDGET_CENTS ?? '500', 10));
+    const sql = getPgSql();
     // tenantId guard is inside the try so endRun() is guaranteed even if it throws.
     return runWithTenant(tenantId ?? 'default', async () => {
     try {
     if (!tenantId) throw new Error('[audit] identify-app step result missing — cannot determine tenantId');
+    const [jobRow] = sql
+      ? await sql<{ advanced_audit: boolean }[]>`
+          SELECT advanced_audit FROM aso_audit_jobs WHERE run_id = ${runId}
+        `
+      : [];
     // Log gather-listing summary — inputData is the full listing from that step.
     logger.info('step_summary gather-listing', {
       event: 'step_summary', step: 'gather-listing',
@@ -451,7 +459,18 @@ const scoreStep = createStep({
 
     // Signals computed once — passed to generation (for prompt + normalization)
     // and reused for hashing / persistence below.
-    const signals = computeSignals(listing);
+    let ascListingData: AscListingData | undefined;
+    if (jobRow?.advanced_audit && tenantId) {
+      const credsResult = await loadCredentials(sql!, tenantId);
+      if (credsResult.ok && credsResult.value) {
+        try {
+          ascListingData = await fetchAscListingData(credsResult.value, listing.appId);
+        } catch { /* non-critical — fall through to inferred mode */ }
+      }
+    }
+    const signals = computeSignals(listing, ascListingData);
+    const advancedAuditFailed =
+      !!jobRow?.advanced_audit && signals.keywordField.observable === false;
 
     // ── B1: vision analysis — runs BEFORE prompt construction so the vision
     //    facts (per-slot critiques, icon assessment) can be included in the
@@ -530,7 +549,7 @@ const scoreStep = createStep({
       : null;
 
     const rankedKeywords = rankOpportunities(candidateResult, resolved, listing.name);
-    const builtPrompt = buildAuditPrompt(listing, signals, priorContext, visionResult, candidateResult, themeResult, rankedKeywords, competitorMining, competitorTiering);
+    const builtPrompt = buildAuditPrompt(listing, signals, priorContext, visionResult, candidateResult, themeResult, rankedKeywords, competitorMining, competitorTiering, advancedAuditFailed);
     const promptHash = createHash('sha256')
       .update(builtPrompt)
       .digest('hex')
@@ -766,7 +785,6 @@ const scoreStep = createStep({
     return { ...report, limitations: [...report.limitations, ...notes] };
     } finally {
       getGovernor().endRun();
-      const sql = getPgSql();
       if (sql && runId) {
         try {
           await sql`UPDATE aso_audit_jobs SET cost_json = ${JSON.stringify(ledger.toJSON())} WHERE run_id = ${runId}`;
