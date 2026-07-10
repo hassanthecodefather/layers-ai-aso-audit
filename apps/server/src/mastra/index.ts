@@ -8,6 +8,7 @@ import { auditRoutes } from './routes';
 import { authRoutes } from '../auth/routes';
 import { healthRoutes } from './health-routes';
 import { ascRoutes } from '../asc/routes';
+import { trackingRoutes } from '../tracking/routes';
 import { verifyLlmStartup } from '../llm';
 import { startWorker, type WorkerHandle } from '../queue/worker';
 import { getWebStaticRoutes } from './web-static';
@@ -25,7 +26,7 @@ export const mastra = new Mastra({
   ...(pgUrl ? { storage: new PostgresStore({ id: 'aso-audit', connectionString: pgUrl }) } : {}),
   logger,
   server: {
-    apiRoutes: [...auditRoutes, ...authRoutes, ...healthRoutes, ...ascRoutes, ...getWebStaticRoutes()],
+    apiRoutes: [...auditRoutes, ...authRoutes, ...healthRoutes, ...ascRoutes, ...trackingRoutes, ...getWebStaticRoutes()],
   },
 });
 
