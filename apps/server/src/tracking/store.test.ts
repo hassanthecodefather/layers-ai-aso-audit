@@ -93,7 +93,7 @@ describe('tracking store', () => {
     });
 
     const events = await getChangeEvents(sql, 'tenant5', { limit: 10 });
-    expect(events.every(e => e.eventType !== 'version_status')).toBe(true);
+    expect(events.every(e => (e.eventType as string) !== 'version_status')).toBe(true);
     expect(events).toHaveLength(1);
     expect(events[0]!.eventType).toBe('go_live');
     expect(events[0]!.appName).toBe('Feed App');

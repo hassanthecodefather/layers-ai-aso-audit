@@ -42,7 +42,10 @@ async function runVersionCheck(
     console.warn(`[tracking] getAppVersions failed:`, result.error);
     return;
   }
-  const top = result.value[0];
+  const versions = [...result.value].sort(
+    (a, b) => new Date(b.createdDate).getTime() - new Date(a.createdDate).getTime(),
+  );
+  const top = versions[0];
   if (!top) return;
 
   const lastEvent = await getLastChangeEvent(sql, tenantId, app.appId, app.country, 'version_status');
@@ -118,7 +121,6 @@ async function runItunesChecks(
   try {
     const fields = [
       { key: 'name',        before: baseline.name        ?? null, after: (result.trackName  as string | undefined) ?? null },
-      { key: 'subtitle',    before: baseline.subtitle    ?? null, after: (result.subtitle   as string | null | undefined) ?? null },
       { key: 'description', before: baseline.description ?? null, after: (result.description as string | undefined) ?? null },
       { key: 'iconUrl',     before: baseline.iconUrl     ?? null, after: (result.artworkUrl512 as string | null | undefined) ?? null },
     ] as const;
