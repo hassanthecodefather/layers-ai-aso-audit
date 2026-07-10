@@ -116,3 +116,35 @@ export async function fetchHealth(): Promise<Health> {
   if (!res.ok) throw new Error('Server unavailable.');
   return res.json();
 }
+
+export interface AscStatus {
+  connected: boolean;
+  keyId: string | null;
+}
+
+export async function getAscStatus(): Promise<AscStatus> {
+  const res = await authedFetch('/settings/asc');
+  if (!res.ok) return { connected: false, keyId: null };
+  return res.json() as Promise<AscStatus>;
+}
+
+export async function saveAscCredentials(
+  keyId: string,
+  issuerId: string,
+  privateKey: string,
+): Promise<void> {
+  const res = await authedFetch('/settings/asc', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ keyId, issuerId, privateKey }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(data.error ?? 'Failed to save credentials');
+  }
+}
+
+export async function deleteAscCredentials(): Promise<void> {
+  const res = await authedFetch('/settings/asc', { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to disconnect');
+}

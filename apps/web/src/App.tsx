@@ -5,6 +5,7 @@ import { ChallengeCard, ConfirmationCard } from './components/ConfirmationCard';
 import { ProgressTrace } from './components/ProgressTrace';
 import { ReportView } from './components/ReportView';
 import { fetchHealth, type Health, setAuthCallbacks } from './lib/api';
+import { AscSettings } from './components/AscSettings';
 import type { IdentityDecision } from './lib/types';
 import { AuthProvider, useAuth } from './lib/auth';
 import { AuthForms } from './components/AuthForms';
@@ -79,6 +80,7 @@ function AppContent() {
 
 function Header() {
   const [health, setHealth] = useState<Health | null>(null);
+  const [showAscSettings, setShowAscSettings] = useState(false);
 
   useEffect(() => {
     fetchHealth()
@@ -87,41 +89,57 @@ function Header() {
   }, []);
 
   return (
-    <header className="shrink-0 border-b border-white/10 px-4 py-3">
-      <div className="mx-auto flex max-w-3xl items-center justify-between gap-4">
-        <div>
-          <h1 className="text-sm font-semibold text-zinc-100">
-            ASO Audit Agent
-          </h1>
-          <p className="text-xs text-zinc-500">
-            App Store Optimization audits — built on Mastra
-          </p>
-        </div>
-        {health && (
-          <div className="flex items-center gap-1.5">
-            <Chip
-              ok={health.llm.reachable}
-              label={health.llm.reachable ? health.llm.model : 'LLM offline'}
-              title={
-                health.llm.reachable
-                  ? `${health.llm.provider} · ${health.llm.endpoint}`
-                  : `No LLM at ${health.llm.endpoint}`
-              }
-            />
-            <Chip
-              ok={health.crawler.available}
-              label={health.crawler.available ? health.crawler.id : 'no crawler'}
-              neutralWhenOff
-              title={
-                health.crawler.available
-                  ? 'Subtitle & promo text enabled'
-                  : 'Optional — iTunes-only audit'
-              }
-            />
+    <>
+      {showAscSettings && <AscSettings onClose={() => setShowAscSettings(false)} />}
+      <header className="shrink-0 border-b border-white/10 px-4 py-3">
+        <div className="mx-auto flex max-w-3xl items-center justify-between gap-4">
+          <div>
+            <h1 className="text-sm font-semibold text-zinc-100">
+              ASO Audit Agent
+            </h1>
+            <p className="text-xs text-zinc-500">
+              App Store Optimization audits — built on Mastra
+            </p>
           </div>
-        )}
-      </div>
-    </header>
+          <div className="flex items-center gap-2">
+            {health && (
+              <div className="flex items-center gap-1.5">
+                <Chip
+                  ok={health.llm.reachable}
+                  label={health.llm.reachable ? health.llm.model : 'LLM offline'}
+                  title={
+                    health.llm.reachable
+                      ? `${health.llm.provider} · ${health.llm.endpoint}`
+                      : `No LLM at ${health.llm.endpoint}`
+                  }
+                />
+                <Chip
+                  ok={health.crawler.available}
+                  label={health.crawler.available ? health.crawler.id : 'no crawler'}
+                  neutralWhenOff
+                  title={
+                    health.crawler.available
+                      ? 'Subtitle & promo text enabled'
+                      : 'Optional — iTunes-only audit'
+                  }
+                />
+              </div>
+            )}
+            <button
+              onClick={() => setShowAscSettings(true)}
+              title="App Store Connect settings"
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: '#71717a', fontSize: 16, padding: '4px 6px', borderRadius: 6,
+                lineHeight: 1,
+              }}
+            >
+              ⚙
+            </button>
+          </div>
+        </div>
+      </header>
+    </>
   );
 }
 
