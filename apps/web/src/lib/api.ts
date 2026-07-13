@@ -194,7 +194,7 @@ export interface ActivityEvent {
   appId: string;
   appName: string;
   country: string;
-  eventType: 'go_live' | 'metadata_changed' | 'reviews_shifted' | 'measurement_verdict';
+  eventType: 'go_live' | 'metadata_changed' | 'reviews_shifted' | 'measurement_verdict' | 'listing_update_resolved';
   payload: Record<string, unknown>;
   createdAt: string;
 }
@@ -203,4 +203,67 @@ export async function fetchActivity(limit = 20): Promise<ActivityEvent[]> {
   const res = await authedFetch(`/activity?limit=${limit}`);
   if (!res.ok) throw new Error('Failed to fetch activity');
   return res.json() as Promise<ActivityEvent[]>;
+}
+
+// — Listing Update types (mirrors server ProposedFields) —
+export type ProposedFields = {
+  title?: string;
+  subtitle?: string;
+  keywords?: string;
+  description?: string;
+  promotionalText?: string;
+  releaseNotes?: string;
+};
+
+export type ListingUpdateStatus = 'draft' | 'submitted' | 'in_review' | 'approved' | 'rejected';
+
+export interface ListingUpdate {
+  id: string;
+  tenantId: string;
+  appId: string;
+  auditJobId: string | null;
+  proposedFields: ProposedFields;
+  appliedFields: ProposedFields | null;
+  ascLocalizationId: string | null;
+  status: ListingUpdateStatus;
+  rejectionReason: string | null;
+  submittedAt: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+}
+
+export interface GenerateResult {
+  updateId: string;
+  proposedFields: ProposedFields;
+  currentFields: Record<string, string | null>;
+  status: ListingUpdateStatus;
+}
+
+export async function generateListingUpdate(auditJobId: string): Promise<GenerateResult> {
+  const res = await authedFetch('/listing-update/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ auditJobId }),
+  });
+  if (!res.ok) throw new Error(`Generate failed: ${res.status}`);
+  return res.json() as Promise<GenerateResult>;
+}
+
+export async function submitListingUpdate(
+  updateId: string,
+  approvedFields: ProposedFields,
+): Promise<{ update: ListingUpdate }> {
+  const res = await authedFetch('/listing-update/submit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ updateId, approvedFields }),
+  });
+  if (!res.ok) throw new Error(`Submit failed: ${res.status}`);
+  return res.json() as Promise<{ update: ListingUpdate }>;
+}
+
+export async function getListingUpdateCurrent(appId: string): Promise<{ update: ListingUpdate | null }> {
+  const res = await authedFetch(`/listing-update/${encodeURIComponent(appId)}/current`);
+  if (!res.ok) throw new Error(`Current lookup failed: ${res.status}`);
+  return res.json() as Promise<{ update: ListingUpdate | null }>;
 }

@@ -75,6 +75,26 @@ function ActivityCard({ event }: { event: ActivityEvent }) {
     );
   }
 
+  if (event.eventType === 'listing_update_resolved') {
+    const p = event.payload as { status: 'approved' | 'rejected'; rejectionReason?: string };
+    const isApproved = p.status === 'approved';
+    return (
+      <div
+        className={`rounded-lg border p-4 ${isApproved ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}
+      >
+        <p className={`font-medium ${isApproved ? 'text-green-800' : 'text-red-800'}`}>
+          {isApproved ? '✓ Your listing update was approved' : '✗ Apple rejected your listing update'}
+        </p>
+        <p className={`text-sm ${isApproved ? 'text-green-600' : 'text-red-600'}`}>
+          {date} · {event.appName}
+        </p>
+        {!isApproved && p.rejectionReason && (
+          <p className="mt-1 text-sm text-red-500">{p.rejectionReason}</p>
+        )}
+      </div>
+    );
+  }
+
   return null;
 }
 
