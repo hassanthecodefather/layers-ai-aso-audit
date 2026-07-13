@@ -159,6 +159,23 @@ END $$`,
   `ALTER TABLE aso_listing_snapshots ADD COLUMN screenshot_hash TEXT`,
   `ALTER TABLE aso_audit_jobs ADD COLUMN cost_json TEXT`,
   `ALTER TABLE aso_audit_jobs ADD COLUMN advanced_audit BOOLEAN NOT NULL DEFAULT FALSE`,
+  // Phase P8-B: listing update tracking with review workflow
+  `CREATE TABLE IF NOT EXISTS aso_listing_updates (
+    id                   TEXT PRIMARY KEY,
+    tenant_id            TEXT NOT NULL,
+    app_id               TEXT NOT NULL,
+    audit_job_id         TEXT REFERENCES aso_audit_jobs(id),
+    proposed_fields      JSONB NOT NULL,
+    applied_fields       JSONB,
+    asc_localization_id  TEXT,
+    status               TEXT NOT NULL DEFAULT 'draft',
+    rejection_reason     TEXT,
+    submitted_at         TIMESTAMPTZ,
+    resolved_at          TIMESTAMPTZ,
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS aso_listing_updates_tenant_app
+    ON aso_listing_updates (tenant_id, app_id)`,
 ];
 
 /**
