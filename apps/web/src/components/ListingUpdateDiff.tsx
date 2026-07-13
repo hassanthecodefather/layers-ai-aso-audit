@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import type { ProposedFields } from '../lib/api';
 
 const FIELD_LABELS: Record<string, string> = {
@@ -72,8 +72,7 @@ function DiffRow({
   onToggle: (key: keyof ProposedFields, checked: boolean) => void;
 }) {
   const editRef = useRef<HTMLDivElement>(null);
-  // Use the DOM's innerText if available (after mount), otherwise fall back to field.proposed
-  const charCount = (editRef.current?.innerText ?? field.proposed).length;
+  const [charCount, setCharCount] = useState(field.proposed.length);
   const isOver = charCount > field.maxLength;
 
   return (
@@ -87,7 +86,11 @@ function DiffRow({
           ref={editRef}
           contentEditable
           suppressContentEditableWarning
-          onInput={(e) => onChange(field.key, (e.target as HTMLDivElement).innerText)}
+          onInput={(e) => {
+            const text = (e.target as HTMLDivElement).innerText;
+            setCharCount(text.length);
+            onChange(field.key, text);
+          }}
           style={{
             minHeight: 24,
             outline: 'none',
