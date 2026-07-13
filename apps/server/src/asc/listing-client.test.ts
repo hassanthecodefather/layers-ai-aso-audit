@@ -20,13 +20,16 @@ describe('fetchAscListingData', () => {
       }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         data: [
-          { attributes: { locale: 'en-US', keywords: 'remote start,car key', promotionalText: 'Open your car from anywhere.' } },
+          { id: 'loc_en_us', attributes: { locale: 'en-US', keywords: 'remote start,car key', promotionalText: 'Open your car from anywhere.' } },
         ],
       }), { status: 200 }));
 
     const result = await fetchAscListingData(CREDS, '12345');
-    expect(result.keywords).toBe('remote start,car key');
-    expect(result.promotionalText).toBe('Open your car from anywhere.');
+    expect(result).toEqual({
+      keywords: 'remote start,car key',
+      promotionalText: 'Open your car from anywhere.',
+      localizationId: 'loc_en_us',
+    });
   });
 
   it('falls back to first locale when en-US is absent', async () => {
@@ -37,26 +40,29 @@ describe('fetchAscListingData', () => {
       }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         data: [
-          { attributes: { locale: 'de-DE', keywords: 'fernstart,autoschlüssel', promotionalText: null } },
+          { id: 'loc_de_de', attributes: { locale: 'de-DE', keywords: 'fernstart,autoschlüssel', promotionalText: null } },
         ],
       }), { status: 200 }));
 
     const result = await fetchAscListingData(CREDS, '12345');
-    expect(result.keywords).toBe('fernstart,autoschlüssel');
-    expect(result.promotionalText).toBeNull();
+    expect(result).toEqual({
+      keywords: 'fernstart,autoschlüssel',
+      promotionalText: null,
+      localizationId: 'loc_de_de',
+    });
   });
 
   it('returns nulls when no READY_FOR_SALE version exists', async () => {
     const { fetchAscListingData } = await import('./listing-client');
     mockGatewayFetch.mockResolvedValueOnce(new Response(JSON.stringify({ data: [] }), { status: 200 }));
     const result = await fetchAscListingData(CREDS, '12345');
-    expect(result).toEqual({ keywords: null, promotionalText: null });
+    expect(result).toEqual({ keywords: null, promotionalText: null, localizationId: null });
   });
 
   it('returns nulls on non-2xx response', async () => {
     const { fetchAscListingData } = await import('./listing-client');
     mockGatewayFetch.mockResolvedValueOnce(new Response('Unauthorized', { status: 401 }));
     const result = await fetchAscListingData(CREDS, '12345');
-    expect(result).toEqual({ keywords: null, promotionalText: null });
+    expect(result).toEqual({ keywords: null, promotionalText: null, localizationId: null });
   });
 });

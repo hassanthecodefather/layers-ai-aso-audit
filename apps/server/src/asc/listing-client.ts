@@ -7,9 +7,10 @@ const ASC_BASE = 'https://api.appstoreconnect.apple.com';
 export type AscListingData = {
   keywords: string | null;
   promotionalText: string | null;
+  localizationId: string | null;
 };
 
-const NULL_RESULT: AscListingData = { keywords: null, promotionalText: null };
+const NULL_RESULT: AscListingData = { keywords: null, promotionalText: null, localizationId: null };
 
 export async function fetchAscListingData(
   creds: AscCredentials,
@@ -37,7 +38,7 @@ export async function fetchAscListingData(
     if (!locRes.ok) return NULL_RESULT;
 
     const locData = await locRes.json().catch(() => null) as {
-      data?: { attributes: { locale: string; keywords: string | null; promotionalText: string | null } }[]
+      data?: { id: string; attributes: { locale: string; keywords: string | null; promotionalText: string | null } }[]
     } | null;
     if (!Array.isArray(locData?.data) || locData.data.length === 0) return NULL_RESULT;
 
@@ -47,6 +48,7 @@ export async function fetchAscListingData(
     return {
       keywords: loc.attributes.keywords ?? null,
       promotionalText: loc.attributes.promotionalText ?? null,
+      localizationId: loc.id ?? null,
     };
   } catch {
     return NULL_RESULT;
