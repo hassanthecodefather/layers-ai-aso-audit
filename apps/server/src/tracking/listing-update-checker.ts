@@ -1,7 +1,8 @@
 import type postgres from 'postgres';
 import { getInFlightListingUpdates, setListingUpdateStatus } from '../queue/listing-update-store';
 import type { ListingUpdate } from '../queue/listing-update-store';
-import { loadCredentials, signAscToken } from '../asc/credential-store';
+import { loadCredentials } from '../asc/credential-store';
+import { signAscToken } from '../asc/auth';
 import { getGateway } from '../cost/gateway';
 import { insertChangeEvent } from './store';
 import { insertListingMonitor } from '../queue/listing-monitor-store';
