@@ -2,6 +2,7 @@ import type postgres from 'postgres';
 import type { Mastra } from '@mastra/core';
 import { getDueApps, updateLastScanned } from './store';
 import { runScan } from './scan';
+import { runListingUpdateCheck } from './listing-update-checker';
 
 export interface SchedulerHandle {
   stop: () => void;
@@ -33,6 +34,13 @@ export function startTrackingScheduler(
       } catch (e) {
         console.error(`[tracking] updateLastScanned failed for ${tenantId}/${app.appId}:`, e);
       }
+    }
+
+    // After the per-app scan loop, check all in-flight listing updates:
+    try {
+      await runListingUpdateCheck(sql);
+    } catch (e) {
+      console.error('[tracking] runListingUpdateCheck failed:', e);
     }
   }
 
