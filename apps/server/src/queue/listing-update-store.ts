@@ -25,6 +25,7 @@ export interface ListingUpdate {
   submittedAt: Date | null;
   resolvedAt: Date | null;
   createdAt: Date;
+  previousFields: ProposedFields | null;
 }
 
 interface ListingUpdateRow {
@@ -40,6 +41,7 @@ interface ListingUpdateRow {
   submitted_at: Date | null;
   resolved_at: Date | null;
   created_at: Date;
+  previous_fields: string | null;
 }
 
 function rowToListingUpdate(r: ListingUpdateRow): ListingUpdate {
@@ -62,6 +64,11 @@ function rowToListingUpdate(r: ListingUpdateRow): ListingUpdate {
     submittedAt: r.submitted_at,
     resolvedAt: r.resolved_at,
     createdAt: r.created_at,
+    previousFields: r.previous_fields
+      ? (typeof r.previous_fields === 'string'
+          ? (JSON.parse(r.previous_fields) as ProposedFields)
+          : (r.previous_fields as unknown as ProposedFields))
+      : null,
   };
 }
 
@@ -73,19 +80,21 @@ export async function insertListingUpdate(
     auditJobId?: string | null;
     proposedFields: ProposedFields;
     ascLocalizationId?: string | null;
+    previousFields?: ProposedFields | null;
   },
 ): Promise<ListingUpdate> {
   const id = `lu_${randomUUID()}`;
   const rows = await sql<ListingUpdateRow[]>`
     INSERT INTO aso_listing_updates
-      (id, tenant_id, app_id, audit_job_id, proposed_fields, asc_localization_id)
+      (id, tenant_id, app_id, audit_job_id, proposed_fields, asc_localization_id, previous_fields)
     VALUES (
       ${id},
       ${params.tenantId},
       ${params.appId},
       ${params.auditJobId ?? null},
       ${JSON.stringify(params.proposedFields)},
-      ${params.ascLocalizationId ?? null}
+      ${params.ascLocalizationId ?? null},
+      ${params.previousFields ? JSON.stringify(params.previousFields) : null}
     )
     RETURNING *
   `;

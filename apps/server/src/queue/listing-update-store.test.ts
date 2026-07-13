@@ -15,6 +15,7 @@ const makeRow = (overrides = {}) => ({
   submitted_at: null,
   resolved_at: null,
   created_at: new Date('2026-01-01'),
+  previous_fields: null,
   ...overrides,
 });
 
@@ -77,5 +78,18 @@ describe('listing-update-store', () => {
     const { resetListingUpdateToDraft } = await import('./listing-update-store');
     await resetListingUpdateToDraft(mockSql as unknown as postgres.Sql, 'lu_abc');
     expect(mockSql).toHaveBeenCalled();
+  });
+
+  it('insertListingUpdate stores and returns previousFields', async () => {
+    const { insertListingUpdate } = await import('./listing-update-store');
+    const row = makeRow({ previous_fields: JSON.stringify({ title: 'Old Title' }) });
+    mockSql.mockResolvedValueOnce([row]);
+    const result = await insertListingUpdate(mockSql as unknown as postgres.Sql, {
+      tenantId: 'tenant1',
+      appId: '123456',
+      proposedFields: { title: 'New Title' },
+      previousFields: { title: 'Old Title' },
+    });
+    expect(result.previousFields).toEqual({ title: 'Old Title' });
   });
 });

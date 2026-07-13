@@ -160,6 +160,10 @@ export const listingUpdateRoutes = [
             auditJobId,
             proposedFields,
             ascLocalizationId: ascData.localizationId,
+            previousFields: {
+              ...(currentFields.keywords != null ? { keywords: currentFields.keywords } : {}),
+              ...(currentFields.promotionalText != null ? { promotionalText: currentFields.promotionalText } : {}),
+            },
           });
         }
 
