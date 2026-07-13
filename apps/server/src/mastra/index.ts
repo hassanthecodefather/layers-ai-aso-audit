@@ -15,6 +15,7 @@ import { startWorker, type WorkerHandle } from '../queue/worker';
 import { getWebStaticRoutes } from './web-static';
 import { startTrackingScheduler } from '../tracking/scheduler';
 import { startMeasurementScheduler } from '../measurement/scheduler';
+import { listingUpdateRoutes } from './listing-update-routes';
 
 const isTest =
   process.env.NODE_ENV === 'test' || process.env.ASO_SKIP_STARTUP === '1';
@@ -29,7 +30,7 @@ export const mastra = new Mastra({
   ...(pgUrl ? { storage: new PostgresStore({ id: 'aso-audit', connectionString: pgUrl }) } : {}),
   logger,
   server: {
-    apiRoutes: [...auditRoutes, ...authRoutes, ...healthRoutes, ...ascRoutes, ...trackingRoutes, ...costRoutes, ...getWebStaticRoutes()],
+    apiRoutes: [...auditRoutes, ...authRoutes, ...healthRoutes, ...ascRoutes, ...trackingRoutes, ...costRoutes, ...listingUpdateRoutes, ...getWebStaticRoutes()],
   },
 });
 

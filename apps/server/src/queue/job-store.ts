@@ -94,6 +94,19 @@ export async function getJobByRunId(sql: postgres.Sql, runId: string): Promise<A
   return row ? rowToJob(row) : null;
 }
 
+export async function getJobById(
+  sql: postgres.Sql,
+  tenantId: string,
+  id: string,
+): Promise<AuditJob | null> {
+  const rows = await sql<JobRow[]>`
+    SELECT * FROM aso_audit_jobs
+    WHERE id = ${id} AND tenant_id = ${tenantId}
+    LIMIT 1
+  `;
+  return rows[0] ? rowToJob(rows[0]) : null;
+}
+
 export async function markJobRunning(sql: postgres.Sql, id: string, step: string): Promise<void> {
   await sql`UPDATE aso_audit_jobs SET step = ${step} WHERE id = ${id}`;
 }
