@@ -6,7 +6,7 @@
 
 **Architecture:** A new `aso_listing_updates` table owns a `draft → submitted → in_review → approved/rejected` state machine. Three server routes handle generation (lazy LLM call), submission (ASC PATCH), and current-status polling. The hourly scheduler gains a new step that polls ASC version state for in-flight updates and writes a `listing_update_resolved` change event on terminal state. The frontend adds a `ListingUpdatePanel` to the audit report and a new card type in the Activity Feed.
 
-**Tech Stack:** TypeScript, Postgres (JSONB), Mastra/Hono routes, AI SDK (`generateObject`), ASC REST API, React, Vitest.
+**Tech Stack:** TypeScript, Postgres (JSONB), Mastra/Hono routes, Mastra Agent (`agent.generate`), ASC REST API, React, Vitest.
 
 ## Global Constraints
 
@@ -15,7 +15,7 @@
 - One non-terminal update per `(tenant_id, app_id)` at a time — enforced in generate route application logic
 - Hard char limits: title ≤ 30, subtitle ≤ 30, keywords ≤ 100, description ≤ 4000, promotionalText ≤ 170, releaseNotes ≤ 4000
 - `aso_listing_updates` uses JSONB → must go in `PG_ONLY_MIGRATIONS` (not LibSQL-compatible)
-- LLM calls: `generateObject({ model: getLlmProvider('fast').model(), schema, prompt })` — import from `'ai'` and `'../llm'` respectively
+- LLM calls: use `new Agent({ id, name, instructions, model: getLlmProvider('fast').model() })` from `'@mastra/core'`, then `agent.generate(prompt, { modelSettings: { temperature: 0 } })`, extract JSON with `extractJsonObject` from `'../scoring/extract'`, validate with Zod `safeParse`. Do NOT use `generateObject` from `'ai'` — that package is not installed.
 - ASC HTTP calls: `getGateway().fetch(url, { kind: 'app', upstream: 'asc' }, { headers: { Authorization: \`Bearer ${token}\` } })`
 - Route handlers: `getAuthenticatedTenantId(c)` → body parse `.catch(() => ({}))` → `getPgSql()` → op → `c.json(data, status)`
 - IDs: `newId('lu')` for listing update rows (prefix `lu`)
@@ -35,6 +35,7 @@
 | `apps/server/src/asc/listing-client.test.ts` | Modify | Extend existing tests to assert `localizationId` |
 | `apps/server/src/asc/listing-writer.ts` | **Create** | `pushListingUpdate` — PATCH `/v1/appStoreVersionLocalizations/{id}` |
 | `apps/server/src/asc/listing-writer.test.ts` | **Create** | Unit tests for `pushListingUpdate` |
+| `apps/server/src/queue/job-store.ts` | Modify | Add `getJobById(sql, tenantId, id)` — lookup by primary key + tenant |
 | `apps/server/src/mastra/listing-update-routes.ts` | **Create** | Three routes: generate, submit, current |
 | `apps/server/src/mastra/index.ts` | Modify | Add `listingUpdateRoutes` to `apiRoutes` array |
 | `apps/server/src/tracking/listing-update-checker.ts` | **Create** | `runListingUpdateCheck` — polls ASC state for in-flight updates |
@@ -701,6 +702,7 @@ git commit -m "feat(p8b): add pushListingUpdate ASC PATCH client"
 ## Task 4: Server routes — generate, submit, current
 
 **Files:**
+- Modify: `apps/server/src/queue/job-store.ts` — add `getJobById`
 - Create: `apps/server/src/mastra/listing-update-routes.ts`
 - Modify: `apps/server/src/mastra/index.ts`
 
@@ -712,18 +714,40 @@ git commit -m "feat(p8b): add pushListingUpdate ASC PATCH client"
   - `pushListingUpdate` from `../asc/listing-writer`
   - `getAuthenticatedTenantId`, `getPgSql` from existing route utilities
   - `getLlmProvider` from `../llm`
-  - `generateObject` from `'ai'`
+  - `Agent` from `'@mastra/core'` — for LLM generation (NOT `generateObject` from `'ai'`, which is not installed)
+  - `extractJsonObject` from `'../scoring/extract'`
   - `z` from `'zod'`
-  - `AuditJob` type and `getJobById` (or equivalent) from `../queue/job-store` — read that file to find the correct query function name
+  - `getJobById` (newly added to `job-store.ts` in this task) from `../queue/job-store`
 
 **Routes produced:**
 - `POST /listing-update/generate` — body: `{ auditJobId: string }`
 - `POST /listing-update/submit` — body: `{ updateId: string; approvedFields: ProposedFields }`
 - `GET /listing-update/:appId/current`
 
-**Note to implementer:** Before writing code, read `apps/server/src/queue/job-store.ts` to find the function that loads a single job by ID (e.g. `getJobById` or `getJob`). Also read `apps/server/src/mastra/routes.ts` fully to understand the `registerApiRoute` import path and `getAuthenticatedTenantId` / `getPgSql` import paths — replicate them exactly.
+**Note to implementer:** `AuditJob` in `job-store.ts` has no `appId` field — the app ID must be extracted from `job.url` using `extractAppIdFromUrl`. Also read `apps/server/src/mastra/routes.ts` fully to understand the `registerApiRoute` import path and `getAuthenticatedTenantId` / `getPgSql` import paths — replicate them exactly.
 
-- [ ] **Step 1: Write the failing test (route logic unit test)**
+- [ ] **Step 1: Add `getJobById` to `apps/server/src/queue/job-store.ts`**
+
+Open `job-store.ts`. After the `getJobByRunId` function (~line 90), add:
+
+```typescript
+export async function getJobById(
+  sql: postgres.Sql,
+  tenantId: string,
+  id: string,
+): Promise<AuditJob | null> {
+  const rows = await sql<JobRow[]>`
+    SELECT * FROM aso_audit_jobs
+    WHERE id = ${id} AND tenant_id = ${tenantId}
+    LIMIT 1
+  `;
+  return rows[0] ? rowToJob(rows[0]) : null;
+}
+```
+
+(Where `JobRow` is the private row type already defined in the file, and `rowToJob` is the existing row converter function — read the file to confirm the exact names.)
+
+- [ ] **Step 2: Write the failing test (route logic unit test)**
 
 Create `apps/server/src/mastra/listing-update-routes.test.ts`:
 
@@ -764,7 +788,7 @@ describe('ProposedFieldsSchema', () => {
 });
 ```
 
-- [ ] **Step 2: Run tests — verify they fail**
+- [ ] **Step 3: Run tests — verify they fail**
 
 ```bash
 cd apps/server && npx vitest run src/mastra/listing-update-routes.test.ts
@@ -772,14 +796,14 @@ cd apps/server && npx vitest run src/mastra/listing-update-routes.test.ts
 
 Expected: FAIL — `Cannot find module './listing-update-routes'`
 
-- [ ] **Step 3: Create `apps/server/src/mastra/listing-update-routes.ts`**
+- [ ] **Step 4: Create `apps/server/src/mastra/listing-update-routes.ts`**
 
-Read `apps/server/src/mastra/routes.ts` first to get the exact import paths for `registerApiRoute`, `getAuthenticatedTenantId`, `getPgSql`. Read `apps/server/src/queue/job-store.ts` to find the single-job-by-id lookup function name (could be `getJobById`, `getAuditJob`, etc.).
+Read `apps/server/src/mastra/routes.ts` first to get the exact import paths for `registerApiRoute`, `getAuthenticatedTenantId`, `getPgSql`.
 
 ```typescript
 import { registerApiRoute } from '@mastra/core/server';
+import { Agent } from '@mastra/core';
 import { z } from 'zod';
-import { generateObject } from 'ai';
 import { getAuthenticatedTenantId, getPgSql } from './routes';  // adjust import path to match existing pattern
 import {
   insertListingUpdate,
@@ -792,8 +816,8 @@ import { loadCredentials } from '../asc/credential-store';
 import { fetchAscListingData } from '../asc/listing-client';
 import { pushListingUpdate } from '../asc/listing-writer';
 import { getLlmProvider } from '../llm';
-// Import the job lookup function — read job-store.ts for exact name:
-import { getJobById } from '../queue/job-store';  // update if function name differs
+import { extractJsonObject } from '../scoring/extract';
+import { getJobById } from '../queue/job-store';
 import type { AuditReport } from '../domain/audit';
 
 export const ProposedFieldsSchema = z.object({
@@ -901,11 +925,21 @@ export const listingUpdateRoutes = [
           promotionalText: ascData.promotionalText,
         };
 
-        const { object: proposedFields } = await generateObject({
+        const llmAgent = new Agent({
+          id: 'listing-field-writer',
+          name: 'Listing Field Writer',
+          instructions: 'You generate App Store listing field values as JSON. Return ONLY a JSON object, no markdown, no explanation.',
           model: getLlmProvider('fast').model(),
-          schema: ProposedFieldsSchema,
-          prompt: buildGeneratePrompt({ currentFields, recommendations: recommendationsText, rejectionReason }),
         });
+        const llmResult = await llmAgent.generate(
+          buildGeneratePrompt({ currentFields, recommendations: recommendationsText, rejectionReason }),
+          { modelSettings: { temperature: 0 } },
+        );
+        const jsonText = extractJsonObject(llmResult.text ?? '');
+        if (!jsonText) throw new Error('LLM returned no structured JSON');
+        const fieldsParsed = ProposedFieldsSchema.safeParse(JSON.parse(jsonText));
+        if (!fieldsParsed.success) throw new Error('LLM output failed field schema validation');
+        const proposedFields = fieldsParsed.data;
 
         // Insert draft row (or update the reset rejected row)
         const updateRow = await insertListingUpdate(sql, {
@@ -1008,7 +1042,7 @@ function extractAppIdFromUrl(url: string): string {
 
 **Note:** The `job.appId` field reference assumes the audit job stores an appId. If it doesn't (the job only stores `url`), use `extractAppIdFromUrl(job.url)` exclusively. Read `job-store.ts` to confirm.
 
-- [ ] **Step 4: Register routes in `apps/server/src/mastra/index.ts`**
+- [ ] **Step 5: Register routes in `apps/server/src/mastra/index.ts`**
 
 Find the `apiRoutes` array in `index.ts` and add `...listingUpdateRoutes`:
 
@@ -1020,7 +1054,7 @@ import { listingUpdateRoutes } from './listing-update-routes';
 apiRoutes: [...auditRoutes, ...authRoutes, ...healthRoutes, ...ascRoutes, ...trackingRoutes, ...costRoutes, ...listingUpdateRoutes, ...getWebStaticRoutes()],
 ```
 
-- [ ] **Step 5: Run the Zod schema unit tests**
+- [ ] **Step 6: Run the Zod schema unit tests**
 
 ```bash
 cd apps/server && npx vitest run src/mastra/listing-update-routes.test.ts
@@ -1028,7 +1062,7 @@ cd apps/server && npx vitest run src/mastra/listing-update-routes.test.ts
 
 Expected: 3 tests PASS
 
-- [ ] **Step 6: Run full server test suite**
+- [ ] **Step 7: Run full server test suite**
 
 ```bash
 cd apps/server && npx vitest run
@@ -1036,10 +1070,11 @@ cd apps/server && npx vitest run
 
 Expected: PASS (no regressions)
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add apps/server/src/mastra/listing-update-routes.ts \
+git add apps/server/src/queue/job-store.ts \
+        apps/server/src/mastra/listing-update-routes.ts \
         apps/server/src/mastra/listing-update-routes.test.ts \
         apps/server/src/mastra/index.ts
 git commit -m "feat(p8b): add listing-update routes (generate, submit, current)"
