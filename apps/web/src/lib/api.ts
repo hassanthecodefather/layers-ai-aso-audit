@@ -194,7 +194,7 @@ export interface ActivityEvent {
   appId: string;
   appName: string;
   country: string;
-  eventType: 'go_live' | 'metadata_changed' | 'reviews_shifted' | 'measurement_verdict' | 'listing_update_resolved';
+  eventType: 'go_live' | 'metadata_changed' | 'reviews_shifted' | 'measurement_verdict' | 'listing_update_resolved' | 'listing_update_alert' | 'listing_update_reverted';
   payload: Record<string, unknown>;
   createdAt: string;
 }
@@ -266,4 +266,24 @@ export async function getListingUpdateCurrent(appId: string): Promise<{ update: 
   const res = await authedFetch(`/listing-update/${encodeURIComponent(appId)}/current`);
   if (!res.ok) throw new Error(`Current lookup failed: ${res.status}`);
   return res.json() as Promise<{ update: ListingUpdate | null }>;
+}
+
+export async function revertListingUpdate(monitorId: string): Promise<{ ok: boolean }> {
+  const res = await authedFetch('/listing-update/revert', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ monitorId }),
+  });
+  if (!res.ok) throw new Error(`Revert failed: ${res.status}`);
+  return res.json() as Promise<{ ok: boolean }>;
+}
+
+export async function dismissListingAlert(monitorId: string): Promise<{ ok: boolean }> {
+  const res = await authedFetch('/listing-update/dismiss-alert', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ monitorId }),
+  });
+  if (!res.ok) throw new Error(`Dismiss failed: ${res.status}`);
+  return res.json() as Promise<{ ok: boolean }>;
 }

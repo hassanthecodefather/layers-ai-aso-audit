@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { fetchActivity, type ActivityEvent } from '../lib/api';
+import { fetchActivity, revertListingUpdate, dismissListingAlert, type ActivityEvent } from '../lib/api';
 
 function ActivityCard({ event }: { event: ActivityEvent }) {
   const date = new Date(event.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
@@ -95,6 +95,38 @@ function ActivityCard({ event }: { event: ActivityEvent }) {
     );
   }
 
+  // ── listing_update_alert card ─────────────────────────────────────────────────
+  if (event.eventType === 'listing_update_alert') {
+    const p = event.payload as {
+      monitorId: string;
+      deltas: { conversionRateDelta: number; impressionsDelta: number; downloadsDelta: number };
+    };
+    const fmt = (n: number) => `${n >= 0 ? '+' : ''}${Math.round(n * 100)}%`;
+
+    return (
+      <AlertCard
+        event={event}
+        monitorId={p.monitorId}
+        summary={`Conversion rate ${fmt(p.deltas.conversionRateDelta)}, downloads ${fmt(p.deltas.downloadsDelta)} in the 7 days after your listing update.`}
+      />
+    );
+  }
+
+  // ── listing_update_reverted card ──────────────────────────────────────────────
+  if (event.eventType === 'listing_update_reverted') {
+    return (
+      <div style={{ padding: '12px 16px', borderLeft: '3px solid #888', marginBottom: 8, background: '#1a1a1a' }}>
+        <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>
+          {new Date(event.createdAt).toLocaleDateString()} · {event.appName}
+        </div>
+        <div style={{ fontWeight: 500 }}>↩ Listing reverted to previous values</div>
+        <div style={{ fontSize: 13, color: '#aaa', marginTop: 4 }}>
+          Consider running a new audit before resubmitting.
+        </div>
+      </div>
+    );
+  }
+
   return null;
 }
 
@@ -126,6 +158,80 @@ export function ActivityFeed() {
       {events.map((event) => (
         <ActivityCard key={event.id} event={event} />
       ))}
+    </div>
+  );
+}
+
+function AlertCard({
+  event,
+  monitorId,
+  summary,
+}: {
+  event: { createdAt: string; appName: string };
+  monitorId: string;
+  summary: string;
+}) {
+  const [phase, setPhase] = React.useState<'idle' | 'working' | 'done'>('idle');
+  const [action, setAction] = React.useState<'reverted' | 'dismissed' | null>(null);
+
+  const handleRevert = async () => {
+    setPhase('working');
+    try {
+      await revertListingUpdate(monitorId);
+      setAction('reverted');
+      setPhase('done');
+    } catch {
+      setPhase('idle');
+    }
+  };
+
+  const handleDismiss = async () => {
+    setPhase('working');
+    try {
+      await dismissListingAlert(monitorId);
+      setAction('dismissed');
+      setPhase('done');
+    } catch {
+      setPhase('idle');
+    }
+  };
+
+  if (phase === 'done') {
+    return (
+      <div style={{ padding: '12px 16px', borderLeft: '3px solid #888', marginBottom: 8, background: '#1a1a1a' }}>
+        <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>
+          {new Date(event.createdAt).toLocaleDateString()} · {event.appName}
+        </div>
+        <div style={{ fontSize: 13, color: '#aaa' }}>
+          {action === 'reverted' ? '↩ Listing reverted.' : 'Alert dismissed.'}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: '12px 16px', borderLeft: '3px solid #f90', marginBottom: 8, background: '#1a1a1a' }}>
+      <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>
+        {new Date(event.createdAt).toLocaleDateString()} · {event.appName}
+      </div>
+      <div style={{ fontWeight: 500, marginBottom: 6 }}>⚠ Your listing update may be hurting performance</div>
+      <div style={{ fontSize: 13, color: '#aaa', marginBottom: 10 }}>{summary}</div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button
+          onClick={handleRevert}
+          disabled={phase === 'working'}
+          style={{ padding: '6px 14px', cursor: 'pointer' }}
+        >
+          {phase === 'working' ? '…' : 'Revert Listing'}
+        </button>
+        <button
+          onClick={handleDismiss}
+          disabled={phase === 'working'}
+          style={{ padding: '6px 14px', cursor: 'pointer', opacity: 0.7 }}
+        >
+          Dismiss
+        </button>
+      </div>
     </div>
   );
 }
