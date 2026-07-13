@@ -1,4 +1,12 @@
-export type ChangeEventType = 'go_live' | 'metadata_changed' | 'reviews_shifted' | 'version_status' | 'measurement_verdict' | 'listing_update_resolved';
+export type ChangeEventType =
+  | 'go_live'
+  | 'metadata_changed'
+  | 'reviews_shifted'
+  | 'version_status'
+  | 'measurement_verdict'
+  | 'listing_update_resolved'
+  | 'listing_update_alert'
+  | 'listing_update_reverted';
 
 export type TrackedApp = {
   appId: string;

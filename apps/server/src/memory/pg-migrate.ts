@@ -176,6 +176,26 @@ END $$`,
   )`,
   `CREATE INDEX IF NOT EXISTS aso_listing_updates_tenant_app
     ON aso_listing_updates (tenant_id, app_id)`,
+  // P8-C: add previous_fields to listing updates for revert capability
+  `ALTER TABLE aso_listing_updates ADD COLUMN previous_fields JSONB`,
+  // P8-C: stop-loss monitoring table
+  `CREATE TABLE IF NOT EXISTS aso_listing_monitors (
+    id                   TEXT PRIMARY KEY,
+    tenant_id            TEXT NOT NULL,
+    app_id               TEXT NOT NULL,
+    listing_update_id    TEXT NOT NULL REFERENCES aso_listing_updates(id),
+    status               TEXT NOT NULL DEFAULT 'pending_baseline',
+    baseline_request_id  TEXT,
+    after_request_id     TEXT,
+    baseline_metrics     JSONB,
+    latest_metrics       JSONB,
+    alert_fired_at       TIMESTAMPTZ,
+    closed_at            TIMESTAMPTZ,
+    approved_at          TIMESTAMPTZ NOT NULL,
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS aso_listing_monitors_tenant_app
+    ON aso_listing_monitors (tenant_id, app_id)`,
 ];
 
 /**
