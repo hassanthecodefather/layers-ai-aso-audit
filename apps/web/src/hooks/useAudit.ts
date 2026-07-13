@@ -11,7 +11,7 @@ export type ChatMessage =
       identityNeedsConfirm: boolean; decision: 'pending' | 'yes' | 'no';
     }
   | { id: string; kind: 'progress'; step: string | null; complete: boolean }
-  | { id: string; kind: 'report'; report: AuditReport }
+  | { id: string; kind: 'report'; report: AuditReport; auditJobId: string }
   | { id: string; kind: 'error'; text: string }
   | { id: string; kind: 'challenge'; conflict: Conflict; decision: 'pending' | 'yes' | 'no' };
 
@@ -109,7 +109,7 @@ export function useAudit(): UseAudit {
           stopPolling();
           patch(progressId, (m) => m.kind === 'progress' ? { ...m, complete: true } : m);
           if (s.result) {
-            add({ id: nextId(), kind: 'report', report: s.result });
+            add({ id: nextId(), kind: 'report', report: s.result, auditJobId: s.jobId });
             add({ id: nextId(), kind: 'agent', text: 'Audit complete. Paste another App Store URL to run another.' });
           }
           setStatus('done');

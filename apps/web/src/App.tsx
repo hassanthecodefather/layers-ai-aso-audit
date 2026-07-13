@@ -276,7 +276,7 @@ function MessageRow({ message, onConfirm, onReject, onConfirmAnyway, onRevise, o
     case 'report':
       return (
         <Agent>
-          <ReportView report={message.report} />
+          <ReportView report={message.report} auditJobId={message.auditJobId} />
         </Agent>
       );
 

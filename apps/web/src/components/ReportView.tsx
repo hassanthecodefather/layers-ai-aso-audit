@@ -6,6 +6,7 @@ import { Recommendations } from './Recommendations';
 import { CompetitorTable } from './CompetitorTable';
 import { StorefrontComparison } from './StorefrontComparison';
 import { TrackingCard } from './TrackingCard';
+import { ListingUpdatePanel } from './ListingUpdatePanel';
 
 async function downloadMarkdown(report: AuditReport) {
   const res = await fetch('/api/audit/export/markdown', {
@@ -27,7 +28,7 @@ async function downloadMarkdown(report: AuditReport) {
 }
 
 /** The full audit report — score card, recommendations, competitors. */
-export function ReportView({ report }: { report: AuditReport }) {
+export function ReportView({ report, auditJobId }: { report: AuditReport; auditJobId: string }) {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
   const generated = new Date(report.generatedAt);
@@ -90,6 +91,12 @@ export function ReportView({ report }: { report: AuditReport }) {
             ))}
           </ul>
         </section>
+      )}
+
+      {auditJobId && (
+        <div className="mt-6">
+          <ListingUpdatePanel auditJobId={auditJobId} appId={report.app.appId} />
+        </div>
       )}
 
       <div className="flex items-center justify-between gap-2">

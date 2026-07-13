@@ -174,3 +174,17 @@ export async function resetListingUpdateToDraft(
     WHERE id = ${id}
   `;
 }
+
+export async function updateListingUpdateProposedFields(
+  sql: postgres.Sql,
+  id: string,
+  proposedFields: ProposedFields,
+): Promise<ListingUpdate> {
+  const rows = await sql<ListingUpdateRow[]>`
+    UPDATE aso_listing_updates
+    SET proposed_fields = ${JSON.stringify(proposedFields)}
+    WHERE id = ${id}
+    RETURNING *
+  `;
+  return rowToListingUpdate(rows[0]!);
+}

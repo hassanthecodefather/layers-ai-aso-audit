@@ -9,6 +9,7 @@ import {
   getLatestListingUpdate,
   setListingUpdateSubmitted,
   resetListingUpdateToDraft,
+  updateListingUpdateProposedFields,
 } from '../queue/listing-update-store';
 import { loadCredentials } from '../asc/credential-store';
 import { fetchAscListingData } from '../asc/listing-client';
@@ -120,9 +121,6 @@ export const listingUpdateRoutes = [
 
         // Get rejection reason from existing rejected update (for re-generation flow)
         const rejectionReason = existing?.status === 'rejected' ? existing.rejectionReason : null;
-        if (existing?.status === 'rejected') {
-          await resetListingUpdateToDraft(sql, existing.id);
-        }
 
         // LLM call — generate proposed field values
         const currentFields: Record<string, string | null> = {
@@ -149,14 +147,21 @@ export const listingUpdateRoutes = [
         if (!fieldsParsed.success) throw new Error('LLM output failed field schema validation');
         const proposedFields = fieldsParsed.data;
 
-        // Insert draft row
-        const updateRow = await insertListingUpdate(sql, {
-          tenantId,
-          appId,
-          auditJobId,
-          proposedFields,
-          ascLocalizationId: ascData.localizationId,
-        });
+        let updateRow;
+        if (existing?.status === 'rejected') {
+          // Rejection re-generation path: reuse existing row, update proposed_fields
+          await resetListingUpdateToDraft(sql, existing.id);
+          updateRow = await updateListingUpdateProposedFields(sql, existing.id, proposedFields);
+        } else {
+          // Normal path: insert new row
+          updateRow = await insertListingUpdate(sql, {
+            tenantId,
+            appId,
+            auditJobId,
+            proposedFields,
+            ascLocalizationId: ascData.localizationId,
+          });
+        }
 
         return c.json({
           updateId: updateRow.id,
