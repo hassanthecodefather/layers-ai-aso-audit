@@ -1,5 +1,5 @@
 import { registerApiRoute } from '@mastra/core/server';
-import { Agent } from '@mastra/core';
+import { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
 import { getAuthenticatedTenantId } from '../auth/middleware';
 import { getPgSql } from '../memory';
