@@ -3,6 +3,7 @@ import type { Mastra } from '@mastra/core';
 import { getDueApps, updateLastScanned } from './store';
 import { runScan } from './scan';
 import { runListingUpdateCheck } from './listing-update-checker';
+import { runListingMonitorCheck } from './listing-monitor-checker';
 
 export interface SchedulerHandle {
   stop: () => void;
@@ -41,6 +42,12 @@ export function startTrackingScheduler(
       await runListingUpdateCheck(sql);
     } catch (e) {
       console.error('[tracking] runListingUpdateCheck failed:', e);
+    }
+
+    try {
+      await runListingMonitorCheck(sql);
+    } catch (e) {
+      console.error('[tracking] runListingMonitorCheck failed:', e);
     }
   }
 

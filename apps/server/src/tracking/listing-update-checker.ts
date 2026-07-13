@@ -4,6 +4,7 @@ import type { ListingUpdate } from '../queue/listing-update-store';
 import { loadCredentials, signAscToken } from '../asc/credential-store';
 import { getGateway } from '../cost/gateway';
 import { insertChangeEvent } from './store';
+import { insertListingMonitor } from '../queue/listing-monitor-store';
 
 const ASC_BASE = 'https://api.appstoreconnect.apple.com';
 
@@ -74,6 +75,19 @@ async function checkOneUpdate(sql: postgres.Sql, update: ListingUpdate): Promise
         ...(rejectionReason ? { rejectionReason } : {}),
       },
     });
+
+    if (ourStatus === 'approved') {
+      try {
+        await insertListingMonitor(sql, {
+          tenantId: update.tenantId,
+          appId: update.appId,
+          listingUpdateId: update.id,
+          approvedAt: new Date(),
+        });
+      } catch (e) {
+        console.error(`[listing-update-check] failed to insert monitor for ${update.id}:`, e);
+      }
+    }
   }
 }
 
