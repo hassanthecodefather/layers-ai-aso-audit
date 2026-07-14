@@ -31,7 +31,8 @@ async function checkOneUpdate(sql: postgres.Sql, update: ListingUpdate): Promise
   });
   if (!res.ok) return;
 
-  const data = await res.json().catch(() => null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data = await res.json().catch(() => null) as any;
   const version = data?.data?.[0];
   if (!version) return;
 
@@ -52,7 +53,8 @@ async function checkOneUpdate(sql: postgres.Sql, update: ListingUpdate): Promise
         headers: { Authorization: `Bearer ${token}` },
       });
       if (detailRes.ok) {
-        const detail = await detailRes.json().catch(() => null);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const detail = await detailRes.json().catch(() => null) as any;
         const reasons: string[] = detail?.data?.attributes?.contactEmail
           ? []
           : (detail?.data?.attributes?.rejectionReasons ?? []);

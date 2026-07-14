@@ -131,6 +131,8 @@ export const IdentityVersionSchema = z.object({
    */
   overrodeEvidence: OverrodeEvidenceSchema.nullish(),
   suggestedCategory: z.string().nullable().optional(),
+  /** App Store search terms used as AppKittie seeds; optional so pre-existing rows validate. */
+  functionTerms: z.array(z.string()).optional(),
   createdAt: z.string(),
 });
 export type IdentityVersion = z.infer<typeof IdentityVersionSchema>;

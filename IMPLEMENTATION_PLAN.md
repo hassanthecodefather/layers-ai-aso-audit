@@ -365,7 +365,11 @@ All Gemini vision calls were hitting the token budget before finishing JSON outp
   - ⬜ **6a entity-shared cache** — deferred; still Redis-shaped.
   - ✅ **6b durable queue + observability baseline** — `aso_audit_jobs` Postgres table; worker loop (`SELECT FOR UPDATE SKIP LOCKED`, 5-s poll, 15-min stale recovery); SSE replaced by polling (`POST /audit/start` → `{ jobId, runId }`, `GET /audit/status/:runId` every 2.5 s, `POST /audit/confirm`); old SSE routes return 410; shared Pino logger (`telemetry.ts`); `provider_call` logs at gateway / pacer / Gemini classify; `step_summary` (info) + `step_payload` (debug) logs in workflow steps. 613 tests, tsc clean. Known deferred: `estimatedCostUsd`, `tenantId` threading into gateway call sites, periodic stale-job recovery under multi-replica.
   - ⬜ **6b golden-set eval + §C/§E threshold retune** — formal scoring calibration deferred.
-- **P7 (→5K):** ASC integration (JWT/ES256 + Analytics Reports request→instance→poll — *verify lifecycle at kickoff*), continuous tracking, real measurement, cost/unit-economics.
+- **P7 (→5K):**
+  - ✅ **P7-A ASC integration** — JWT/ES256 signing (`signAscToken`), `AscAnalyticsClient` (`createReportRequest` + `pollReportInstance`), `loadCredentials` from `aso_asc_credentials` table, ASC credential settings UI.
+  - ✅ **P7-B Continuous tracking** — `aso_tracked_apps` + `aso_change_events` tables; hourly scheduler; 3-check scan (version status via AppStore Connect, iTunes metadata diff, RSS review shift); `go_live` triggers re-audit; `TrackingCard` + `ActivityFeed` + Activity tab. 7 commits (`a3afdaf..8b83427`).
+  - ✅ **P7-C Measurement windows** — `aso_measurement_windows` table + unique index; `openWindow`/`getWindowsInState`/`updateWindowState` store; `computeVerdict` pure function (28-day correlational, zero-baseline guard, `mixedAuthorship` flag); reporter wrapping `AscAnalyticsClient` with date range; 5-step hourly scheduler (open → baseline → poll-baseline → after → poll-after-close); `measurement_verdict` change event + web card. 8 commits (`f20cd70..92fbbb3`). Deferred: `awaiting_*` timeout, two-step commit atomicity in step 5.
+  - ⬜ **P7-D Cost economics** — spec at `docs/superpowers/specs/2026-07-10-p7d-cost-economics-design.md`. Not yet planned or started.
 - **P8:** write path — pending-version bundle, submit→review→rejection state machine, stop-loss, `superseded_by` migration on first taxonomy bump.
 - **North Star:** daily digest, PPO-proven visual wins, self-measurement.
 

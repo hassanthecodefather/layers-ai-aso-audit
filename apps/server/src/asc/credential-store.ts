@@ -31,9 +31,9 @@ function decrypt(stored: string): string {
   if (parts.length !== 3) throw new Error('Invalid encrypted credential format');
   const [ivB64, tagB64, ctB64] = parts;
   const key = encryptionKey();
-  const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(ivB64, 'base64'));
-  decipher.setAuthTag(Buffer.from(tagB64, 'base64'));
-  return decipher.update(Buffer.from(ctB64, 'base64')) + decipher.final('utf8');
+  const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(ivB64!, 'base64'));
+  decipher.setAuthTag(Buffer.from(tagB64!, 'base64'));
+  return decipher.update(Buffer.from(ctB64!, 'base64')) + decipher.final('utf8');
 }
 
 function normalizePem(raw: string): string {
@@ -77,7 +77,7 @@ export async function loadCredentials(
       WHERE tenant_id = ${tenantId}
     `;
     if (rows.length === 0) return ok(null);
-    const row = rows[0];
+    const row = rows[0]!;
     return ok({
       keyId: row.key_id,
       issuerId: row.issuer_id,

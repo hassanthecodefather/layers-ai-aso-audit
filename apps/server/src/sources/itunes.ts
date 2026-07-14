@@ -91,7 +91,9 @@ function toCore(app: RawLookupApp, ref: AppRef): ITunesCore {
     bundleId: app.bundleId?.trim() ?? null,
     sellerUrl: app.sellerUrl?.trim() ?? null,
     iconUrl: app.artworkUrl512 ?? app.artworkUrl100 ?? null,
-    primaryGenre: app.primaryGenreName ?? null,
+    // genres[0] is the plural App Store form (e.g. "Books"); primaryGenreName
+    // is the iTunes singular form (e.g. "Book") — prefer genres[0].
+    primaryGenre: app.genres?.[0] ?? app.primaryGenreName ?? null,
     genres: app.genres ?? [],
     price: num(app.price),
     formattedPrice: app.formattedPrice ?? null,
@@ -236,7 +238,7 @@ export async function batchLookupCompetitors(
         appId: String(r.trackId ?? ''),
         name: r.trackName ?? 'Unknown',
         developer: r.artistName ?? 'Unknown',
-        primaryGenre: r.primaryGenreName ?? null,
+        primaryGenre: r.genres?.[0] ?? r.primaryGenreName ?? null,
         averageRating: num(r.averageUserRating),
         ratingCount: num(r.userRatingCount),
         formattedPrice: r.formattedPrice ?? null,
@@ -283,7 +285,7 @@ export async function fetchCompetitors(
         appId: String(r.trackId ?? ''),
         name: r.trackName ?? 'Unknown',
         developer: r.artistName ?? 'Unknown',
-        primaryGenre: r.primaryGenreName ?? null,
+        primaryGenre: r.genres?.[0] ?? r.primaryGenreName ?? null,
         averageRating: num(r.averageUserRating),
         ratingCount: num(r.userRatingCount),
         formattedPrice: r.formattedPrice ?? null,

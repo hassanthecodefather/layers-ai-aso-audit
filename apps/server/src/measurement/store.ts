@@ -85,7 +85,7 @@ export async function openWindow(
     )
     RETURNING ${sql.unsafe(SELECT_COLS)}
   `;
-  return rowToWindow(rows[0]);
+  return rowToWindow(rows[0]!);
 }
 
 export async function getWindowsInState(

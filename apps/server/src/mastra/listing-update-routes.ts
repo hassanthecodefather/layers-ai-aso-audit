@@ -2,7 +2,8 @@ import { registerApiRoute } from '@mastra/core/server';
 import { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
 import { getAuthenticatedTenantId } from '../auth/middleware';
-import { getPgSql } from '../memory';
+import { getPgSql, getStorage } from '../memory';
+import { parseAppStoreUrl } from '../domain/app-url';
 import {
   insertListingUpdate,
   getListingUpdateById,
@@ -100,11 +101,20 @@ export const listingUpdateRoutes = [
         }
         const creds = credsResult.value;
 
+        // Resolve bundleId from the stored audit snapshot so fetchAscListingData
+        // can look up the correct ASC resource ID (the ASC internal ID differs
+        // from the iTunes trackId for many apps).
+        const urlRef = parseAppStoreUrl(job.url);
+        const country = urlRef.ok ? urlRef.value.country : 'us';
+        const storage = await getStorage();
+        const snapR = await storage.latestSnapshot(tenantId, appId, country);
+        const bundleId = snapR.ok ? (snapR.value?.listing.bundleId ?? null) : null;
+
         // Fetch current listing data + localization ID
-        const ascData = await fetchAscListingData(creds, appId);
-        if (!ascData.localizationId) {
+        const ascData = await fetchAscListingData(creds, appId, bundleId);
+        if (!ascData || !ascData.localizationId) {
           return c.json({
-            error: 'Could not fetch ASC listing data. Check credentials and that app has a live version.',
+            error: 'Could not fetch ASC listing data. Check credentials and that the app is in your App Store Connect account.',
           }, 400);
         }
 
@@ -116,7 +126,11 @@ export const listingUpdateRoutes = [
           ...(report.strategic ?? []),
         ];
         const recommendationsText = allRecs
-          .map((r) => `[${r.referent?.value ?? r.dimension}] ${r.title}: ${r.rationale}`)
+          .map((r) => {
+            const ref = r.referent;
+            const refLabel = (ref && 'value' in ref) ? ref.value : r.dimension;
+            return `[${refLabel}] ${r.title}: ${r.rationale}`;
+          })
           .join('\n');
 
         // Get rejection reason from existing rejected update (for re-generation flow)

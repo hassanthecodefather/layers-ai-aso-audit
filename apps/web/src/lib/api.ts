@@ -245,7 +245,10 @@ export async function generateListingUpdate(auditJobId: string): Promise<Generat
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ auditJobId }),
   });
-  if (!res.ok) throw new Error(`Generate failed: ${res.status}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => null) as { error?: string } | null;
+    throw new Error(body?.error ?? `Generate failed: ${res.status}`);
+  }
   return res.json() as Promise<GenerateResult>;
 }
 

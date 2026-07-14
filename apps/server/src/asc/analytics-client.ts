@@ -169,7 +169,7 @@ export class AppleAscAnalyticsClient implements AscAnalyticsClient {
 function parseReportCsv(csv: string): ReportRow[] {
   const lines = csv.split('\n').filter(Boolean);
   if (lines.length < 2) return [];
-  const headers = lines[0].split('\t').map((h) => h.trim().toLowerCase());
+  const headers = lines[0]!.split('\t').map((h) => h.trim().toLowerCase());
   return lines.slice(1).map((line) => {
     const cols = line.split('\t');
     const get = (name: string) => cols[headers.indexOf(name)] ?? '';

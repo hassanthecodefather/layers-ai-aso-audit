@@ -5,7 +5,7 @@ contracts live elsewhere: [`specification.md`](specification.md) is the *what*,
 [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) is the *how-to-build*. This
 file is the *where-we-are* — read it first, trust the tests over the prose.
 
-_Last updated: 2026-07-10 · spec v1.3.2 · **Phase E complete (400 tests); Phase F base DoD met + F-K5 shipped (437 tests); F-K2 ✅ + F-K3 ✅ shipped (475 tests); F-K4 pending; Identity-confirmation guard (Fix 5) ✅ shipped + live-smoke corrections ✅ — 534 tests; Phase 6a (auth + Postgres swap + shared rate limiter) ✅ shipped — 584 tests, tsc clean both apps; Phase 6a security hardening ✅ (3 review passes, 23 fixes) + websearch probe correctness ✅; Phase 6b (durable queue + observability) ✅ shipped — 613 tests, tsc clean; Post-6b live-run fixes ✅ — suggestedCategory persistence + UI + scoring rule, governor leak, secondary advisory false fire, pacer hot-path overhead, vision token budgets**_
+_Last updated: 2026-07-11 · spec v1.3.2 · **Phase E complete (400 tests); Phase F base DoD met + F-K5 shipped (437 tests); F-K2 ✅ + F-K3 ✅ shipped (475 tests); F-K4 pending; Identity-confirmation guard (Fix 5) ✅ shipped + live-smoke corrections ✅ — 534 tests; Phase 6a (auth + Postgres swap + shared rate limiter) ✅ shipped — 584 tests, tsc clean both apps; Phase 6a security hardening ✅ (3 review passes, 23 fixes) + websearch probe correctness ✅; Phase 6b (durable queue + observability) ✅ shipped — 613 tests, tsc clean; Post-6b live-run fixes ✅ — suggestedCategory persistence + UI + scoring rule, governor leak, secondary advisory false fire, pacer hot-path overhead, vision token budgets; P7-B (continuous tracking) ✅ shipped — hourly scan, 3 change event types, TrackingCard + ActivityFeed; P7-C (measurement windows) ✅ shipped — 28-day correlational before/after, 5-step scheduler, measurement_verdict card — 676 tests (1 pre-existing failure)**_
 
 Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferred (by design)
 
@@ -22,7 +22,9 @@ Legend: ✅ done & verified · 🚧 in progress · ⬜ not started · ⏸ deferr
 | **F** | Net-new uplifts (storefront sweep, export, …) | 🚧 | Base DoD met (415/418 tests): storefront sweep + proof regime + Markdown export + F-K1 keyword ranking. F-K2 (competitor review mining), F-K3 (competitor tiering), F-K4 (competitor visual benchmarking), F-K5 (web-search corroboration) still open. |
 | **6a** | Auth + Postgres swap + shared rate limiter | ✅ | JWT auth · `PostgresStorageClient` conformance suite green · `PostgresSharedPacer` two-instance serialization. 584 tests, tsc clean. |
 | **6b** | Durable queue + observability baseline | ✅ | `aso_audit_jobs` table · worker loop (`SKIP LOCKED`) · SSE → polling · Pino telemetry · gateway/LLM/step logs. 613 tests, tsc clean. |
-| **P6b+** | Scale-out, ASC, write-path, North Star | ⏸ | planned at their tier, not now |
+| **P7-B** | Continuous tracking — hourly scan, change events, UI | ✅ | `aso_tracked_apps` + `aso_change_events` tables · 3 scan checks (version/metadata/reviews) · `go_live` triggers re-audit · TrackingCard + ActivityFeed + Activity tab. 676 tests. |
+| **P7-C** | Measurement windows — 28-day correlational before/after | ✅ | `aso_measurement_windows` table · `openWindow`/`getWindowsInState`/`updateWindowState` store · `computeVerdict` pure function · reporter wrapping AscAnalyticsClient · 5-step hourly scheduler · `measurement_verdict` change event + ActivityFeed card. 676 tests. |
+| **P7-D+** | Cost economics, write-path, North Star | ⏸ | planned at their tier, not now |
 
 ## Identity-confirmation guard (Fix 5) — detail
 
@@ -188,6 +190,46 @@ Gemini 2.5 Flash thinking tokens consume the call's token budget before JSON out
 - **`aso_rate_slots` seed** — The `'itunes'` row must exist before `PostgresSharedPacer.wait()` is called. After the volume wipe it was absent; inserted manually via: `docker exec layers-ai-aso-audit-db-1 psql -U aso -d aso_audit -c "INSERT INTO aso_rate_slots (key, next_allowed_at) VALUES ('itunes', NOW()) ON CONFLICT (key) DO NOTHING;"`. A clean rebuild re-seeds via the migration automatically.
 - **Two compose files** — `compose.yml` (db only) and `docker-compose.yml` (app + db). Docker Compose picks `compose.yml` by default when both are present; use `docker compose -f docker-compose.yml up -d` for the full stack. Low-priority cleanup: merge db service into `docker-compose.yml` and delete `compose.yml`.
 
+## P7-C — Measurement Windows — detail
+
+**Status: ✅ shipped** (8 commits `f20cd70..92fbbb3`, 676 tests / 1 pre-existing failure / 5 skipped). Plan: [`docs/superpowers/plans/2026-07-11-p7c-measurement-windows.md`](docs/superpowers/plans/2026-07-11-p7c-measurement-windows.md).
+
+28-day correlational before/after measurement for ASO recommendations. When a tracked app goes live, a window opens, fetches baseline and after-period analytics via Apple Search Ads Analytics API, runs `computeVerdict`, and emits a `measurement_verdict` change event shown in the web Activity feed.
+
+| Component | What shipped | Lives in |
+|---|---|---|
+| **DB migration** | `aso_measurement_windows` table + `aso_measurement_windows_tenant_state` index + `aso_measurement_windows_uniq_version` unique index | `memory/pg-migrate.ts` (`PG_ONLY_MIGRATIONS`) |
+| **Types** | `MeasurementWindow`, `WindowState`, `VerdictMetrics`, `VerdictJson` | `measurement/types.ts` |
+| **Store** | `openWindow` (null on duplicate), `getWindowsInState` (all tenants, ORDER BY updated_at ASC), `updateWindowState` (COALESCE partial updates) | `measurement/store.ts` |
+| **Verdict** | `computeVerdict(baseline, after, mixedAuthorship?)` — pure function; deltaPercent formula with zero-baseline guard; `windowDays: 28` literal; `regime: 'correlational'` literal | `measurement/verdict.ts` |
+| **Reporter** | `requestReport` / `pollReport` thin adapters over `AscAnalyticsClient`; `analytics-client.ts` updated to include `startTime`/`endTime` in POST body | `measurement/reporter.ts`, `asc/analytics-client.ts` |
+| **Scheduler** | `startMeasurementScheduler(mastra, sql): SchedulerHandle` — 5-step hourly tick: openWindows → submitBaseline → pollBaseline → submitAfter → pollAfterAndClose; per-step + per-window try/catch; `failWindow` helper; `isStale` (7-day timeout) applied to both pending polls and creds-revoked skip path | `measurement/scheduler.ts` |
+| **Change event type** | `measurement_verdict` added to `ChangeEventType` and `ActivityEvent.eventType` | `tracking/types.ts` |
+| **Server wire-up** | `startMeasurementScheduler` started after migrations; `measurer.stop()` on SIGTERM/SIGINT | `mastra/index.ts` |
+| **Web UI** | `measurement_verdict` added to web `ActivityEvent.eventType`; blue card variant in `ActivityFeed.tsx` with metric deltas + disclaimer + mixedAuthorship note | `web/src/lib/api.ts`, `web/src/components/ActivityFeed.tsx` |
+
+**Known deferred items:**
+- `awaiting_baseline` and `awaiting_after` states have no timeout (a window stuck before step 2 can linger indefinitely — creds-revoked skip path covered for `polling_*` states but not `awaiting_*`).
+- Step 5's `updateWindowState('closed')` and `insertChangeEvent` are two sequential awaits — not wrapped in a transaction (transient DB error between them leaves window in inconsistent closed/error state).
+
+## P7-B — Continuous Tracking — detail
+
+**Status: ✅ shipped** (7 commits `a3afdaf..8b83427`). Plan: earlier session.
+
+Hourly scan of tracked apps for version changes, metadata drift, and review shifts. Emits typed change events; re-queues a full audit on go-live.
+
+| Component | What shipped | Lives in |
+|---|---|---|
+| **DB migration** | `aso_tracked_apps` + `aso_change_events` tables + 2 indices | `memory/pg-migrate.ts` (`PG_ONLY_MIGRATIONS`) |
+| **Store** | `upsertTrackedApp`, `getTrackedApp`, `getDueApps`, `updateLastScanned`, `disableTrackedApp`, `insertChangeEvent`, `getLastChangeEvent`, `getChangeEvents` | `tracking/store.ts` |
+| **Types** | `TrackedApp`, `ChangeEventType` (`go_live | metadata_changed | reviews_shifted | version_status | measurement_verdict`), `ActivityEvent` | `tracking/types.ts` |
+| **Routes** | `POST /tracking`, `GET /tracking`, `DELETE /tracking/:appId`, `GET /activity` | `tracking/routes.ts` |
+| **Scan** | `runScan(app, tenantId, sql, mastra)` — 3 independent checks: (1) version status via App Store Connect, (2) iTunes metadata diff (title/description/icon/screenshots), (3) RSS review rating/count shift; each check independently try/caught; `go_live` triggers `insertJob`; latest version sorted by `createdDate` descending | `tracking/scan.ts` |
+| **Scheduler** | `startTrackingScheduler(mastra, sql): SchedulerHandle` — hourly tick, immediate first pass; per-app try/catch; `updateLastScanned` called even when scan throws | `tracking/scheduler.ts` |
+| **Web UI** | `TrackingCard` (enable/disable per report), `ActivityFeed` (go_live / metadata_changed / reviews_shifted cards), Activity tab in `App.tsx` | `web/src/components/TrackingCard.tsx`, `web/src/components/ActivityFeed.tsx`, `web/src/App.tsx` |
+
+**Post-ship fixes (same branch):** dropped `subtitle` from iTunes metadata diff (Apple API doesn't return it); sort versions by `createdDate` descending before taking `[0]`; independently wrap each iTunes check in try/catch; TS2367 cast in `store.test.ts`.
+
 ## Phase D — detail
 
 | Task | Status | Lives in |
@@ -274,7 +316,7 @@ Gemini 2.5 Flash thinking tokens consume the call's token budget before JSON out
 
 ## Tests (the source of truth)
 
-- **365 hermetic tests pass** (`npm test`). Covers (Phase A): StorageClient conformance,
+- **676 tests pass** (1 pre-existing failure in `scan.test.ts` / 5 live-smoke skips). Covers (Phase A): StorageClient conformance,
   ID-lite §F gates, P1 §F gates (dedup, contradiction, zero-LLM replay),
   human-confirm reuse/re-ask, memory loop end-to-end, classifier fail-safe
   parsing, dismissal-is-honoured, **reworded re-raise collapses to one row**,
@@ -422,9 +464,11 @@ Phase A carry-overs: **all closed in B4** (applied-detection extended, escalate 
 
 ## Next up
 
-- **F-K5 ✅ + F-K2 ✅ + F-K3 ✅ shipped (475 tests).** F-K4 (competitor visual benchmarking) deferred — requires competitor icon/screenshot URLs from D3 + vision cost. Add `TAVILY_API_KEY` or `EXA_API_KEY` to `.env` to activate real web-search corroboration.
+- **P7-C shipped.** Deferred minor items: `awaiting_*`-state timeout (no expiry if creds never show up before step 2); `updateWindowState` + `insertChangeEvent` in step 5 are not in a single transaction (atomicity gap on transient DB error). Both are low-probability at beta scale.
+- **P7-D (cost economics)** — spec at `docs/superpowers/specs/2026-07-10-p7d-cost-economics-design.md`. Not yet planned or started.
+- **F-K4** (competitor visual benchmarking) still deferred — requires competitor icon/screenshot URLs from D3 + vision cost guard.
 - **Phase D carry-over (non-blocking):** #3 — `resolveOtherThemeKey` re-embeds priors each call (store the vector + pin the embedding model id later).
-- **Competitor images** — `analyze.ts` still passes empty competitor icon/screenshot URLs; D3 now provides competitor app ids, so F-K4 competitor visual benchmarking could be wired after F-K5 (mind vision cost + decision-#6 egress).
+- **D-UI-2** (per-section review synthesis — one entry per bucket with summary + exemplars) — scoped but not yet built.
 
 ## Key-arrival follow-ups (drop-in, one file each)
 

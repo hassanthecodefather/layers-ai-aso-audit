@@ -90,6 +90,7 @@ function Header({ onNavigate, currentView }: {
   onNavigate: (view: 'audit' | 'activity') => void;
   currentView: 'audit' | 'activity';
 }) {
+  const { logout } = useAuth();
   const [health, setHealth] = useState<Health | null>(null);
   const [showAscSettings, setShowAscSettings] = useState(false);
 
@@ -166,6 +167,13 @@ function Header({ onNavigate, currentView }: {
               }}
             >
               ⚙
+            </button>
+            <button
+              onClick={() => void logout()}
+              title="Sign out"
+              className="rounded px-3 py-1.5 text-sm font-medium text-zinc-400 hover:bg-white/10 hover:text-zinc-100"
+            >
+              Sign out
             </button>
           </div>
         </div>
@@ -259,6 +267,7 @@ function MessageRow({ message, onConfirm, onReject, onConfirmAnyway, onRevise, o
             identity={message.identity}
             identityNeedsConfirm={message.identityNeedsConfirm}
             decision={message.decision}
+            advancedAudit={message.advancedAudit}
             onConfirm={onConfirm}
             onReject={onReject}
             onReopenIdentity={onReopenIdentity}

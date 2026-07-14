@@ -98,7 +98,7 @@ export async function insertListingUpdate(
     )
     RETURNING *
   `;
-  return rowToListingUpdate(rows[0]);
+  return rowToListingUpdate(rows[0]!);
 }
 
 export async function getListingUpdateById(

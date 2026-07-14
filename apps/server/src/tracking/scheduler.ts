@@ -13,7 +13,7 @@ export function startTrackingScheduler(
   mastra: Mastra,
   sql: postgres.Sql,
 ): SchedulerHandle {
-  const INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+  const INTERVAL_MS = 10 * 1000; // 10 seconds (validation — change back to 60 * 60 * 1000 for production)
 
   async function tick(): Promise<void> {
     let due: Awaited<ReturnType<typeof getDueApps>>;

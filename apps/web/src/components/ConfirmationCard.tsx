@@ -7,6 +7,7 @@ interface ConfirmationCardProps {
   identity: ResolvedIdentity | null;
   identityNeedsConfirm: boolean;
   decision: 'pending' | 'yes' | 'no';
+  advancedAudit?: boolean;
   onConfirm: (identityDecision: IdentityDecision | null) => void;
   onReject: () => void;
   onReopenIdentity?: () => void;
@@ -20,6 +21,7 @@ export function ConfirmationCard({
   identity,
   identityNeedsConfirm,
   decision,
+  advancedAudit,
   onConfirm,
   onReject,
   onReopenIdentity,
@@ -96,6 +98,16 @@ export function ConfirmationCard({
             </span>
             <span className="uppercase">{summary.country}</span>
           </div>
+          {advancedAudit && (
+            <div className="mt-1.5">
+              <span className="inline-flex items-center gap-1 rounded-md bg-indigo-500/15 px-2 py-0.5 text-xs font-medium text-indigo-300">
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" aria-hidden="true">
+                  <path d="M5 0L6.12 3.38H9.51L6.82 5.47L7.94 8.85L5 6.76L2.06 8.85L3.18 5.47L0.49 3.38H3.88L5 0Z"/>
+                </svg>
+                Advanced Audit · ASC keywords &amp; promo text
+              </span>
+            </div>
+          )}
         </div>
       </div>
 

@@ -900,7 +900,7 @@ import {
 } from '../queue/listing-monitor-store';
 import { loadCredentials } from '../asc/credential-store';
 import { getAscAnalyticsClient } from '../asc/analytics-client';
-import type { ReportRow } from '../asc/analytics-client';
+import type { ReportRow } from '../asc/types';
 import { insertChangeEvent } from './store';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -1169,7 +1169,8 @@ Expected: FAIL — `Cannot find module './listing-monitor-routes'`
 
 ```typescript
 import { registerApiRoute } from '@mastra/core/server';
-import { getAuthenticatedTenantId, getPgSql } from './routes';  // adjust import path if needed
+import { getAuthenticatedTenantId } from '../auth/middleware';
+import { getPgSql } from '../memory';
 import { getMonitorById, setMonitorClosed } from '../queue/listing-monitor-store';
 import { getListingUpdateById } from '../queue/listing-update-store';
 import { loadCredentials } from '../asc/credential-store';

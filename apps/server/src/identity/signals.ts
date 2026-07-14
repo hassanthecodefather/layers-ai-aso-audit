@@ -6,6 +6,10 @@ import type { AppListing } from '../domain/listing';
  * raw observations; turning them into a tally and a band is `resolve.ts`'s job.
  */
 export interface RawIdentitySignals {
+  /** The app's display name — often the strongest single identity signal. */
+  appName: string;
+  /** First 300 chars of the description — confirms function when name is ambiguous. */
+  appDescriptionExcerpt: string;
   developer: string;
   /** Slugified developer name, for matching against the bundle/domain. */
   developerSlug: string;
@@ -67,6 +71,8 @@ export function extractIdentitySignals(listing: AppListing): RawIdentitySignals 
     .join(' ')
     .toLowerCase();
   return {
+    appName: listing.name,
+    appDescriptionExcerpt: listing.description.slice(0, 300),
     developer: listing.developer,
     developerSlug: slug(listing.developer),
     bundleOrg: org,

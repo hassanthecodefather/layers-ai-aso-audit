@@ -13,17 +13,21 @@ const MAX_EVIDENCE_COMPETITORS = 3; // teaser only — not a full parallel analy
 
 /**
  * Derive seed keywords from the resolved identity — a prioritised, deduped
- * (case-insensitive) list: niche (most specific) → function category →
- * classifier function terms. Capped at MAX_SEEDS. Multi-signal so competitor
- * discovery no longer hinges on a single category string.
+ * (case-insensitive) list: classifier function terms (short, searchable) →
+ * niche → function category. Capped at MAX_SEEDS.
+ *
+ * functionTerms come first because AppKittie's keyword index works best with
+ * short, user-typed search terms (e.g. "romance", "novel") rather than the
+ * verbose internal labels the classifier produces for niche/category
+ * (e.g. "Serialized romance fiction", "Romance novel reader").
  */
 export function seedKeywords(
   resolved: Pick<ResolvedIdentity, 'niche' | 'category' | 'functionTerms'>,
 ): string[] {
   const candidates: (string | null | undefined)[] = [
+    ...(resolved.functionTerms ?? []),
     resolved.niche,
     resolved.category,
-    ...(resolved.functionTerms ?? []),
   ];
   const seen = new Set<string>();
   const out: string[] = [];
@@ -91,6 +95,7 @@ export async function fetchFunctionGroundedCompetitors(
   const collectedIds: string[] = [];
   for (const seed of seeds) {
     const topApps = await appKittie.getTopApps(seed, ref.country);
+    console.info(`[D3] seed="${seed}" country=${ref.country} → ${topApps.length} apps`);
     for (const app of topApps) {
       if (app.appStoreId && !seen.has(app.appStoreId)) {
         seen.add(app.appStoreId);

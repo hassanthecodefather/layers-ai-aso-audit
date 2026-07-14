@@ -131,7 +131,7 @@ export const AUDIT_JSON_SHAPE = `{
       { "name": "<competitor>", "rating": "<e.g. 4.7 (1.2M)>", "positioning": "<one phrase>", "edge": "<what they do better, or —>" }
     ]
   },
-  "limitations": ["<what could not be assessed from public data, and why>"]
+  "limitations": ["<data gaps only: signals or metrics that could NOT be retrieved and why — NOT findings, NOT recommendations. Never list keyword field visibility or ASC access here when ASC data was successfully fetched.>"]
 }
 
 REFERENT RULES — the referent field pins the recommendation's identity for deduplication:
@@ -247,7 +247,7 @@ function visionFacts(v: VisionResult): string {
   // Only suppress the limitation when Gemini actually produced critiques.
   // If parse failed (critiques empty), the limitation is real and must surface.
   if (visionUsable(v)) {
-    lines.push('IMPORTANT: Do NOT list "Screenshot Content" or "Icon Visuals" as limitations — Gemini has already assessed these. Use the analysis below as evidence in your findings.');
+    lines.push('IMPORTANT: Do NOT list "Screenshot Content", "Icon Visuals", or "Creative mismatch" as limitations — Gemini has already assessed these visually. Surface them as findings, not as data gaps in the limitations array.');
   }
 
   lines.push(`Screenshots overall: ${sv.coarseScore}/10 (${sv.confidence})`);
@@ -404,6 +404,8 @@ export function buildAuditPrompt(
   competitorMining?: CompetitorMiningResult | null,
   competitorTiering?: CompetitorTieringResult | null,
   advancedAuditFailed?: boolean,
+  ascAppNotAccessible?: boolean,
+  ascDataAvailable?: boolean,
 ): string {
   const competitorMiningSection = formatCompetitorMiningForPrompt(competitorMining);
   const competitorTieringSection = formatCompetitorTieringForPrompt(competitorTiering);
@@ -442,7 +444,15 @@ export function buildAuditPrompt(
       '## Advanced Audit — ASC data unavailable',
       'This audit was requested in Advanced mode but App Store Connect data could not be retrieved.',
       'Score the keyword field by inference only (confidence "inferred").',
-      'Add this sentence verbatim to your "limitations" array: "Advanced Audit requested but ASC data unavailable — keyword field is inferred. Reconnect ASC credentials in Settings and re-run for full keyword analysis."',
+      ascAppNotAccessible
+        ? 'Add this sentence verbatim to your "limitations" array: "Advanced Audit requested but ASC data unavailable — this app may not be in your App Store Connect account. Verify your credentials in Settings belong to the developer account that owns this app."'
+        : 'Add this sentence verbatim to your "limitations" array: "Advanced Audit requested but ASC credentials not configured. Add your App Store Connect API key in Settings to unlock keyword field analysis."',
+      '',
+    ] : []),
+    ...(ascDataAvailable && !advancedAuditFailed ? [
+      '## App Store Connect: CONNECTED — private data retrieved',
+      'Keywords, promotional text, and screenshot counts were fetched directly from App Store Connect for this app.',
+      'IMPORTANT: Do NOT add any limitation about keyword field visibility, keyword inference, or lack of App Store Connect access — ASC data is confirmed available and used in this audit.',
       '',
     ] : []),
     '## Rubric — score each dimension 0-10 against these checks',

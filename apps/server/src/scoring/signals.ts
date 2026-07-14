@@ -182,13 +182,12 @@ export function computeSignals(listing: AppListing, ascData?: AscListingData): L
       aboveFold: aboveFold(listing.description),
     },
     screenshots: {
-      // iTunes is authoritative for screenshot count. The crawler count is a fallback
-      // only when iTunes returns nothing — mzstatic.com CDN URLs in the page markdown
-      // include iPad screenshots, preview posters, and related-app icons, so using
-      // Math.max would overcount and saturate the score at 10 for most apps.
-      iphoneCount: listing.screenshotUrls.length || (listing.crawledScreenshotCount ?? 0),
+      // Priority: ASC (exact, device-specific) → iTunes → crawler (last fallback).
+      // iTunes returns empty for apps that only uploaded modern display sizes
+      // (6.7"/6.5"); the crawler can over-count by mixing iPhone + iPad slots.
+      iphoneCount: ascData?.iphoneScreenshotCount ?? (listing.screenshotUrls.length || (listing.crawledScreenshotCount ?? 0)),
       ipadCount: listing.ipadScreenshotUrls.length,
-      slotsUsedOf10: Math.min(10, listing.screenshotUrls.length || (listing.crawledScreenshotCount ?? 0)),
+      slotsUsedOf10: Math.min(10, ascData?.iphoneScreenshotCount ?? (listing.screenshotUrls.length || (listing.crawledScreenshotCount ?? 0))),
     },
     previewVideo: {
       observable: listing.provenance.crawler,

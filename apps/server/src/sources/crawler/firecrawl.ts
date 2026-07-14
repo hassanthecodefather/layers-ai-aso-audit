@@ -9,13 +9,17 @@ import type { ListingCrawler, ListingExtras } from './crawler';
  * mode to pull out the subtitle, promotional text and whether a preview video
  * is present — the three fields Apple's API never returns.
  *
- * Screenshot count is derived from both the LLM extraction AND a pattern
- * count of Apple CDN image URLs in the raw markdown. The LLM extraction alone
- * misses screenshots that are purely image elements (no surrounding text), so
- * the markdown count acts as a cross-check. The higher of the two wins.
- *
- * Apple screenshot URLs contain `mzstatic.com/image/thumb`. The icon is always
- * one of these, so we subtract 1. The result is clamped to [0, 10].
+ * Screenshot count uses three strategies, taking the maximum:
+ *  1. LLM extraction — asks the model to count visible screenshots
+ *  2. Markdown URL count — counts mzstatic.com/image/thumb in the markdown,
+ *     minus 1 for the icon. Misses lazy-loaded carousel items.
+ *  3. HTML PurpleSource count — counts Apple's screenshot CDN path prefix in
+ *     the raw HTML. Screenshots are served from PurpleSource* buckets while
+ *     the app icon uses Purple* (no "Source"). This is the most reliable
+ *     counter because it's present in the Next.js __NEXT_DATA__ JSON blob even
+ *     when the React carousel hasn't rendered. iTunes Lookup API sometimes
+ *     returns screenshotUrls:[] for valid published apps (a known Apple quirk),
+ *     so this HTML fallback prevents a false zero.
  */
 export class FirecrawlCrawler implements ListingCrawler {
   readonly id = 'firecrawl';
@@ -53,6 +57,7 @@ export class FirecrawlCrawler implements ListingCrawler {
               onlyMainContent: true,
               formats: [
                 'markdown',
+                'html',
                 {
                   type: 'json',
                   prompt: EXTRACTION_PROMPT,
@@ -72,7 +77,8 @@ export class FirecrawlCrawler implements ListingCrawler {
           ? Math.max(0, Math.round(json.screenshotCount))
           : 0;
       const mdCount = countScreenshotsFromMarkdown(res.data?.markdown ?? '');
-      const screenshotCount = Math.min(10, Math.max(llmCount, mdCount));
+      const htmlCount = countScreenshotsFromHtml(res.data?.html ?? '');
+      const screenshotCount = Math.min(10, Math.max(llmCount, mdCount, htmlCount));
 
       return {
         subtitle: normalise(json.subtitle),
@@ -90,19 +96,60 @@ export class FirecrawlCrawler implements ListingCrawler {
 
 interface FirecrawlResponse {
   success?: boolean;
-  data?: { json?: Partial<ListingExtras>; markdown?: string };
+  data?: { json?: Partial<ListingExtras>; markdown?: string; html?: string };
 }
 
 /**
- * Count screenshots by matching Apple CDN image URLs in the Firecrawl markdown.
- * Apple serves all app assets (icon + screenshots) from mzstatic.com; the icon
- * is always present exactly once, so we subtract 1. Returns 0 on a clean miss.
+ * Count iPhone screenshots from Apple CDN URLs in the Firecrawl markdown.
+ * Applies the same portrait aspect-ratio filter (H/W > 1.5) as the HTML
+ * counter — markdown image URLs include rendered dimensions (e.g. /300x650bb.jpg)
+ * so we can distinguish phone screenshots from iPad and square icons.
+ * Falls back to 0 when no portrait URLs are found.
  */
 function countScreenshotsFromMarkdown(markdown: string): number {
   if (!markdown) return 0;
-  const matches = markdown.match(/mzstatic\.com\/image\/thumb/g) ?? [];
-  // Subtract 1 for the icon; don't go below 0.
-  return Math.max(0, matches.length - 1);
+  const seen = new Set<string>();
+  for (const m of markdown.matchAll(
+    /mzstatic\.com\/image\/thumb\/PurpleSource[^/]+\/(v\d+\/[a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9-]+)[^)]*?\/(\d+)x(\d+)bb/g,
+  )) {
+    const w = parseInt(m[2]!, 10);
+    const h = parseInt(m[3]!, 10);
+    if (w > 0 && h / w > 1.5) seen.add(m[1]!);
+  }
+  return seen.size;
+}
+
+/**
+ * Count unique iPhone screenshots from the raw HTML via Apple's screenshot CDN bucket.
+ * Screenshots are hosted under `PurpleSource*` buckets (e.g. PurpleSource211,
+ * PurpleSource221) while app icons use `Purple*` without "Source" — so this
+ * regex won't match the icon. Each screenshot asset appears many times in the
+ * HTML across multiple size variants (1x/2x/3x, different dimensions); we
+ * deduplicate by the unique hash portion of the path
+ * (`v4/aa/bb/cc/ddddd...`) so each physical screenshot counts once.
+ *
+ * Aspect-ratio filter (H/W > 1.5): keeps portrait phone screenshots and
+ * excludes square app icons from the "Related Apps" section (64x64, 128x128)
+ * and landscape/OG images that also appear under PurpleSource buckets.
+ * iPad screenshots (e.g. 1366x1024) are landscape or near-square and are
+ * also excluded, so the count reflects iPhone slots only.
+ */
+function countScreenshotsFromHtml(html: string): number {
+  if (!html) return 0;
+  const seen = new Set<string>();
+  // Capture hash + rendered dimensions (WxHbb suffix) in a single pass.
+  for (const m of html.matchAll(
+    /mzstatic\.com\/image\/thumb\/PurpleSource[^/]+\/(v\d+\/[a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9]{2}\/[a-f0-9-]+)[^"]*?\/(\d+)x(\d+)bb/g,
+  )) {
+    const w = parseInt(m[2]!, 10);
+    const h = parseInt(m[3]!, 10);
+    // Portrait phone screenshots have H/W > 1.5 (e.g. 300x650 = 2.17).
+    // Square icons (64x64, 400x400) and iPad landscape screenshots are excluded.
+    if (w > 0 && h / w > 1.5) {
+      seen.add(m[1]!);
+    }
+  }
+  return seen.size;
 }
 
 const EXTRACTION_PROMPT =
@@ -113,8 +160,9 @@ const EXTRACTION_PROMPT =
   'main description; null if absent or indistinguishable from the description. ' +
   '(3) "hasPreviewVideo" — true if the listing\'s media gallery includes a ' +
   'video/app preview (not just screenshots). ' +
-  '(4) "screenshotCount" — the total number of screenshots in the media gallery ' +
-  '(do not count the preview video); return 0 if none are visible.';
+  '(4) "screenshotCount" — the number of iPhone screenshots in the media gallery ' +
+  '(portrait/tall images only; do not count iPad screenshots, the preview video, ' +
+  'or app icons from related-apps sections); return 0 if none are visible.';
 
 const EXTRACTION_SCHEMA = {
   type: 'object',

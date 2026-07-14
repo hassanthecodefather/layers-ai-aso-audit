@@ -460,17 +460,24 @@ const scoreStep = createStep({
     // Signals computed once — passed to generation (for prompt + normalization)
     // and reused for hashing / persistence below.
     let ascListingData: AscListingData | undefined;
+    let ascCredentialsExist = false;
     if (jobRow?.advanced_audit && tenantId) {
       const credsResult = await loadCredentials(sql!, tenantId);
       if (credsResult.ok && credsResult.value) {
-        try {
-          ascListingData = await fetchAscListingData(credsResult.value, listing.appId);
-        } catch { /* non-critical — fall through to inferred mode */ }
+        ascCredentialsExist = true;
+        // Returns null when the HTTP request fails (404 = app not in this ASC
+        // account; 401/403 = invalid credentials). undefined stays when creds
+        // not configured so the caller can distinguish the two failure modes.
+        const fetched = await fetchAscListingData(credsResult.value, listing.appId, listing.bundleId).catch(() => null);
+        ascListingData = fetched ?? undefined;
       }
     }
     const signals = computeSignals(listing, ascListingData);
     const advancedAuditFailed =
       !!jobRow?.advanced_audit && signals.keywordField.observable === false;
+    // true when credentials ARE configured but the app couldn't be fetched
+    // (404 = not in this developer account; 401/403 = key issue).
+    const ascAppNotAccessible = advancedAuditFailed && ascCredentialsExist && ascListingData === undefined;
 
     // ── B1: vision analysis — runs BEFORE prompt construction so the vision
     //    facts (per-slot critiques, icon assessment) can be included in the
@@ -549,7 +556,8 @@ const scoreStep = createStep({
       : null;
 
     const rankedKeywords = rankOpportunities(candidateResult, resolved, listing.name);
-    const builtPrompt = buildAuditPrompt(listing, signals, priorContext, visionResult, candidateResult, themeResult, rankedKeywords, competitorMining, competitorTiering, advancedAuditFailed);
+    const ascDataAvailable = ascListingData !== undefined;
+    const builtPrompt = buildAuditPrompt(listing, signals, priorContext, visionResult, candidateResult, themeResult, rankedKeywords, competitorMining, competitorTiering, advancedAuditFailed, ascAppNotAccessible, ascDataAvailable);
     const promptHash = createHash('sha256')
       .update(builtPrompt)
       .digest('hex')
@@ -558,10 +566,14 @@ const scoreStep = createStep({
     // `rubricVersion` is the scoring fingerprint — rubric weights + SCORER_VERSION
     // (scoring/version.ts) — so a weight retune OR a scorer-code bump changes it and
     // invalidates this whole-snapshot cache even when the listing/identity match.
+    // Advanced audits bypass this cache unconditionally: even if the listing content
+    // is unchanged, the ASC keyword/promo context differs from a non-advanced run,
+    // and the user explicitly requested a fresh scoring pass.
     const listingUnchanged =
       priorSnap !== null &&
       priorSnap.promptHash === promptHash &&
-      priorSnap.rubricVersion === RUBRIC_VERSION;
+      priorSnap.rubricVersion === RUBRIC_VERSION &&
+      !jobRow?.advanced_audit;
 
     let report;
     let usedModelId: string;

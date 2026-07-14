@@ -50,6 +50,7 @@ describe('resolveAppIdentity + toIdentityVersion (ID-lite)', () => {
 
   it('builds a fact sheet that cites each deterministic signal', () => {
     const sheet = buildFactSheet(extractIdentitySignals(loadFixtureListing('rivian')));
+    expect(sheet).toContain('App name:');
     expect(sheet).toContain('Developer: Rivian');
     expect(sheet).toContain('Bundle id org segment: rivian');
     expect(sheet).toContain('Marketing domain: rivian');

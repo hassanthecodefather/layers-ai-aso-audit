@@ -252,8 +252,8 @@ export class LibSqlStorageClient implements StorageClient {
       `INSERT INTO aso_identity_versions
         (id, app_id, country, tenant_id, version, stage, category, category_band,
          niche, niche_band, audience_json, tally_json, divergence, escalate,
-         source, created_at, overrode_evidence_json, suggested_category)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         source, created_at, overrode_evidence_json, suggested_category, function_terms_json)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         v.id,
         v.appId,
@@ -273,6 +273,7 @@ export class LibSqlStorageClient implements StorageClient {
         v.createdAt,
         JSON.stringify(v.overrodeEvidence ?? null),
         v.suggestedCategory ?? null,
+        v.functionTerms != null && v.functionTerms.length > 0 ? JSON.stringify(v.functionTerms) : null,
       ],
     );
     return r.ok ? ok(undefined) : err(r.error);
@@ -335,6 +336,10 @@ export class LibSqlStorageClient implements StorageClient {
         ? JSON.parse(String(row.overrode_evidence_json))
         : null,
       suggestedCategory: row.suggested_category != null ? String(row.suggested_category) : null,
+      functionTerms:
+        row.function_terms_json != null
+          ? JSON.parse(String(row.function_terms_json))
+          : undefined,
       createdAt: row.created_at,
     });
     return parsed.success

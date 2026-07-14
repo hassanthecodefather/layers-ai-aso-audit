@@ -86,7 +86,7 @@ export async function insertListingMonitor(
     VALUES (${id}, ${params.tenantId}, ${params.appId}, ${params.listingUpdateId}, ${params.approvedAt})
     RETURNING *
   `;
-  return rowToMonitor(rows[0]);
+  return rowToMonitor(rows[0]!);
 }
 
 export async function getMonitorsInStatus(

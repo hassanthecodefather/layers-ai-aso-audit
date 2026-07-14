@@ -53,7 +53,14 @@ export function AuthForms() {
         <button
           type="submit"
           disabled={busy}
-          style={{ padding: '9px 12px', borderRadius: 6, background: '#000', color: '#fff', border: 'none', cursor: busy ? 'not-allowed' : 'pointer', fontSize: 14 }}
+          style={{
+            padding: '9px 12px', borderRadius: 6, border: 'none',
+            background: mode === 'signup' ? '#4f46e5' : '#000',
+            color: '#fff',
+            cursor: busy ? 'not-allowed' : 'pointer',
+            fontSize: 14,
+            fontWeight: 600,
+          }}
         >
           {busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}
         </button>
@@ -62,7 +69,12 @@ export function AuthForms() {
         {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
         <button
           onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(null); }}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', color: '#000', fontSize: 13 }}
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            textDecoration: 'underline',
+            color: mode === 'login' ? '#4f46e5' : '#555',
+            fontSize: 13, fontWeight: mode === 'login' ? 600 : 400,
+          }}
         >
           {mode === 'login' ? 'Sign up' : 'Sign in'}
         </button>

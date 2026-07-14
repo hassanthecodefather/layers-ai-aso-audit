@@ -64,6 +64,7 @@ export class AppKittieClient implements AsaClient {
       const payload = await this.#callTool<{ data: AppKittieKwData }>(
         'get_keyword_difficulty',
         { keyword: term, country, source: 'apple_mobile' },
+        `${term.toLowerCase()}:${country.toLowerCase()}`,
       );
       const { popularity, difficulty } = payload.data;
       return {
@@ -85,6 +86,7 @@ export class AppKittieClient implements AsaClient {
       const payload = await this.#callTool<{ data: AppKittieKwData }>(
         'get_keyword_difficulty',
         { keyword: term, country, source: 'apple_mobile' },
+        `${term.toLowerCase()}:${country.toLowerCase()}`,
       );
       return payload.data.topApps ?? [];
     } catch {
@@ -92,8 +94,8 @@ export class AppKittieClient implements AsaClient {
     }
   }
 
-  async #callTool<T>(name: string, args: Record<string, unknown>): Promise<T> {
-    const res = await getGateway().fetch(MCP_URL, { kind: 'app', upstream: 'appkittie' }, {
+  async #callTool<T>(name: string, args: Record<string, unknown>, entityId?: string): Promise<T> {
+    const res = await getGateway().fetch(MCP_URL, { kind: 'app', upstream: 'appkittie', entityId }, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${this.apiKey}`,

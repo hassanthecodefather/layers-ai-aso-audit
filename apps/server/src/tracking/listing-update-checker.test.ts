@@ -3,6 +3,8 @@ import type postgres from 'postgres';
 
 const mockSql = vi.fn().mockResolvedValue([]) as unknown as postgres.Sql;
 
+const { mockGatewayFetch } = vi.hoisted(() => ({ mockGatewayFetch: vi.fn() }));
+
 vi.mock('../queue/listing-update-store', () => ({
   getInFlightListingUpdates: vi.fn(),
   setListingUpdateStatus: vi.fn(),
@@ -10,20 +12,22 @@ vi.mock('../queue/listing-update-store', () => ({
 
 vi.mock('../asc/credential-store', () => ({
   loadCredentials: vi.fn(),
+}));
+
+vi.mock('../asc/auth', () => ({
   signAscToken: vi.fn().mockReturnValue('mock-token'),
 }));
 
 vi.mock('../cost/gateway', () => ({
-  getGateway: () => ({ fetch: vi.fn() }),
+  getGateway: () => ({ fetch: mockGatewayFetch }),
 }));
 
 vi.mock('./store', () => ({
   insertChangeEvent: vi.fn(),
 }));
 
-const mockGatewayFetch = vi.fn();
-vi.mock('../cost/gateway', () => ({
-  getGateway: () => ({ fetch: mockGatewayFetch }),
+vi.mock('../queue/listing-monitor-store', () => ({
+  insertListingMonitor: vi.fn(),
 }));
 
 describe('runListingUpdateCheck', () => {

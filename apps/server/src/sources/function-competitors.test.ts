@@ -321,23 +321,25 @@ describe('selectFunctionCompetitors', () => {
 // ── seedKeywords unit tests ──────────────────────────────────────────────────
 
 describe('seedKeywords', () => {
-  it('seedKeywords dedups case-insensitively and caps at MAX_SEEDS', () => {
+  it('seedKeywords prefers functionTerms and dedups case-insensitively', () => {
     const seeds = seedKeywords({
       niche: 'EV companion', category: 'ev companion', functionTerms: ['truck', 'charge'],
     } as any);
-    // "EV companion" and "ev companion" collapse to one; then a functionTerm fills slot 2.
+    // functionTerms come first; niche and category are identical case-insensitively so only one survives.
     expect(seeds.length).toBe(2);
-    expect(seeds[0]).toBe('EV companion');
+    expect(seeds[0]).toBe('truck');
+    expect(seeds[1]).toBe('charge');
     expect(new Set(seeds.map((s) => s.toLowerCase())).size).toBe(seeds.length);
   });
 
-  it('seedKeywords falls back to functionTerms when niche is null (robust to a bad label)', () => {
+  it('seedKeywords uses functionTerms first when niche is null', () => {
     const seeds = seedKeywords({ niche: null, category: 'Utilities', functionTerms: ['scanner', 'pdf'] } as any);
-    expect(seeds[0]).toBe('Utilities');
-    expect(seeds).toContain('scanner');
+    // functionTerms fill both slots; category never reached with MAX_SEEDS=2
+    expect(seeds[0]).toBe('scanner');
+    expect(seeds[1]).toBe('pdf');
   });
 
-  it('seedKeywords preserves the existing Rivian result (regression guard)', () => {
+  it('seedKeywords falls back to niche/category when functionTerms is empty (regression guard)', () => {
     const seeds = seedKeywords({ niche: 'EV companion', category: 'Electric vehicle companion', functionTerms: [] } as any);
     expect(seeds).toEqual(['EV companion', 'Electric vehicle companion']);
   });

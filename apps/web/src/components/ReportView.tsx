@@ -93,7 +93,7 @@ export function ReportView({ report, auditJobId }: { report: AuditReport; auditJ
         </section>
       )}
 
-      {auditJobId && (
+      {auditJobId && !report.limitations.some((l) => l.includes('not in your App Store Connect account')) && (
         <div className="mt-6">
           <ListingUpdatePanel auditJobId={auditJobId} appId={report.app.appId} />
         </div>

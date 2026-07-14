@@ -9,6 +9,7 @@ export type ChatMessage =
       id: string; kind: 'confirmation';
       summary: AppSummary; identity: ResolvedIdentity | null;
       identityNeedsConfirm: boolean; decision: 'pending' | 'yes' | 'no';
+      advancedAudit: boolean;
     }
   | { id: string; kind: 'progress'; step: string | null; complete: boolean }
   | { id: string; kind: 'report'; report: AuditReport; auditJobId: string }
@@ -38,6 +39,7 @@ export function useAudit(): UseAudit {
   const [status, setStatus] = useState<AuditStatus>('idle');
   const [runId, setRunId] = useState<string | null>(null);
   const [pendingUrl, setPendingUrl] = useState<string | null>(null);
+  const pendingAdvancedAuditRef = useRef(false);
   const [pendingDecision, setPendingDecision] = useState<IdentityDecision | null>(null);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const consecutiveErrors = useRef(0);
@@ -101,6 +103,7 @@ export function useAudit(): UseAudit {
               identity: payload.identity,
               identityNeedsConfirm: payload.identityNeedsConfirm,
               decision: 'pending',
+              advancedAudit: pendingAdvancedAuditRef.current,
             });
           }
           setStatus('confirming');
@@ -154,6 +157,7 @@ export function useAudit(): UseAudit {
     stopPolling();
     add({ id: nextId(), kind: 'user', text: url });
     setPendingUrl(url);
+    pendingAdvancedAuditRef.current = opts?.advancedAudit === true;
     setStatus('starting');
 
     const thinkingId = nextId();

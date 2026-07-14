@@ -89,7 +89,7 @@ export function identityVersionToResolved(v: IdentityVersion): ResolvedIdentity 
     escalate: v.escalate,
     tally: v.tally,
     source: v.source,
-    functionTerms: [],                       // not stored on the row; not needed for a confirmed identity
+    functionTerms: v.functionTerms ?? [],
     suggestedCategory: v.suggestedCategory ?? null,
     overrodeEvidence: v.overrodeEvidence ?? null,
   };

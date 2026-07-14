@@ -28,6 +28,7 @@ const DOMAINS: Record<string, readonly string[]> = {
   shopping: ['shopping', 'commerce', 'retail', 'marketplace', 'store', 'deals'],
   food: ['food', 'recipe', 'restaurant', 'delivery', 'grocery', 'cooking'],
   games: ['game', 'gaming', 'rpg', 'puzzle', 'arcade', 'gacha'],
+  reading: ['book', 'books', 'reading', 'novel', 'fiction', 'ebook', 'epub', 'comics', 'manga', 'story', 'stories'],
   education: ['education', 'learning', 'course', 'language learning', 'study', 'flashcard'],
   dating: ['dating', 'match', 'relationship'],
   news: ['news', 'magazine', 'journal'],

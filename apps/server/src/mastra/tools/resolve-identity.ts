@@ -56,7 +56,7 @@ Reply with ONLY a JSON object, no prose:
 {
   "functionCategory": "<the app's true function as a short category phrase, e.g. 'Electric vehicle companion'>",
   "functionNiche": "<the specific niche, or null if you cannot tell without seeing the screenshots>",
-  "functionTerms": ["<3-6 lowercase vocabulary words a user of THIS function would use in a review>"],
+  "functionTerms": ["<3-6 lowercase keywords a user would type in App Store Search to find apps like this — search terms, not review words>"],
   "suggestedCategory": "<the single best-fit Apple App Store primary category from this exact list: ${APP_STORE_CATEGORY_LIST}>"
 }
 
@@ -68,6 +68,8 @@ Ground your answer in the signals, not world knowledge alone. World knowledge is
 export function buildFactSheet(s: RawIdentitySignals): string {
   const reviewExcerpt = s.reviewCorpus.slice(0, 1500);
   return [
+    `App name: ${s.appName}`,
+    ...(s.appDescriptionExcerpt ? [`App description (excerpt): ${s.appDescriptionExcerpt}`] : []),
     `Developer: ${s.developer}`,
     `Bundle id org segment: ${s.bundleOrg ?? '(vanity / none)'}`,
     `Marketing domain: ${s.marketingDomain ?? '(none provided)'}`,
@@ -230,6 +232,7 @@ export function toIdentityVersion(
     // override); an explicit opts.source still wins if a caller forces it.
     source: opts.source ?? resolved.source ?? 'resolved',
     overrodeEvidence: resolved.overrodeEvidence ?? null,
+    functionTerms: resolved.functionTerms.length > 0 ? resolved.functionTerms : undefined,
     createdAt: opts.createdAt,
   };
 }

@@ -202,7 +202,13 @@ export const auditRoutes = [
           confirmed: true,
           identityDecision: body?.identityDecision ?? null,
           overrideAcknowledged: body?.overrideAcknowledged === true,
-          fresh: body?.fresh === true,
+          // Advanced audits always bypass the 24h listing cache so ASC data and
+          // listing data are both live. Without this, the listing can come from
+          // cache while ASC keywords are fresh — mixing stale and live inputs.
+          // It also guarantees a different promptHash from the prior (non-advanced)
+          // snapshot, preventing the listingUnchanged short-circuit from returning
+          // the cached non-advanced report verbatim.
+          fresh: body?.fresh === true || job.advancedAudit === true,
         };
         const affected = await markJobPending(sql, job.id, JSON.stringify(resumeData));
         if (affected === 0) {
